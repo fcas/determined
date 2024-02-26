@@ -20,6 +20,7 @@ func defaultRPConfig() ResourcePoolConfig {
 
 // ResourcePoolConfig hosts the configuration for a resource pool.
 type ResourcePoolConfig struct {
+	ManagerName              string                             `json:"manager_name"`
 	PoolName                 string                             `json:"pool_name"`
 	Description              string                             `json:"description"`
 	Provider                 *provconfig.Config                 `json:"provider"`

@@ -55,6 +55,8 @@ message UnbindRPFromWorkspaceRequest {
 
   // The resource pool name.
   string resource_pool_name = 1;
+  // The resource manager name.
+  string resource_manager_name = 4; 
   // The workspace IDs to be unbound.
   repeated int32 workspace_ids = 2;
   // The workspace names to be unbound.
@@ -91,6 +93,8 @@ message ListWorkspacesBoundToRPRequest {
 
   // Resource pool name.
   string resource_pool_name = 1;
+  // Resource manager name.
+  string resource_manager_name = 4; 
   // The offset to use with pagination
   int32 offset = 2;
   // The maximum number of results to return

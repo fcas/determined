@@ -110,7 +110,7 @@ func (a *apiServer) BindRPToWorkspace(
 		return nil, err
 	}
 
-	err = db.AddRPWorkspaceBindings(ctx, allWorkspaceIDs, req.ResourcePoolName,
+	err = db.AddRPWorkspaceBindings(ctx, allWorkspaceIDs, req.ResourceManagerName, req.ResourcePoolName,
 		rpConfigs)
 	if err != nil {
 		return nil, err
@@ -140,8 +140,8 @@ func (a *apiServer) OverwriteRPWorkspaceBindings(
 	if err != nil {
 		return nil, err
 	}
-	err = db.OverwriteRPWorkspaceBindings(ctx, allWorkspaceIDs, req.ResourcePoolName,
-		rpConfigs)
+	err = db.OverwriteRPWorkspaceBindings(ctx, allWorkspaceIDs, req.ResourceManagerName,
+		req.ResourcePoolName, rpConfigs)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +162,7 @@ func (a *apiServer) UnbindRPFromWorkspace(
 		return nil, err
 	}
 
-	err = db.RemoveRPWorkspaceBindings(ctx, allWorkspaceIDs, req.ResourcePoolName)
+	err = db.RemoveRPWorkspaceBindings(ctx, allWorkspaceIDs, req.ResourceManagerName, req.ResourcePoolName)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +177,7 @@ func (a *apiServer) ListWorkspacesBoundToRP(
 		return nil, err
 	}
 	rpWorkspaceBindings, pagination, err := db.ReadWorkspacesBoundToRP(
-		ctx, req.ResourcePoolName, req.Offset, req.Limit,
+		ctx, req.ResourceManagerName, req.ResourcePoolName, req.Offset, req.Limit,
 		rpConfigs,
 	)
 	if err != nil {
@@ -265,7 +265,8 @@ func (a *apiServer) resourcePoolsAsConfigs() ([]config.ResourcePoolConfig, error
 	var rpConfigs []config.ResourcePoolConfig
 	for _, rp := range resp.ResourcePools {
 		rpConfigs = append(rpConfigs, config.ResourcePoolConfig{
-			PoolName: rp.Name,
+			ManagerName: rp.ResourceManager,
+			PoolName:    rp.Name,
 		})
 	}
 

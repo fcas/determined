@@ -21,13 +21,14 @@ type RPWorkspaceBinding struct {
 	bun.BaseModel `bun:"table:rp_workspace_bindings"`
 
 	WorkspaceID int    `bun:"workspace_id"`
+	ManagerName string `bun:"manager_name"`
 	PoolName    string `bun:"pool_name"`
 	Valid       bool   `bun:"valid"`
 }
 
 // AddRPWorkspaceBindings inserts new bindings between workspaceIds and poolName.
-func AddRPWorkspaceBindings(ctx context.Context, workspaceIds []int32, poolName string,
-	resourcePools []config.ResourcePoolConfig,
+func AddRPWorkspaceBindings(ctx context.Context, workspaceIds []int32,
+	managerName string, poolName string, resourcePools []config.ResourcePoolConfig,
 ) error {
 	if len(workspaceIds) == 0 {
 		return nil
@@ -35,21 +36,22 @@ func AddRPWorkspaceBindings(ctx context.Context, workspaceIds []int32, poolName 
 	// Check if pool exists
 	poolExists := false
 	for _, pool := range resourcePools {
-		if poolName == pool.PoolName {
+		if poolName == pool.PoolName && managerName == pool.ManagerName {
 			poolExists = true
 			break
 		}
 	}
 
 	if !poolExists {
-		return errors.Errorf("pool with name %v doesn't exist",
-			poolName)
+		return errors.Errorf("pool with name %v and manager %v doesn't exist",
+			poolName, managerName)
 	}
 
 	var bindings []RPWorkspaceBinding
 	for _, workspaceID := range workspaceIds {
 		bindings = append(bindings, RPWorkspaceBinding{
 			WorkspaceID: int(workspaceID),
+			ManagerName: managerName,
 			PoolName:    poolName,
 			Valid:       true,
 		})
@@ -61,7 +63,7 @@ func AddRPWorkspaceBindings(ctx context.Context, workspaceIds []int32, poolName 
 
 // RemoveRPWorkspaceBindings removes the bindings between workspaceIds and poolName.
 func RemoveRPWorkspaceBindings(ctx context.Context,
-	workspaceIds []int32, poolName string,
+	workspaceIds []int32, managerName string, poolName string,
 ) error {
 	if len(workspaceIds) == 0 {
 		return nil
@@ -82,34 +84,34 @@ func RemoveRPWorkspaceBindings(ctx context.Context,
 
 	for _, workspaceID := range workspaceIds {
 		if !foundWorkspaces.Contains(int(workspaceID)) {
-			return errors.Errorf(" workspace with id %v and pool with name  %v binding doesn't exist",
-				workspaceID, poolName)
+			return errors.Errorf(" workspace with id %v and pool with name %v and manager %v binding doesn't exist",
+				workspaceID, poolName, managerName)
 		}
 	}
 
 	_, err = Bun().NewDelete().Table("rp_workspace_bindings").Where("workspace_id IN (?)",
-		bun.In(workspaceIds)).Where("pool_name = ?", poolName).Exec(ctx)
+		bun.In(workspaceIds)).Where("pool_name = ? AND manager_name = ?", poolName, managerName).Exec(ctx)
 	return err
 }
 
 // ReadWorkspacesBoundToRP get the bindings between workspaceIds and the requested resource pool.
 func ReadWorkspacesBoundToRP(
-	ctx context.Context, poolName string, offset, limit int32,
+	ctx context.Context, managerName string, poolName string, offset, limit int32,
 	resourcePools []config.ResourcePoolConfig,
 ) ([]*RPWorkspaceBinding, *apiv1.Pagination, error) {
 	poolExists := false
 	for _, validPool := range resourcePools {
-		if validPool.PoolName == poolName {
+		if validPool.PoolName == poolName && validPool.ManagerName == managerName {
 			poolExists = true
 			break
 		}
 	}
 	if !poolExists {
-		return nil, nil, errors.Errorf("pool with name %v doesn't exist or is not available", poolName)
+		return nil, nil, errors.Errorf("pool with name %v and manager %v doesn't exist or is not available", poolName, managerName)
 	}
 	var rpWorkspaceBindings []*RPWorkspaceBinding
-	query := Bun().NewSelect().Model(&rpWorkspaceBindings).Where("pool_name = ?",
-		poolName)
+	query := Bun().NewSelect().Model(&rpWorkspaceBindings).Where("pool_name = ? AND manager_name = ? ",
+		poolName, managerName)
 
 	query, pagination, err := bunutils.Paginate(ctx, query, int(offset), int(limit))
 	if err != nil {
@@ -135,28 +137,28 @@ func ReadWorkspacesBoundToRP(
 
 // OverwriteRPWorkspaceBindings overwrites the bindings between workspaceIds and poolName.
 func OverwriteRPWorkspaceBindings(ctx context.Context,
-	workspaceIds []int32, poolName string, resourcePools []config.ResourcePoolConfig,
+	workspaceIds []int32, managerName string, poolName string, resourcePools []config.ResourcePoolConfig,
 ) error {
 	// Check if pool exists
 	poolExists := false
 	for _, pool := range resourcePools {
-		if poolName == pool.PoolName {
+		if poolName == pool.PoolName && managerName == pool.ManagerName {
 			poolExists = true
 		}
 	}
 
 	if !poolExists {
-		return errors.Errorf("pool with name %v doesn't exist",
-			poolName)
+		return errors.Errorf("pool with name %v and manager %v doesn't exist",
+			poolName, managerName)
 	}
 	// Remove existing ones with this pool name
 	_, err := Bun().NewDelete().Table("rp_workspace_bindings").
-		Where("pool_name = ?", poolName).Exec(ctx)
+		Where("pool_name = ? AND manager_name = ?", poolName, managerName).Exec(ctx)
 	if err != nil {
 		return err
 	}
 
-	err = AddRPWorkspaceBindings(ctx, workspaceIds, poolName, resourcePools)
+	err = AddRPWorkspaceBindings(ctx, workspaceIds, managerName, poolName, resourcePools)
 	return err
 }
 

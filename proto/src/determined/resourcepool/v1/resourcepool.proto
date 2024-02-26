@@ -103,6 +103,8 @@ message ResourcePool {
   };
   // The unique name of the resource pool.
   string name = 1;
+  // The name of the resource manager.
+  string resource_manager = 35;
   // The description of the resource pool
   string description = 2;
   // The type of the resource pool (AWS/GCP/STATIC)
