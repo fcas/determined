@@ -191,8 +191,8 @@ package: gen buildx
 
 .PHONY: package-small
 package-small: 
-	docker build 
-	docker push $$image;
+	docker build docker build . -t $(DOCKER_REPO)/$(PROJECT_NAME):$(FULL_COMMIT)-x86_64
+	docker push $(DOCKER_REPO)/$(PROJECT_NAME):$(FULL_COMMIT)-x86_64;
 
 
 .PHONY: release
