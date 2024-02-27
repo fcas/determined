@@ -1250,7 +1250,14 @@ commands:
       - run:
           no_output_timeout: 30m
           command: make package
-
+  
+  make-package-small:
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          no_output_timeout: 30m
+          command: make package-small
 
   install-devcluster:
     steps:
@@ -1446,6 +1453,28 @@ jobs:
       - run: mkdir /tmp/pkgs && cp -v */dist/*.{rpm,deb,tar.gz} /tmp/pkgs
       - store_artifacts:
           path: /tmp/pkgs
+
+  package-and-push-system-dev-small:
+    docker:
+      - image: <<pipeline.parameters.docker-image>>
+        environment:
+          GO111MODULE: "on"
+    resource_class: xlarge
+    steps:
+      - checkout
+      - skip-if-docs-only
+      - skip-if-github-only
+      - skip-if-webui-only
+      - attach_workspace:
+          at: .
+      - setup_remote_docker:
+          version: 20.10.18
+      - login-docker:
+          username: ${DOCKER_USER}
+          password: ${DOCKER_PASS}
+      - pre-package-and-push-system:
+          check: false
+      - make-package-small
 
   package-and-push-system-rc:
     docker:
@@ -2991,6 +3020,11 @@ workflows:
               only:
                 - main
 
+      - package-and-push-system-dev-small:
+          requires:
+            - build-react
+            - build-docs
+
       - upload-docs-search-index:
           requires:
             - build-docs
@@ -3263,6 +3297,14 @@ workflows:
               slot-type: ["cpu"]
               slot-resource-requests-cpu: [7]
               accel-node-taints: ["accel=truth:NoSchedule"]
+              
+      - test-e2e-shared-cluster:
+          name: test-e2e-shared-cluster-cpu
+          context: gcp-shared-cluster
+          requires:
+            - package-and-push-system-dev-small
+          parallelism: 1
+          mark: e2e_cpu
 
   test-e2e-quarantined:
     jobs:
@@ -3384,14 +3426,6 @@ workflows:
               mark: ["e2e_gpu"]
               parallelism: [1]
               slack-mentions: ["${SLACK_USER_ID}"]
-
-      - test-e2e-shared-cluster:
-          name: test-e2e-shared-cluster-cpu
-          context: gcp-shared-cluster
-          requires:
-            - package-and-push-system-dev
-          parallelism: 1
-          mark: e2e_cpu
 
       - test-e2e-gke:
           name: test-e2e-gke-parallel

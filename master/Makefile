@@ -189,6 +189,12 @@ package: export GORELEASER_CURRENT_TAG := $(VERSION)
 package: gen buildx
 	$(GORELEASER) --snapshot --rm-dist
 
+.PHONY: package-small
+package-small: 
+	docker build 
+	docker push $$image;
+
+
 .PHONY: release
 release: export DET_SEGMENT_MASTER_KEY ?=
 release: export DET_SEGMENT_WEBUI_KEY ?=
@@ -196,7 +202,6 @@ release: export GORELEASER_CURRENT_TAG := $(VERSION)
 release: export GORELEASER_PREVIOUS_TAG := $(shell git tag --sort=-creatordate | grep -E '^[0-9.]+$$' | grep "$(VERSION)" -A1 | sed -n '2 p')
 release: gen buildx
 	$(GORELEASER) --rm-dist
-	make publish-nvcr
 
 define manifest_publish
 	for image in $(2); do \
