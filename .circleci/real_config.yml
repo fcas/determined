@@ -1257,7 +1257,7 @@ commands:
           at: .
       - run:
           no_output_timeout: 30m
-          command: make package-small
+          command: make -C master package-small
 
   install-devcluster:
     steps:
