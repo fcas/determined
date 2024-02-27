@@ -190,7 +190,7 @@ package: gen buildx
 	$(GORELEASER) --snapshot --rm-dist
 
 .PHONY: package-small
-package-small: 
+package-small: gen
 	docker build . -t $(DOCKER_REPO)/$(PROJECT_NAME):$(FULL_COMMIT)-x86_64
 	docker push $(DOCKER_REPO)/$(PROJECT_NAME):$(FULL_COMMIT)-x86_64;
 
