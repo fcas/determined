@@ -218,7 +218,7 @@ release: gen buildx
 
 define manifest_publish
 	for image in $(2); do \
-		docker push $$image; \
+		docker push $$image-shared-cluster; \
 	done
 	for manifest in $(1); do \
 		docker manifest rm $$manifest; \
@@ -226,6 +226,7 @@ define manifest_publish
 		docker manifest push $$manifest || exit 1; \
 	done
 endef
+
 
 .PHONY: publish-dev
 publish-dev:
