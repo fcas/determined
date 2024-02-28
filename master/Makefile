@@ -15,7 +15,7 @@ PROJECT_NAME = determined-master
 ARCHS = amd64 arm64 ppc64
 ARCH_SMALL = amd64
 MULTI_ARCH_IMAGES = $(shell for arch in $(ARCHS); do echo $(DOCKER_REPO)/$(PROJECT_NAME):$(FULL_COMMIT)-$$arch; done)
-SHARED_CLUSTER_IAMGE=$(shell for arch in $(ARCH_SMALL); do echo $(DOCKER_REPO)/$(PROJECT_NAME):$(FULL_COMMIT)-$$arch; done)
+SHARED_CLUSTER_IMAGE=$(shell for arch in $(ARCH_SMALL); do echo $(DOCKER_REPO)/$(PROJECT_NAME):$(FULL_COMMIT)-$$arch; done)
 
 NVCR_REPO ?= nvcr.io/isv-ngc-partner/determined
 
@@ -218,7 +218,8 @@ release: gen buildx
 
 define manifest_publish
 	for image in $(2); do \
-		docker push $$image-shared-cluster; \
+		image_name = $$image + "-shared-cluster" \
+		docker push $$image_name; \
 	done
 	for manifest in $(1); do \
 		docker manifest rm $$manifest; \
@@ -234,7 +235,7 @@ publish-dev:
 
 .PHONY: publish-dev-small
 publish-dev-small:
-	@$(call manifest_publish, $(DEV_MANIFESTS), $(SHARED_CLUSTER_IAMGE))
+	@$(call manifest_publish, $(DEV_MANIFESTS), $(SHARED_CLUSTER_IMAGE))
 
 .PHONY: publish
 publish:
