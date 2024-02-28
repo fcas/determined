@@ -13,9 +13,9 @@ FULL_COMMIT = $(shell git rev-parse HEAD)
 SHORT_COMMIT = $(shell git rev-parse HEAD | head -c9)
 PROJECT_NAME = determined-master
 ARCHS = amd64 arm64 ppc64
-ARCH_SMALL = amd64
+ARCH_SMALL = amd64-shared-cluster
 MULTI_ARCH_IMAGES = $(shell for arch in $(ARCHS); do echo $(DOCKER_REPO)/$(PROJECT_NAME):$(FULL_COMMIT)-$$arch; done)
-SHARED_CLUSTER_IMAGE=$(shell for arch in $(ARCH_SMALL); do echo $(DOCKER_REPO)/$(PROJECT_NAME):$(FULL_COMMIT)-$$arch; done)
+SHARED_CLUSTER_IMAGE=$(shell echo $(DOCKER_REPO)/$(PROJECT_NAME):$(FULL_COMMIT)-$(ARCH_SMALL))
 
 NVCR_REPO ?= nvcr.io/isv-ngc-partner/determined
 
@@ -27,6 +27,10 @@ PUB_MANIFESTS = \
 DEV_MANIFESTS = \
 	$(DOCKER_REPO)/$(PROJECT_NAME):$(FULL_COMMIT) \
 	$(DOCKER_REPO)/determined-dev:$(PROJECT_NAME)-$(FULL_COMMIT)
+
+DEV_MANIFESTS_SMALL = \
+	$(DOCKER_REPO)/$(PROJECT_NAME):$(FULL_COMMIT)-shared-cluster \
+	$(DOCKER_REPO)/determined-dev:$(PROJECT_NAME)-$(FULL_COMMIT)-shared-cluster
 
 NVCR_TAGS = \
 	$(NVCR_REPO)/$(PROJECT_NAME):$(FULL_COMMIT) \
@@ -218,8 +222,7 @@ release: gen buildx
 
 define manifest_publish
 	for image in $(2); do \
-		image_name = $$image + "-shared-cluster" \
-		docker push $$image_name; \
+		docker push $$image; \
 	done
 	for manifest in $(1); do \
 		docker manifest rm $$manifest; \
@@ -235,7 +238,7 @@ publish-dev:
 
 .PHONY: publish-dev-small
 publish-dev-small:
-	@$(call manifest_publish, $(DEV_MANIFESTS), $(SHARED_CLUSTER_IMAGE))
+	@$(call manifest_publish, $(DEV_MANIFESTS_SMALL), $(SHARED_CLUSTER_IMAGE))
 
 .PHONY: publish
 publish:
