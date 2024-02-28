@@ -43,7 +43,6 @@ nfpms:
       - src: "packaging/determined-master.service"
         dst: "/lib/systemd/system/determined-master.service"
       - src: "packaging/determined-master.socket"
-        dst: "/lib/systemd/system/determined-master.socket"
 
       - src: "packaging/LICENSE"
         dst: "/usr/share/doc/determined-master/copyright"
@@ -69,7 +68,7 @@ dockers:
       - --platform=linux/amd64
       - --builder=buildx-build
     image_templates:
-      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-amd64"
+      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-amd64-shared-cluster"
     extra_files:
       - "packaging/master.yaml"
       - "packaging/LICENSE"
@@ -80,15 +79,15 @@ dockers:
       - determined-gotmpl
 
 docker_manifests:
-  - name_template: "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}"
+  - name_template: "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-shared-cluster"
     image_templates:
-      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-amd64"
-  - name_template: "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.ShortCommit}}"
+      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-amd64-shared-cluster"
+  - name_template: "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.ShortCommit}}-shared-cluster"
     image_templates:
-      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-amd64"
-  - name_template: "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.Env.VERSION}}"
+      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-amd64-shared-cluster"
+  - name_template: "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.Env.VERSION}}-shared-cluster"
     image_templates:
-      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-amd64"
-  - name_template: "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:latest"
+      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-amd64-shared-cluster"
+  - name_template: "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:latest-shared-cluster"
     image_templates:
-      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-amd64"
+      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-amd64-shared-cluster"
