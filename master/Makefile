@@ -13,7 +13,9 @@ FULL_COMMIT = $(shell git rev-parse HEAD)
 SHORT_COMMIT = $(shell git rev-parse HEAD | head -c9)
 PROJECT_NAME = determined-master
 ARCHS = amd64 arm64 ppc64
+ARCH_SMALL = amd64
 MULTI_ARCH_IMAGES = $(shell for arch in $(ARCHS); do echo $(DOCKER_REPO)/$(PROJECT_NAME):$(FULL_COMMIT)-$$arch; done)
+SHARED_CLUSTER_IAMGE=$(shell for arch in $(ARCH_SMALL); do echo $(DOCKER_REPO)/$(PROJECT_NAME):$(FULL_COMMIT)-$$arch; done)
 
 NVCR_REPO ?= nvcr.io/isv-ngc-partner/determined
 
@@ -179,6 +181,15 @@ buildx:
 	}
 	docker buildx ls
 
+.PHONY: buildx-small
+buildx-small:
+	docker context rm -f buildx-context || true
+	docker context create buildx-context
+	docker buildx rm -f buildx-build || true
+
+	docker --context=buildx-context buildx create --platform "linux/amd64" --bootstrap --use --name buildx-build;
+	docker buildx ls
+
 packaging/LICENSE: $(shell find ../tools/scripts/licenses -type f)
 	../tools/scripts/gen-attributions.py master $@
 
@@ -190,10 +201,11 @@ package: gen buildx
 	$(GORELEASER) --snapshot --rm-dist
 
 .PHONY: package-small
-package-small: gen
-	docker build . -t $(DOCKER_REPO)/$(PROJECT_NAME):$(FULL_COMMIT)-x86_64
-	docker push $(DOCKER_REPO)/$(PROJECT_NAME):$(FULL_COMMIT)-x86_64;
-
+package-small: export DET_SEGMENT_MASTER_KEY ?=
+package-small: export DET_SEGMENT_WEBUI_KEY ?=
+package-small: export GORELEASER_CURRENT_TAG := $(VERSION)
+package-small: gen buildx-small
+	$(GORELEASER) --snapshot --rm-dist
 
 .PHONY: release
 release: export DET_SEGMENT_MASTER_KEY ?=
@@ -217,6 +229,10 @@ endef
 .PHONY: publish-dev
 publish-dev:
 	@$(call manifest_publish, $(DEV_MANIFESTS), $(MULTI_ARCH_IMAGES))
+
+.PHONY: publish-dev-small
+publish-dev-small:
+	@$(call manifest_publish, $(DEV_MANIFESTS), $(SHARED_CLUSTER_IAMGE))
 
 .PHONY: publish
 publish:

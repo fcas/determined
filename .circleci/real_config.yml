@@ -1483,6 +1483,7 @@ jobs:
       - pre-package-and-push-system:
           check: false
       - make-package-small
+      - run: tools/scripts/retry.sh make -C master publish-dev-small
 
   package-and-push-system-rc:
     docker:

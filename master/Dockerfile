@@ -14,8 +14,8 @@ COPY packaging/master.yaml /etc/determined/master.yaml
 COPY packaging/LICENSE /usr/share/doc/determined-master/copyright
 COPY build /usr/share/determined/master
 COPY static /usr/share/determined/master/static
-COPY cmd/determined-gotmpl /usr/bin/determined-gotmpl
-COPY cmd/determined-master /usr/bin/determined-master
+COPY determined-gotmpl /usr/bin/determined-gotmpl
+COPY determined-master /usr/bin/determined-master
 RUN chmod 775 /var/cache  # for OpenShift/OKD compatibility
 
 EXPOSE 8080
