@@ -75,7 +75,7 @@ stringData:
       {{- end }}
       {{- end }}
     {{- if .Values.masterPort }}
-    port: {{ include ".Values.masterPort" . }}
+    port: {{ .Values.masterPort }}
     {{- else}}
     port: {{ include "determined.masterPort" . }}
     {{- end}}
