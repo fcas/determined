@@ -189,6 +189,8 @@ def patch_agent(enabled: bool) -> Callable[[argparse.Namespace], None]:
                 payload = {
                     "drain": drain_mode,
                 }
+            if args.resource_manager:
+                payload["resource_manager"] = args.resource_manager
 
             sess.post(path, json=payload)
             status = "Disabled" if not enabled else "Enabled"
@@ -254,12 +256,14 @@ args_description = [
             ),
         ], is_default=True),
         Cmd("enable", patch_agent(True), "enable agent", [
+            Arg("rm", help="resource manager name", nargs="?"),
             Group(
                 Arg("agent_id", help="agent ID", nargs="?", completer=agent_id_completer),
                 Arg("--all", action="store_true", help="enable all agents"),
             )
         ]),
         Cmd("disable", patch_agent(False), "disable agent", [
+            Arg("rm", help="resource manager name", nargs="?"),
             Group(
                 Arg("agent_id", help="agent ID", nargs="?", completer=agent_id_completer),
                 Arg("--all", action="store_true", help="disable all agents"),
