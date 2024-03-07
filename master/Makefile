@@ -187,11 +187,11 @@ buildx:
 
 .PHONY: buildx-small
 buildx-small:
-	docker context rm -f buildx-context || true
-	docker context create buildx-context
-	docker buildx rm -f buildx-build || true
+	docker context rm -f buildx-context-sharedcluster || true
+	docker context create buildx-context-sharedcluster
+	docker buildx rm -f buildx-build-sharedcluster || true
 
-	docker --context=buildx-context buildx create --platform "linux/amd64" --bootstrap --use --name buildx-build;
+	docker --context=buildx-context-sharedcluster buildx create --platform "linux/amd64" --bootstrap --use --name buildx-build-sharedcluster;
 	docker buildx ls
 
 packaging/LICENSE: $(shell find ../tools/scripts/licenses -type f)
