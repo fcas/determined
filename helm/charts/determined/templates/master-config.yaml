@@ -163,6 +163,7 @@ stringData:
       slot_resource_requests:
         cpu: {{ .Values.slotResourceRequests.cpu }}
       {{- end }}
+      kubeconfig_path: $KUBECONFIG
       {{- if .Values.fluent }}
       fluent:
         {{- toYaml .Values.fluent | nindent 8}}
