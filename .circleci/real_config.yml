@@ -1068,7 +1068,7 @@ commands:
             echo "export USE_GKE_GCLOUD_AUTH_PLUGIN=True" >> $BASH_ENV
           name: Install GKE auth plugin
       - run:
-          command: gcloud container clusters get-credentials <<parameters.cluster-id>> --project ${<<parameters.google-project-id>>} --region <<parameters.zone>>
+          command: gcloud container clusters get-credentials <<parameters.cluster-id>> --project ${<<parameters.google-project-id>>} --zone <<parameters.zone>>
           name: Get Kubeconfig
       - run: 
           command: kubectl create namespace ${GENERATED_NAMESPACE}
@@ -1481,9 +1481,6 @@ jobs:
           check: false
       - make-package-small
       - run: tools/scripts/retry.sh make -C master publish-dev-small
-      - run: mkdir /tmp/pkgs && cp -v */dist/*.{rpm,deb,tar.gz} /tmp/pkgs
-      - store_artifacts:
-          path: /tmp/pkgs
 
   package-and-push-system-rc:
     docker:
@@ -2641,8 +2638,8 @@ jobs:
         type: string
         default: "1"
       environment-image:
-        default: determinedai/environments:cuda-11.3-pytorch-1.12-tf-2.11-gpu-0.27.1
         type: string
+        default: determinedai/environments:cuda-11.3-pytorch-1.12-tf-2.11-gpu-0.27.1
       accel-node-taints:
         type: string
         default: ""
@@ -2712,7 +2709,12 @@ jobs:
       parallelism:
         type: integer
         default: 1
+      environment-gpu-enabled:
+        type: string
+        default: "0"
     circleci_ip_ranges: true
+    environment:
+      DET_TEST_GPU_ENABLED: <<parameters.environment-gpu-enabled>>
     docker:
       - image: <<pipeline.parameters.docker-image>>
     parallelism: <<parameters.parallelism>>
@@ -3033,10 +3035,7 @@ workflows:
               only:
                 - main
 
-      - package-and-push-system-dev-small:
-          requires:
-            - build-react
-            - build-docs
+      - package-and-push-system-dev-small
 
       - upload-docs-search-index:
           requires:
