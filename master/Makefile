@@ -169,6 +169,13 @@ pre-package:
 	cp -r ../webui/react/build/* build/webui/react
 	cp ../harness/dist/*.whl build/wheels/
 
+.PHONY: pre-package-small
+pre-package-small:
+	rm -rf build
+	mkdir -p build/wheels/
+	cp -r ../proto/build/swagger build/swagger
+	cp ../harness/dist/*.whl build/wheels/
+
 .PHONY: buildx
 buildx:
 	docker context rm -f buildx-context || true

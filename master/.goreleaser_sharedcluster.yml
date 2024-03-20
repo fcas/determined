@@ -1,5 +1,9 @@
 project_name: determined-master
 
+before:
+  hooks:
+    - make pre-package-small
+
 snapshot:
   name_template: "{{ .Tag }}"
 
@@ -11,21 +15,15 @@ builds:
       - -X github.com/determined-ai/determined/master/internal/config.DefaultSegmentWebUIKey={{.Env.DET_SEGMENT_WEBUI_KEY}}
     goos:
       - linux
-      - darwin
     goarch:
       - amd64
-      - arm64
-      - ppc64
   - main: ./cmd/determined-gotmpl
     id: determined-gotmpl
     binary: determined-gotmpl
     goos:
       - linux
-      - darwin
     goarch:
       - amd64
-      - arm64
-      - ppc64
 
 
 dockers:
