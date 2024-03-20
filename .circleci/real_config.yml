@@ -1471,6 +1471,11 @@ jobs:
       - skip-if-webui-only
       - attach_workspace:
           at: .
+      - setup-python-venv:
+          install-python: false
+          determined: true
+          model-hub: true
+          executor: <<pipeline.parameters.docker-image>>
       - reinstall-go
       - setup_remote_docker:
           version: 20.10.18
@@ -1481,6 +1486,10 @@ jobs:
           check: false
       - make-package-small
       - run: tools/scripts/retry.sh make -C master publish-dev-small
+      - persist_to_workspace:
+          root: .
+          paths:
+            - harness/dist
 
   package-and-push-system-rc:
     docker:
