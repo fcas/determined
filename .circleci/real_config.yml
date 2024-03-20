@@ -1254,7 +1254,7 @@ commands:
       - run:
           no_output_timeout: 30m
           command: make package
-  
+
   make-package-small:
     steps:
       - attach_workspace:
@@ -2746,7 +2746,7 @@ jobs:
             # Extract the commit hash from Git metadata
             COMMIT_HASH=$(git rev-parse --short HEAD)
             TIMESTAMP=$(date +"%Y%m%d%H%M%S")
-            echo "GENERATED_NAMESPACE=\"test-${TIMESTAMP}-${COMMIT_HASH}\"" >> $BASH_ENV
+            echo "GENERATED_NAMESPACE=\"test-${TIMESTAMP}-${COMMIT_HASH}-${CIRCLE_NODE_INDEX}\"" >> $BASH_ENV
       - generate-tls-cert
       - setup-shared-cluster:
           det-version: ${CIRCLE_SHA1}-shared-cluster
@@ -3318,13 +3318,13 @@ workflows:
               slot-type: ["cpu"]
               slot-resource-requests-cpu: [7]
               accel-node-taints: ["accel=truth:NoSchedule"]
-              
+
       - test-e2e-shared-cluster:
           name: test-e2e-shared-cluster-cpu
           context: gcp-shared-cluster
           requires:
             - package-and-push-system-dev-small
-          parallelism: 1
+          parallelism: 4
           mark: "e2e_gpu and not gpu_required"
 
   test-e2e-quarantined:
