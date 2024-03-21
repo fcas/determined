@@ -1041,12 +1041,13 @@ commands:
       - run:
           command: |
             ip_addresses=($(echo "${CI_RANGES}" | tr -d '" ' | tr ',' ' '))
-            formattedRange=""
-            for ((i=0; i<${#ip_addresses[@]}; i++)); do
-                    formattedRange+=",loadBalancerSourceRanges[${i}]=\"${ip_addresses[i]}\""
+            formattedRange="loadBalancerSourceRanges={"
+            for i in ${ip_addresses[@]}; do
+              formattedRange+=$i
             done
+            formattedRange+="}"
             export FORMATTED_RANGES=${formattedRange}
-            echo 'export HELM_VALUES="${HELM_VALUES}${FORMATTED_RANGES}"' >> "$BASH_ENV"
+            echo 'export LB_HELM_VALUES="${FORMATTED_RANGES}"' >> "$BASH_ENV"
           name: Setup Firewall Config
       - gcloud/install:
           version: "412.0.0"
@@ -1084,7 +1085,7 @@ commands:
           version: v3.2.4
       - run:
           command: |
-            helm install ${GENERATED_NAMESPACE} helm/charts/determined  --set "${HELM_VALUES}" --namespace="${GENERATED_NAMESPACE}" --wait
+            helm install ${GENERATED_NAMESPACE} helm/charts/determined  --set "${HELM_VALUES}" --set "${LB_HELM_VALUES}" --namespace="${GENERATED_NAMESPACE}" --wait
           name: Helm Install
       - run:
           command: |
