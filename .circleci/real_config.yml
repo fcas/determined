@@ -1047,6 +1047,8 @@ commands:
             done
             formattedRange+="}"
             export FORMATTED_RANGES=${formattedRange}
+            echo "These are the formatted ranges:"
+            echo ${FORMATTED_RANGES}
             echo 'export LB_HELM_VALUES="${FORMATTED_RANGES}"' >> "$BASH_ENV"
           name: Setup Firewall Config
       - gcloud/install:
