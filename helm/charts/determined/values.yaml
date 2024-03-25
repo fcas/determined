@@ -253,7 +253,7 @@ createNonNamespacedObjects:
   # cpu: 7
 
 # Memory and CPU requirements for the master instance. Should be adjusted for scale.
-masterCpuRequest: 2
+masterCpuRequest: 100m
 masterMemRequest: 8Gi
 # masterCpuLimit: 2
 # masterMemLimit: 8Gi
@@ -403,4 +403,4 @@ genai:
 
 ## Configure the set of IP ranges allowed to connect to the Determined master service on a public
 ## GKE cluster.
-loadBalancerSourceRanges: []
+loadBalancerSourceRanges:

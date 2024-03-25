@@ -1043,8 +1043,9 @@ commands:
             ip_addresses=($(echo "${CI_RANGES}" | tr -d '" ' | tr ',' ' '))
             formattedRange="loadBalancerSourceRanges={"
             for i in ${ip_addresses[@]}; do
-              formattedRange+=$i
+              formattedRange+=${i},
             done
+            formattedRange=${formattedRange::-1}
             formattedRange+="}"
             export FORMATTED_RANGES=${formattedRange}
             echo "These are the formatted ranges:"
