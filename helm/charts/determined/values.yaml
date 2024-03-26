@@ -253,7 +253,7 @@ createNonNamespacedObjects:
   # cpu: 7
 
 # Memory and CPU requirements for the master instance. Should be adjusted for scale.
-masterCpuRequest: 100m
+masterCpuRequest: 2
 masterMemRequest: 8Gi
 # masterCpuLimit: 2
 # masterMemLimit: 8Gi
