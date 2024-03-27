@@ -1020,12 +1020,12 @@ commands:
       - run:
           command: |
             ip_addresses=($(echo "${CI_RANGES}" | tr -d '" ' | tr ',' ' '))
-            formattedRange="export HELM_VALUES='loadBalancerSourceRanges={"
+            formattedRange="export HELM_VALUES='loadBalancerSourceRanges=["
             for i in ${ip_addresses[@]}; do
-              formattedRange+=\"${i}\",
+              formattedRange+=\"${i}\", 
             done
-            formattedRange=${formattedRange::-1}
-            formattedRange+="}'"
+            formattedRange=${formattedRange::-2}
+            formattedRange+="]'"
             echo "These are the formatted ranges:"
             echo ${formattedRange}
             echo ${formattedRange} >> "$BASH_ENV"

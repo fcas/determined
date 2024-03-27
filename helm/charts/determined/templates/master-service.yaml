@@ -12,7 +12,7 @@ spec:
     targetPort: {{- include "determined.masterPort" . | indent 1 }}
     protocol: TCP
   {{- if .Values.loadBalancerSourceRanges }}
-  loadBalancerSourceRanges: {{ join "," .Values.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges: {{ .Values.loadBalancerSourceRanges }}
   {{- end }}
 
 {{- if ((.Values.openshiftRoute).enabled | default false) }}
