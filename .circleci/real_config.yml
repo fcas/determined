@@ -1020,12 +1020,12 @@ commands:
       - run:
           command: |
             ip_addresses=($(echo "${CI_RANGES}" | tr -d '" ' | tr ',' ' '))
-            formattedRange="export HELM_VALUES='loadBalancerSourceRanges=["
+            formattedRange="export HELM_VALUES='loadBalancerSourceRanges={"
             for i in ${ip_addresses[@]}; do
-              formattedRange+=\"${i}\", 
+              formattedRange+="${i}," 
             done
-            formattedRange=${formattedRange::-2}
-            formattedRange+="]'"
+            formattedRange=${formattedRange::-1}
+            formattedRange+="}'"
             echo "These are the formatted ranges:"
             echo ${formattedRange}
             echo ${formattedRange} >> "$BASH_ENV"
@@ -1087,13 +1087,9 @@ commands:
           command: gsutil mb -p ${<<parameters.google-project-id>>} gs://${GENERATED_NAMESPACE}-bucket
       - helm/install-helm-client:
           version: v3.12.3
-      - helm/install-helm-chart:
-          helm-version: v3.12.3
-          release-name: ${GENERATED_NAMESPACE}
-          chart: helm/charts/determined
-          values-to-override: ${HELM_VALUES} 
-          namespace: ${GENERATED_NAMESPACE}
-          wait: true
+      - run: 
+          command: |
+            helm install ${GENERATED_NAMESPACE} helm/charts/determined --set ${HELM_VALUES} --namespace ${GENERATED_NAMESPACE} --wait
       - run:
           command: |
             helm get values ${GENERATED_NAMESPACE} --namespace="${GENERATED_NAMESPACE}"
@@ -2732,6 +2728,7 @@ jobs:
     circleci_ip_ranges: true
     environment:
       DET_TEST_GPU_ENABLED: <<parameters.environment-gpu-enabled>>
+      SHARED_CLUSTER: true
     docker:
       - image: <<pipeline.parameters.docker-image>>
     parallelism: <<parameters.parallelism>>
