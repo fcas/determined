@@ -1050,7 +1050,7 @@ commands:
             export FORMATTED_RANGES=${formattedRange}
             echo "These are the formatted ranges:"
             echo ${FORMATTED_RANGES}
-            echo 'export LB_HELM_VALUES="${FORMATTED_RANGES}"' >> "$BASH_ENV"
+            echo 'export HELM_VALUES="${FORMATTED_RANGES},${HELM_VALUES}"' >> "$BASH_ENV"
           name: Setup Firewall Config
       - gcloud/install:
           version: "412.0.0"
@@ -1085,11 +1085,14 @@ commands:
       - run:
           command: gsutil mb -p ${<<parameters.google-project-id>>} gs://${GENERATED_NAMESPACE}-bucket
       - helm/install-helm-client:
-          version: v3.2.4
-      - run:
-          command: |
-            helm install ${GENERATED_NAMESPACE} helm/charts/determined  --set "${HELM_VALUES}" --set "${LB_HELM_VALUES}" --namespace="${GENERATED_NAMESPACE}" --wait
-          name: Helm Install
+          version: v3.12.3
+      - helm/install-helm-chart:
+          helm-version: v3.12.3
+          release-name: ${GENERATED_NAMESPACE}
+          chart: helm/charts/determined
+          values-to-override: ${HELM_VALUES} 
+          namespace: ${GENERATED_NAMESPACE}
+          wait: true
       - run:
           command: |
             helm get values ${GENERATED_NAMESPACE} --namespace="${GENERATED_NAMESPACE}"
