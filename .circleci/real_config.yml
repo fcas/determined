@@ -1038,6 +1038,19 @@ commands:
           command: |
             echo 'export HELM_VALUES="${HELM_VALUES},security.tls.cert=\"${MASTER_TLS_CERT}\",security.tls.key=\"${MASTER_TLS_KEY}\",masterPort=8443,tlsSecret=<<parameters.master-cert-name>>"' >> "$BASH_ENV"
           name: Setup TLS Helm Values
+      - run:
+          command: |
+            ip_addresses=($(echo "${CI_RANGES}" | tr -d '" ' | tr ',' ' '))
+            formattedRange="export HELM_VALUES=${HELM_VALUES},'loadBalancerSourceRanges={"
+            for i in ${ip_addresses[@]}; do
+              formattedRange+="${i}," 
+            done
+            formattedRange=${formattedRange::-1}
+            formattedRange+="}'"
+            echo "These are the formatted ranges:"
+            echo ${formattedRange}
+            echo ${formattedRange} >> "$BASH_ENV"
+          name: Setup Firewall Config
       - gcloud/install:
           version: "412.0.0"
       - kubernetes/install-kubectl
