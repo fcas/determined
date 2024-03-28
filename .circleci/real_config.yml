@@ -1019,20 +1019,7 @@ commands:
           labels: <<parameters.labels>>
       - run:
           command: |
-            ip_addresses=($(echo "${CI_RANGES}" | tr -d '" ' | tr ',' ' '))
-            formattedRange="export HELM_VALUES='loadBalancerSourceRanges={"
-            for i in ${ip_addresses[@]}; do
-              formattedRange+="${i}," 
-            done
-            formattedRange=${formattedRange::-1}
-            formattedRange+="}'"
-            echo "These are the formatted ranges:"
-            echo ${formattedRange}
-            echo ${formattedRange} >> "$BASH_ENV"
-          name: Setup Firewall Config
-      - run:
-          command: |
-            echo 'export HELM_VALUES="${HELM_VALUES},detVersion=<<parameters.det-version>>,maxSlotsPerPod=<<parameters.gpus-per-machine>>,checkpointStorage.type=gcs,checkpointStorage.bucket=${GENERATED_NAMESPACE}-bucket,createNonNamespacedObjects=false"' >> "$BASH_ENV"
+            echo 'export HELM_VALUES="detVersion=<<parameters.det-version>>,maxSlotsPerPod=<<parameters.gpus-per-machine>>,checkpointStorage.type=gcs,checkpointStorage.bucket=${GENERATED_NAMESPACE}-bucket,createNonNamespacedObjects=false"' >> "$BASH_ENV"
           name: Prepare helm overrides
       - when:
           condition: <<parameters.gpus-per-machine>>
