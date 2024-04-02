@@ -151,6 +151,7 @@ func (m *MultiRMRouter) IsReattachableOnlyAfterStarted() bool {
 
 // GetResourcePools returns all resource pools across all resource managers.
 func (m *MultiRMRouter) GetResourcePools() (*apiv1.GetResourcePoolsResponse, error) {
+	// TODO CAROLINA: this is also another cause of the "too many pods per node"
 	res, err := fanOutRMCall(m, func(rm rm.ResourceManager) (*apiv1.GetResourcePoolsResponse, error) {
 		return rm.GetResourcePools()
 	})
@@ -295,6 +296,7 @@ func (m *MultiRMRouter) HealthCheck() []model.ResourceManagerHealth {
 
 // GetAgents returns all agents across all resource managers.
 func (m *MultiRMRouter) GetAgents() (*apiv1.GetAgentsResponse, error) {
+	// TODO CAROLINA: this is what's causing the "too many pods call"
 	res, err := fanOutRMCall(m, func(rm rm.ResourceManager) (*apiv1.GetAgentsResponse, error) {
 		return rm.GetAgents()
 	})

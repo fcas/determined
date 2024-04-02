@@ -1497,9 +1497,10 @@ func (p *pods) summarizeClusterByNodes() map[string]model.AgentSummary {
 		slotsSummary := make(model.SlotsSummary)
 		curSlot := 0
 		for _, podInfo := range podByNode[node.Name] {
+			p.syslog.Infof("counting the slots for pod %s: %v", node.Name, podInfo.numSlots)
 			for i := 0; i < podInfo.numSlots; i++ {
 				if curSlot >= int(numSlots) {
-					p.syslog.Warnf("too many pods mapping to node %s 123", node.Name)
+					p.syslog.Warnf("too many pods mapping to node %s", node.Name)
 					continue
 				}
 
@@ -1514,9 +1515,12 @@ func (p *pods) summarizeClusterByNodes() map[string]model.AgentSummary {
 			}
 		}
 
+		p.syslog.Infof("current slot: %v, num slots: %v", curSlot, numSlots)
+
 		for _, taskName := range nodeToTasks[node.Name] {
 			for i := int64(0); i < taskSlots[taskName]; i++ {
 				if curSlot >= int(numSlots) {
+					// TODO CAROLINA: this is specifically what's erroring
 					p.syslog.Warnf("too many pods mapping to node %s 456", node.Name)
 					continue
 				}

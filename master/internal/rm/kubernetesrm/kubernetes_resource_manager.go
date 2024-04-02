@@ -267,6 +267,7 @@ func (k *ResourceManager) GetJobQueueStatsRequest(
 func (k *ResourceManager) GetResourcePools() (*apiv1.GetResourcePoolsResponse, error) {
 	summaries := make([]*resourcepoolv1.ResourcePool, 0, len(k.poolsConfig))
 	for _, pool := range k.poolsConfig {
+		// TODO CAROLINA: track the bug through here
 		summary, err := k.createResourcePoolSummary(pool.PoolName)
 		if err != nil {
 			// Should only raise an error if the resource pool doesn't exist and that can't happen.
@@ -565,7 +566,8 @@ func (k *ResourceManager) createResourcePoolSummary(
 		return &resourcepoolv1.ResourcePool{}, err
 	}
 
-	resourceSummary, err := rp.getResourceSummary(getResourceSummary{})
+	// TODO CAROLINA -- track the error through here
+	resourceSummary, err := rp.getResourceSummary()
 	if err != nil {
 		return &resourcepoolv1.ResourcePool{}, err
 	}

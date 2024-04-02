@@ -29,10 +29,6 @@ import (
 
 const resourcePoolEnvVar = "DET_K8S_RESOURCE_POOL"
 
-// getResourceSummary is a message to request a summary of the resources used by the
-// resource pool (agents, slots, cpu containers).
-type getResourceSummary struct{}
-
 type kubernetesResourcePool struct {
 	mu sync.Mutex
 
@@ -237,7 +233,7 @@ func (k *kubernetesResourcePool) GetAllocationSummaries() map[model.AllocationID
 	return k.reqList.TaskSummaries(k.groups, kubernetesScheduler)
 }
 
-func (k *kubernetesResourcePool) getResourceSummary(msg getResourceSummary) (*resourceSummary, error) {
+func (k *kubernetesResourcePool) getResourceSummary() (*resourceSummary, error) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	k.reschedule = true
@@ -246,6 +242,7 @@ func (k *kubernetesResourcePool) getResourceSummary(msg getResourceSummary) (*re
 	for _, slotsUsedByGroup := range k.slotsUsedPerGroup {
 		slotsUsed += slotsUsedByGroup
 	}
+	// TODO CAROLINA -- track error through here
 	pods, err := k.summarizePods()
 	if err != nil {
 		return nil, err
