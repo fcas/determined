@@ -983,6 +983,7 @@ func (p *pods) enableNode(
 	}
 	p.syslog.Infof("node %s enabled by an user", nodeName)
 
+	p.syslog.Warnf("Trigger 5")
 	n, ok := p.summarizeClusterByNodes()[nodeName]
 	if !ok {
 		return nil, fmt.Errorf("node %s enabled without error, error getting node summary", nodeName)
@@ -1038,6 +1039,7 @@ func (p *pods) disableNode(
 		}
 	}
 
+	p.syslog.Warnf("Trigger 4")
 	n, ok := p.summarizeClusterByNodes()[nodeName]
 	if !ok {
 		return nil, fmt.Errorf("node %s disabled without error, error getting node summary", nodeName)
@@ -1278,6 +1280,7 @@ func (p *pods) handleGetSlotRequest(agentID string, slotID string) *apiv1.GetSlo
 }
 
 func (p *pods) handleGetAgentsRequest() *apiv1.GetAgentsResponse {
+	p.syslog.Warnf("Trigger 2")
 	nodeSummaries := p.summarizeClusterByNodes()
 	_, nodesToPools := p.getNodeResourcePoolMapping(nodeSummaries)
 
@@ -1290,6 +1293,7 @@ func (p *pods) handleGetAgentsRequest() *apiv1.GetAgentsResponse {
 }
 
 func (p *pods) handleGetAgentRequest(agentID string) *apiv1.GetAgentResponse {
+	p.syslog.Warnf("Trigger 1")
 	nodeSummaries := p.summarizeClusterByNodes()
 	_, nodesToPools := p.getNodeResourcePoolMapping(nodeSummaries)
 	agentSummary, ok := nodeSummaries[agentID]
@@ -1388,6 +1392,7 @@ func (p *pods) getNodeResourcePoolMapping(nodeSummaries map[string]model.AgentSu
 var programStartTime = time.Now()
 
 func (p *pods) computeSummary() (map[string]model.AgentSummary, error) {
+	p.syslog.Warnf("Trigger 0")
 	nodeSummaries := p.summarizeClusterByNodes()
 
 	// Build the many-to-many relationship between nodes and resource pools
