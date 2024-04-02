@@ -1494,7 +1494,7 @@ func (p *pods) summarizeClusterByNodes() map[string]model.AgentSummary {
 		for _, podInfo := range podByNode[node.Name] {
 			for i := 0; i < podInfo.numSlots; i++ {
 				if curSlot >= int(numSlots) {
-					p.syslog.Warnf("too many pods mapping to node %s", node.Name)
+					p.syslog.Warnf("too many pods mapping to node %s 123", node.Name)
 					continue
 				}
 
@@ -1512,7 +1512,7 @@ func (p *pods) summarizeClusterByNodes() map[string]model.AgentSummary {
 		for _, taskName := range nodeToTasks[node.Name] {
 			for i := int64(0); i < taskSlots[taskName]; i++ {
 				if curSlot >= int(numSlots) {
-					p.syslog.Warnf("too many pods mapping to node %s", node.Name)
+					p.syslog.Warnf("too many pods mapping to node %s 456", node.Name)
 					continue
 				}
 
