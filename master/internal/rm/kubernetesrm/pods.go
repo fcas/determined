@@ -1521,7 +1521,8 @@ func (p *pods) summarizeClusterByNodes() map[string]model.AgentSummary {
 			for i := int64(0); i < taskSlots[taskName]; i++ {
 				if curSlot >= int(numSlots) {
 					// TODO CAROLINA: this is specifically what's erroring
-					p.syslog.Warnf("too many pods mapping to node %s 456 %v/%v", node.Name, curSlot, numSlots)
+					p.syslog.Warnf("too many pods mapping to node %s 456 %v/%v, %s",
+						node.Name, curSlot, numSlots, taskName)
 					continue
 				}
 
