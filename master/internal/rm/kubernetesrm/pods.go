@@ -984,7 +984,7 @@ func (p *pods) enableNode(
 	p.syslog.Infof("node %s enabled by an user", nodeName)
 
 	p.syslog.Warnf("Trigger 5")
-	n, ok := p.summarizeClusterByNodes()[nodeName]
+	n, ok := p.summarizeClusterByNodes("5")[nodeName]
 	if !ok {
 		return nil, fmt.Errorf("node %s enabled without error, error getting node summary", nodeName)
 	}
@@ -1040,7 +1040,7 @@ func (p *pods) disableNode(
 	}
 
 	p.syslog.Warnf("Trigger 4")
-	n, ok := p.summarizeClusterByNodes()[nodeName]
+	n, ok := p.summarizeClusterByNodes("4")[nodeName]
 	if !ok {
 		return nil, fmt.Errorf("node %s disabled without error, error getting node summary", nodeName)
 	}
@@ -1281,7 +1281,7 @@ func (p *pods) handleGetSlotRequest(agentID string, slotID string) *apiv1.GetSlo
 
 func (p *pods) handleGetAgentsRequest() *apiv1.GetAgentsResponse {
 	p.syslog.Warnf("Trigger 2")
-	nodeSummaries := p.summarizeClusterByNodes()
+	nodeSummaries := p.summarizeClusterByNodes("2")
 	_, nodesToPools := p.getNodeResourcePoolMapping(nodeSummaries)
 
 	response := &apiv1.GetAgentsResponse{}
@@ -1294,7 +1294,7 @@ func (p *pods) handleGetAgentsRequest() *apiv1.GetAgentsResponse {
 
 func (p *pods) handleGetAgentRequest(agentID string) *apiv1.GetAgentResponse {
 	p.syslog.Warnf("Trigger 1")
-	nodeSummaries := p.summarizeClusterByNodes()
+	nodeSummaries := p.summarizeClusterByNodes("1")
 	_, nodesToPools := p.getNodeResourcePoolMapping(nodeSummaries)
 	agentSummary, ok := nodeSummaries[agentID]
 	if !ok {
@@ -1393,7 +1393,7 @@ var programStartTime = time.Now()
 
 func (p *pods) computeSummary() (map[string]model.AgentSummary, error) {
 	p.syslog.Warnf("Trigger 0")
-	nodeSummaries := p.summarizeClusterByNodes()
+	nodeSummaries := p.summarizeClusterByNodes("0")
 
 	// Build the many-to-many relationship between nodes and resource pools
 	poolsToNodes, _ := p.getNodeResourcePoolMapping(nodeSummaries)
@@ -1445,7 +1445,7 @@ func (p *pods) computeSummary() (map[string]model.AgentSummary, error) {
 	return summaries, nil
 }
 
-func (p *pods) summarizeClusterByNodes() map[string]model.AgentSummary {
+func (p *pods) summarizeClusterByNodes(tmp string) map[string]model.AgentSummary {
 	var allPods []podNodeInfo
 
 	for _, p := range p.podNameToPodHandler {
@@ -1521,8 +1521,8 @@ func (p *pods) summarizeClusterByNodes() map[string]model.AgentSummary {
 			for i := int64(0); i < taskSlots[taskName]; i++ {
 				if curSlot >= int(numSlots) {
 					// TODO CAROLINA: this is specifically what's erroring
-					p.syslog.Warnf("too many pods mapping to node %s 456 %v/%v, %s",
-						node.Name, curSlot, numSlots, taskName)
+					p.syslog.Warnf("trigger %s: too many pods mapping to node %s 456 %v/%v, %s",
+						tmp, node.Name, curSlot, numSlots, taskName)
 					continue
 				}
 
