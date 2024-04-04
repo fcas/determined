@@ -242,7 +242,7 @@ func (k *kubernetesResourcePool) getResourceSummary() (*resourceSummary, error) 
 	for _, slotsUsedByGroup := range k.slotsUsedPerGroup {
 		slotsUsed += slotsUsedByGroup
 	}
-	// TODO CAROLINA -- track error through here
+	// TODO CAROLINA -- track Trigger 0 error through here
 	pods, err := k.summarizePods()
 	if err != nil {
 		return nil, err
