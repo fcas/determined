@@ -101,12 +101,21 @@ Default Images
 +-------------+-------------------------------------------------------------------------------+
 | Environment | File Name                                                                     |
 +=============+===============================================================================+
-| CPUs        | ``determinedai/environments:py-3.9-pytorch-1.12-tf-2.11-cpu-0.30.1``          |
-+-------------+-------------------------------------------------------------------------------+
-| NVIDIA GPUs | ``determinedai/environments:cuda-11.3-pytorch-1.12-tf-2.11-gpu-0.30.1``       |
+| NVIDIA GPUs | ``determinedai/pytorch-ngc:079eb6d``                                          |
 +-------------+-------------------------------------------------------------------------------+
 | AMD GPUs    | ``determinedai/environments:rocm-5.0-pytorch-1.10-tf-2.7-rocm-0.26.4``        |
 +-------------+-------------------------------------------------------------------------------+
+
+NGC Version
+===========
+
+By default, a suitable NGC container version is used in our images. Users can select a different
+version of NGC containers to build images from. Versions are listed on the `NVIDIA Frameworks site
+<https://docs.nvidia.com/deeplearning/frameworks/support-matrix/index.html>`__. Once a suitable
+version is selected, users can rebuild these images by cloning the `MLDE environments repo
+<https://github.com/determined-ai/environments>`__ and modifying either NGC_PYTORCH_VERSION or
+NGC_TENSORFLOW_VERSION variables in the MakeFile, then running `make build-pytorch-ngc` or `make
+build-tensorflow-ngc` respectively.
 
 .. _custom-docker-images:
 
@@ -132,7 +141,7 @@ Example Dockerfile that installs custom ``conda``-, ``pip``-, and ``apt``-based 
 .. code:: bash
 
    # Determined Image
-   FROM determinedai/environments:cuda-11.3-pytorch-1.12-tf-2.11-gpu-0.30.1
+   FROM determinedai/pytorch-ngc:079eb6d
 
    # Custom Configuration
    RUN apt-get update && \
@@ -195,7 +204,7 @@ environments using :ref:`custom images <custom-docker-images>`:
 .. code:: bash
 
    # Determined Image
-   FROM determinedai/environments:py-3.9-pytorch-1.12-tf-2.11-cpu-0.30.1
+   FROM determinedai/pytorch-ngc:079eb6d
 
    # Create a virtual environment
    RUN conda create -n myenv python=3.8
