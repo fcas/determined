@@ -43,7 +43,7 @@ environment:
         - NCCL_SOCKET_IFNAME=ens,eth,ib
     force_pull_image: true
     image:
-      gpu: determinedai/gpt-neox:4850e79
+      gpu: determinedai/environments:cuda-11.3-pytorch-1.10-gpt-neox-deepspeed-gpu-079eb6d
 resources:
   slots_per_trial: 16
 searcher:
