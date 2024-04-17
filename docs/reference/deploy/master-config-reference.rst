@@ -355,7 +355,13 @@ on using Determined with Kubernetes, see the :ref:`documentation <determined-on-
 ``namespace``
 -------------
 
-The namespace where Determined will deploy Pods and ConfigMaps.
+Optional. This field has been deprecated, use ``default_namespace`` instead.
+
+``default_namespace``
+---------------------
+
+Optional. The default namespace where Determined will deploy Pods and ConfigMaps, if the workspace
+is not bound to a particular namespace.
 
 .. _master-config-reference-max-slots-per-pod:
 

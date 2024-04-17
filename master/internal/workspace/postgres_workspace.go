@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"slices"
 
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
@@ -131,4 +132,42 @@ func AllWorkspaces(ctx context.Context) ([]*model.Workspace, error) {
 		return nil, errors.Wrapf(err, "failed to get all workspaces")
 	}
 	return w, nil
+}
+
+// GetNamespaceFromWorkspace returns the namespace for the given workspace and cluster.
+func GetNamespaceFromWorkspace(ctx context.Context, workspaceName string, clusterName string) (string, error) {
+	var ns string
+	err := db.Bun().
+		NewSelect().
+		TableExpr("workspaces as w").
+		ColumnExpr("n.name").
+		Join("JOIN namespaces AS n ON  n.workspace_id = w.id").
+		Where("w.name = ? and n.cluster_name = ?", workspaceName, clusterName).
+		Scan(ctx, &ns)
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to get namespace")
+	}
+	return ns, nil
+}
+
+// GetAllNamespacesForRM gets all namespaces associated with a particular cluster. defaultNs is an optional
+// parameter, if there is no defaultNs provided, the "default" namespace will be added to the list instead.
+func GetAllNamespacesForRM(ctx context.Context, rmName string, defaultNs string) ([]string, error) {
+	var ns []string
+	err := db.Bun().
+		NewSelect().
+		Table("namespaces").
+		ColumnExpr("DISTINCT name").
+		Where("cluster_name = ?", rmName).
+		Scan(ctx, &ns)
+	if err != nil {
+		return ns, errors.Wrapf(err, "failed to get namespace")
+	}
+	if defaultNs == "" {
+		defaultNs = "default"
+	}
+	if !slices.Contains(ns, defaultNs) {
+		ns = append(ns, defaultNs)
+	}
+	return ns, nil
 }
