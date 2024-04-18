@@ -1986,9 +1986,9 @@ jobs:
           paths:
             - test-unit-harness-cpu-pycov
 
-  test-unit-harness-gpu:
+  test-unit-harness-gpu-tf:
     docker:
-      - image: determinedai/pytorch-ngc:079eb6d
+      - image: determinedai/tensorflow-ngc:079eb6d
     resource_class: determined-ai/container-runner-gpu
     steps:
       - run: mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
@@ -2000,13 +2000,13 @@ jobs:
       - run: pip install mypy pytest coverage
       - install-codecov
       - setup-paths
-      - run: COVERAGE_FILE=/root/project/test-unit-harness-gpu-pycov make -C harness test-gpu
-      - run: coverage xml -i --data-file=./test-unit-harness-gpu-pycov
+      - run: COVERAGE_FILE=/root/project/test-unit-harness-gpu-tf-pycov make -C harness test-gpu-tf
+      - run: coverage xml -i --data-file=./test-unit-harness-gpu-tf-pycov
       - run: codecov -v -t $CODECOV_TOKEN -F harness
       - persist_to_workspace:
           root: .
           paths:
-            - test-unit-harness-gpu-pycov
+            - test-unit-harness-gpu-tf-pycov
 
   test-unit-harness-pytorch2-gpu:
     docker:
@@ -2097,7 +2097,7 @@ jobs:
 
   test-unit-harness-tf2:
     docker:
-      - image: tensorflow-ngc:079eb6d
+      - image: determinedai/tensorflow-ngc:079eb6d
     steps:
       - checkout
       - add-and-fetch-upstream
@@ -3059,7 +3059,7 @@ workflows:
       - test-unit-harness-pytorch2-cpu
       - test-unit-harness-pytorch2-gpu
 
-      - test-unit-harness-gpu:
+      - test-unit-harness-gpu-tf:
           filters: *any-upstream
       - test-unit-harness-gpu-deepspeed:
           filters: *any-upstream
@@ -3070,7 +3070,7 @@ workflows:
       - request-gpu-unit-tests:
           type: approval
           filters: *any-fork
-      - test-unit-harness-gpu:
+      - test-unit-harness-gpu-tf:
           name: f-test-unit-harness-gpu
           filters: *any-fork
       - test-unit-harness-gpu-deepspeed:
@@ -3087,7 +3087,7 @@ workflows:
       - python-coverage:
           requires:
             - test-unit-harness-cpu
-            - test-unit-harness-gpu
+            - test-unit-harness-gpu-tf
             - test-unit-harness-gpu-parallel
             - test-unit-harness-tf2
             - test-unit-harness-pytorch2-cpu
