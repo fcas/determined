@@ -39,7 +39,7 @@ test-gpu-deepspeed:
 
 .PHONY: test-gpu-parallel
 test-gpu-parallel:
-	coverage run -m pytest -v --runslow --durations=0 -m tests/experiment/pytorch -m "gpu_parallel" tests/experiment
+	coverage run -m pytest -v --runslow --durations=0 -m "gpu_parallel" tests/experiment/pytorch
 
 .PHONY: test-pytorch-cpu
 test-pytorch-cpu:
