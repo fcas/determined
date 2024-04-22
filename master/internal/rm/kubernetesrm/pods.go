@@ -357,6 +357,12 @@ func (p *pods) DisableAgent(msg *apiv1.DisableAgentRequest) (*apiv1.DisableAgent
 	return p.disableNode(msg.AgentId, msg.Drain)
 }
 
+func (p *pods) CreateNamespace(autoCreateNamespace bool, namespaceName string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.handleCreateNamespaceRequest(autoCreateNamespace, namespaceName)
+}
+
 func readClientConfig(kubeconfigPath string) (*rest.Config, error) {
 	if len(kubeconfigPath) == 0 {
 		// The default in-cluster case.  Internally, k8s.io/client-go/rest is going to look for
@@ -1338,6 +1344,49 @@ func (p *pods) handleGetAgentRequest(agentID string) *apiv1.GetAgentResponse {
 	}
 	agentSummary.ResourcePool = nodesToPools[agentSummary.ID]
 	return &apiv1.GetAgentResponse{Agent: agentSummary.ToProto()}
+}
+
+func (p *pods) handleCreateNamespaceRequest(autoCreateNamespace bool, namespaceName string) error {
+	var k8sDeterminedLabel = map[string]string{determinedLabel: namespaceName}
+
+	if autoCreateNamespace {
+		// If the namespace exists, but has a determined label, keep it. Error out if it doesn't have the label
+		namespaceToCreate := k8sV1.Namespace{
+			TypeMeta: metaV1.TypeMeta{
+				Kind:       "Namespace",
+				APIVersion: "v1",
+			},
+			ObjectMeta: metaV1.ObjectMeta{
+				Name:   namespaceName,
+				Labels: k8sDeterminedLabel,
+			},
+		}
+
+		namespaceToCreate.Name = namespaceName
+		_, err := p.clientSet.CoreV1().Namespaces().Create(context.TODO(), &namespaceToCreate,
+			metaV1.CreateOptions{},
+		)
+		if err != nil {
+			if !strings.Contains(err.Error(), "already exists") {
+				return errors.Wrapf(err, "error creating namespace %s", namespaceName)
+			}
+		}
+
+	} else {
+		// If the namespace doesn't exist, return an error.
+		// Remember that quota should not be specified here (which we verify in workspace.py)
+		_, err := p.clientSet.CoreV1().Namespaces().Get(context.TODO(), namespaceName,
+			metaV1.GetOptions{
+				TypeMeta: metaV1.TypeMeta{
+					Kind:       "Namespace",
+					APIVersion: "v1",
+				},
+			})
+		if err != nil {
+			return errors.Wrapf(err, "error finding namespace %s", namespaceName)
+		}
+	}
+	return nil
 }
 
 // summarize describes pods' available resources. When there's exactly one resource pool, it uses
