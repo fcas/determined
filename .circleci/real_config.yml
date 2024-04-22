@@ -234,7 +234,7 @@ commands:
       - when:
           condition: <<parameters.tf2>>
           steps:
-            - run: docker pull determinedai/environments:py-3.9-pytorch-1.12-tf-2.11-cpu-748dda4
+            - run: docker pull determinedai/pytorch-tensorflow-cpu-dev:9956f16
 
   login-docker:
     parameters:
@@ -2306,7 +2306,7 @@ jobs:
 
   test-unit-harness-gpu:
     docker:
-      - image: determinedai/environments:cuda-11.3-pytorch-1.12-tf-2.11-gpu-0.31.1
+      - image: determinedai/pytorch-tensorflow-cuda-dev:9956f16
     resource_class: determined-ai/container-runner-gpu
     steps:
       - run: mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
@@ -2328,7 +2328,7 @@ jobs:
 
   test-unit-harness-pytorch2-gpu:
     docker:
-      - image: determinedai/environments:cuda-11.8-pytorch-2.0-gpu-748dda4
+      - image: determinedai/pytorch-cuda-dev:9956f16
     resource_class: determined-ai/container-runner-gpu
     steps:
       - run: mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
@@ -2350,7 +2350,7 @@ jobs:
 
   test-unit-harness-pytorch2-cpu:
     docker:
-      - image: determinedai/environments:py-3.10-pytorch-2.0-cpu-748dda4
+      - image: determinedai/pytorch-cpu-dev:9956f16
     steps:
       - run: mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
       - checkout
@@ -2371,7 +2371,7 @@ jobs:
 
   test-unit-harness-gpu-parallel:
     docker:
-      - image: determinedai/environments:cuda-11.3-pytorch-1.12-tf-2.11-gpu-0.31.1
+      - image: determinedai/pytorch-tensorflow-cuda-dev:9956f16
     resource_class: determined-ai/container-runner-multi-gpu
     steps:
       - run: mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
@@ -3643,7 +3643,7 @@ jobs:
         type: string
         default: "1"
       environment-image:
-        default: determinedai/environments:cuda-11.3-pytorch-1.12-tf-2.11-gpu-0.30.1
+        default: determinedai/pytorch-tensorflow-cuda-dev:9956f16
         type: string
       accel-node-taints:
         type: string
