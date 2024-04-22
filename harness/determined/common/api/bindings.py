@@ -8703,6 +8703,68 @@ class v1ModelVersion(Printable):
             out["username"] = self.username
         return out
 
+class v1ModifyWorkspaceNamespaceBindingRequest(Printable):
+    """Request for modifying a namespace binding to a workspace."""
+    clusterName: "typing.Optional[str]" = None
+    namespaceName: "typing.Optional[str]" = None
+
+    def __init__(
+        self,
+        *,
+        id: int,
+        clusterName: "typing.Union[str, None, Unset]" = _unset,
+        namespaceName: "typing.Union[str, None, Unset]" = _unset,
+    ):
+        self.id = id
+        if not isinstance(clusterName, Unset):
+            self.clusterName = clusterName
+        if not isinstance(namespaceName, Unset):
+            self.namespaceName = namespaceName
+
+    @classmethod
+    def from_json(cls, obj: Json) -> "v1ModifyWorkspaceNamespaceBindingRequest":
+        kwargs: "typing.Dict[str, typing.Any]" = {
+            "id": obj["id"],
+        }
+        if "clusterName" in obj:
+            kwargs["clusterName"] = obj["clusterName"]
+        if "namespaceName" in obj:
+            kwargs["namespaceName"] = obj["namespaceName"]
+        return cls(**kwargs)
+
+    def to_json(self, omit_unset: bool = False) -> typing.Dict[str, typing.Any]:
+        out: "typing.Dict[str, typing.Any]" = {
+            "id": self.id,
+        }
+        if not omit_unset or "clusterName" in vars(self):
+            out["clusterName"] = self.clusterName
+        if not omit_unset or "namespaceName" in vars(self):
+            out["namespaceName"] = self.namespaceName
+        return out
+
+class v1ModifyWorkspaceNamespaceBindingResponse(Printable):
+    """Response for modify a namespace binding to a workspace."""
+
+    def __init__(
+        self,
+        *,
+        name: str,
+    ):
+        self.name = name
+
+    @classmethod
+    def from_json(cls, obj: Json) -> "v1ModifyWorkspaceNamespaceBindingResponse":
+        kwargs: "typing.Dict[str, typing.Any]" = {
+            "name": obj["name"],
+        }
+        return cls(**kwargs)
+
+    def to_json(self, omit_unset: bool = False) -> typing.Dict[str, typing.Any]:
+        out: "typing.Dict[str, typing.Any]" = {
+            "name": self.name,
+        }
+        return out
+
 class v1MoveExperimentRequest(Printable):
     """Request to move an experiment into a project."""
 
@@ -9903,6 +9965,7 @@ class v1PatchWorkspace(Printable):
     defaultComputePool: "typing.Optional[str]" = None
     defaultComputeResourcePool: "typing.Optional[str]" = None
     name: "typing.Optional[str]" = None
+    namespaceBindings: "typing.Optional[str]" = None
 
     def __init__(
         self,
@@ -9914,6 +9977,7 @@ class v1PatchWorkspace(Printable):
         defaultComputePool: "typing.Union[str, None, Unset]" = _unset,
         defaultComputeResourcePool: "typing.Union[str, None, Unset]" = _unset,
         name: "typing.Union[str, None, Unset]" = _unset,
+        namespaceBindings: "typing.Union[str, None, Unset]" = _unset,
     ):
         if not isinstance(agentUserGroup, Unset):
             self.agentUserGroup = agentUserGroup
@@ -9929,6 +9993,8 @@ class v1PatchWorkspace(Printable):
             self.defaultComputeResourcePool = defaultComputeResourcePool
         if not isinstance(name, Unset):
             self.name = name
+        if not isinstance(namespaceBindings, Unset):
+            self.namespaceBindings = namespaceBindings
 
     @classmethod
     def from_json(cls, obj: Json) -> "v1PatchWorkspace":
@@ -9948,6 +10014,8 @@ class v1PatchWorkspace(Printable):
             kwargs["defaultComputeResourcePool"] = obj["defaultComputeResourcePool"]
         if "name" in obj:
             kwargs["name"] = obj["name"]
+        if "namespaceBindings" in obj:
+            kwargs["namespaceBindings"] = obj["namespaceBindings"]
         return cls(**kwargs)
 
     def to_json(self, omit_unset: bool = False) -> typing.Dict[str, typing.Any]:
@@ -9967,6 +10035,8 @@ class v1PatchWorkspace(Printable):
             out["defaultComputeResourcePool"] = self.defaultComputeResourcePool
         if not omit_unset or "name" in vars(self):
             out["name"] = self.name
+        if not omit_unset or "namespaceBindings" in vars(self):
+            out["namespaceBindings"] = self.namespaceBindings
         return out
 
 class v1PatchWorkspaceResponse(Printable):
@@ -10140,6 +10210,7 @@ class v1PermissionType(DetEnum):
     - PERMISSION_TYPE_UPDATE_ROLES: Ability to create and update role definitions.
     - PERMISSION_TYPE_EDIT_WEBHOOKS: Ability to create and delete webhooks.
     - PERMISSION_TYPE_MODIFY_RP_WORKSPACE_BINDINGS: Ability to bind, unbind or overwrite resource pool workspace bindings.
+    - PERMISSION_TYPE_MODIFY_WORKSPACE_NAMESPACE_BINDINGS: Ability to bind, unbind, or overwrite namespace workspace bindings.
     """
     UNSPECIFIED = "PERMISSION_TYPE_UNSPECIFIED"
     ADMINISTRATE_USER = "PERMISSION_TYPE_ADMINISTRATE_USER"
@@ -10188,6 +10259,7 @@ class v1PermissionType(DetEnum):
     UPDATE_ROLES = "PERMISSION_TYPE_UPDATE_ROLES"
     EDIT_WEBHOOKS = "PERMISSION_TYPE_EDIT_WEBHOOKS"
     MODIFY_RP_WORKSPACE_BINDINGS = "PERMISSION_TYPE_MODIFY_RP_WORKSPACE_BINDINGS"
+    MODIFY_WORKSPACE_NAMESPACE_BINDINGS = "PERMISSION_TYPE_MODIFY_WORKSPACE_NAMESPACE_BINDINGS"
 
 class v1PolymorphicFilter(Printable):
     doubleRange: "typing.Optional[v1DoubleFieldFilter]" = None
@@ -10864,8 +10936,10 @@ class v1PostWorkspaceRequest(Printable):
     """Request for creating a workspace."""
     agentUserGroup: "typing.Optional[v1AgentUserGroup]" = None
     checkpointStorageConfig: "typing.Optional[typing.Dict[str, typing.Any]]" = None
+    clusterName: "typing.Optional[str]" = None
     defaultAuxPool: "typing.Optional[str]" = None
     defaultComputePool: "typing.Optional[str]" = None
+    namespaceName: "typing.Optional[str]" = None
 
     def __init__(
         self,
@@ -10873,18 +10947,24 @@ class v1PostWorkspaceRequest(Printable):
         name: str,
         agentUserGroup: "typing.Union[v1AgentUserGroup, None, Unset]" = _unset,
         checkpointStorageConfig: "typing.Union[typing.Dict[str, typing.Any], None, Unset]" = _unset,
+        clusterName: "typing.Union[str, None, Unset]" = _unset,
         defaultAuxPool: "typing.Union[str, None, Unset]" = _unset,
         defaultComputePool: "typing.Union[str, None, Unset]" = _unset,
+        namespaceName: "typing.Union[str, None, Unset]" = _unset,
     ):
         self.name = name
         if not isinstance(agentUserGroup, Unset):
             self.agentUserGroup = agentUserGroup
         if not isinstance(checkpointStorageConfig, Unset):
             self.checkpointStorageConfig = checkpointStorageConfig
+        if not isinstance(clusterName, Unset):
+            self.clusterName = clusterName
         if not isinstance(defaultAuxPool, Unset):
             self.defaultAuxPool = defaultAuxPool
         if not isinstance(defaultComputePool, Unset):
             self.defaultComputePool = defaultComputePool
+        if not isinstance(namespaceName, Unset):
+            self.namespaceName = namespaceName
 
     @classmethod
     def from_json(cls, obj: Json) -> "v1PostWorkspaceRequest":
@@ -10895,10 +10975,14 @@ class v1PostWorkspaceRequest(Printable):
             kwargs["agentUserGroup"] = v1AgentUserGroup.from_json(obj["agentUserGroup"]) if obj["agentUserGroup"] is not None else None
         if "checkpointStorageConfig" in obj:
             kwargs["checkpointStorageConfig"] = obj["checkpointStorageConfig"]
+        if "clusterName" in obj:
+            kwargs["clusterName"] = obj["clusterName"]
         if "defaultAuxPool" in obj:
             kwargs["defaultAuxPool"] = obj["defaultAuxPool"]
         if "defaultComputePool" in obj:
             kwargs["defaultComputePool"] = obj["defaultComputePool"]
+        if "namespaceName" in obj:
+            kwargs["namespaceName"] = obj["namespaceName"]
         return cls(**kwargs)
 
     def to_json(self, omit_unset: bool = False) -> typing.Dict[str, typing.Any]:
@@ -10909,10 +10993,14 @@ class v1PostWorkspaceRequest(Printable):
             out["agentUserGroup"] = None if self.agentUserGroup is None else self.agentUserGroup.to_json(omit_unset)
         if not omit_unset or "checkpointStorageConfig" in vars(self):
             out["checkpointStorageConfig"] = self.checkpointStorageConfig
+        if not omit_unset or "clusterName" in vars(self):
+            out["clusterName"] = self.clusterName
         if not omit_unset or "defaultAuxPool" in vars(self):
             out["defaultAuxPool"] = self.defaultAuxPool
         if not omit_unset or "defaultComputePool" in vars(self):
             out["defaultComputePool"] = self.defaultComputePool
+        if not omit_unset or "namespaceName" in vars(self):
+            out["namespaceName"] = self.namespaceName
         return out
 
 class v1PostWorkspaceResponse(Printable):
@@ -15879,6 +15967,7 @@ class v1Workspace(Printable):
     checkpointStorageConfig: "typing.Optional[typing.Dict[str, typing.Any]]" = None
     defaultAuxPool: "typing.Optional[str]" = None
     defaultComputePool: "typing.Optional[str]" = None
+    namespaceBindings: "typing.Optional[typing.Sequence[str]]" = None
     pinnedAt: "typing.Optional[str]" = None
 
     def __init__(
@@ -15899,6 +15988,7 @@ class v1Workspace(Printable):
         checkpointStorageConfig: "typing.Union[typing.Dict[str, typing.Any], None, Unset]" = _unset,
         defaultAuxPool: "typing.Union[str, None, Unset]" = _unset,
         defaultComputePool: "typing.Union[str, None, Unset]" = _unset,
+        namespaceBindings: "typing.Union[typing.Sequence[str], None, Unset]" = _unset,
         pinnedAt: "typing.Union[str, None, Unset]" = _unset,
     ):
         self.archived = archived
@@ -15920,6 +16010,8 @@ class v1Workspace(Printable):
             self.defaultAuxPool = defaultAuxPool
         if not isinstance(defaultComputePool, Unset):
             self.defaultComputePool = defaultComputePool
+        if not isinstance(namespaceBindings, Unset):
+            self.namespaceBindings = namespaceBindings
         if not isinstance(pinnedAt, Unset):
             self.pinnedAt = pinnedAt
 
@@ -15946,6 +16038,8 @@ class v1Workspace(Printable):
             kwargs["defaultAuxPool"] = obj["defaultAuxPool"]
         if "defaultComputePool" in obj:
             kwargs["defaultComputePool"] = obj["defaultComputePool"]
+        if "namespaceBindings" in obj:
+            kwargs["namespaceBindings"] = obj["namespaceBindings"]
         if "pinnedAt" in obj:
             kwargs["pinnedAt"] = obj["pinnedAt"]
         return cls(**kwargs)
@@ -15972,6 +16066,8 @@ class v1Workspace(Printable):
             out["defaultAuxPool"] = self.defaultAuxPool
         if not omit_unset or "defaultComputePool" in vars(self):
             out["defaultComputePool"] = self.defaultComputePool
+        if not omit_unset or "namespaceBindings" in vars(self):
+            out["namespaceBindings"] = self.namespaceBindings
         if not omit_unset or "pinnedAt" in vars(self):
             out["pinnedAt"] = self.pinnedAt
         return out
@@ -20530,6 +20626,31 @@ def get_MetricBatches(
             raise APIHttpStreamError("get_MetricBatches", runtimeStreamError(message="ChunkedEncodingError"))
         return
     raise APIHttpError("get_MetricBatches", _resp)
+
+def post_ModifyWorkspaceNamespaceBinding(
+    session: "api.BaseSession",
+    *,
+    body: "v1ModifyWorkspaceNamespaceBindingRequest",
+    id: int,
+) -> "v1ModifyWorkspaceNamespaceBindingResponse":
+    """Add namespace binding to a workspace.
+
+    - id: The unique name of the workspace.
+    """
+    _params = None
+    _resp = session._do_request(
+        method="POST",
+        path=f"/api/v1/workspaces/{id}/bind",
+        params=_params,
+        json=body.to_json(True),
+        data=None,
+        headers=None,
+        timeout=None,
+        stream=False,
+    )
+    if _resp.status_code == 200:
+        return v1ModifyWorkspaceNamespaceBindingResponse.from_json(_resp.json())
+    raise APIHttpError("post_ModifyWorkspaceNamespaceBinding", _resp)
 
 def post_MoveExperiment(
     session: "api.BaseSession",
