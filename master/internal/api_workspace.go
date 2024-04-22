@@ -99,6 +99,15 @@ func validateWorkspaceName(name string) error {
 	}
 }
 
+func generateNamespaceName(workspace string) (*string, error) {
+	namespace := "det-" + workspace
+	// Ensure the namespace name is <= 63 characters.
+	if len(namespace) > 63 {
+		return nil, status.Error(codes.InvalidArgument, "The namespace name must be at most 63 characters")
+	}
+	return &namespace, nil
+}
+
 func (a *apiServer) GetWorkspaceByID(
 	ctx context.Context, id int32, curUser model.User, rejectImmutable bool,
 ) (*workspacev1.Workspace, error) {

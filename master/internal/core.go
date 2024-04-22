@@ -1129,6 +1129,7 @@ func (m *Master) buildRM(
 	if len(clusterNames) != len(rmConfigs) {
 		return nil, fmt.Errorf("resource managers must all have distinct cluster names")
 	}
+
 	m.allRms = rms
 	return multirm.New(defaultRMName, rms), nil
 }

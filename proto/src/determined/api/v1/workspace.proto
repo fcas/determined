@@ -169,7 +169,7 @@ message PostWorkspaceResponse {
   };
 
   // The workspace created.
-  determined.workspace.v1.Workspace workspace = 1;
+  determined.workspace.v1.Workspace workspace = 1;  
 }
 
 // Request for updating a workspace.
