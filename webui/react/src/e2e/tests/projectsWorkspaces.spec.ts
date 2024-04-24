@@ -89,13 +89,14 @@ test.describe('Projects', () => {
       await projects.pwLocator.click();
       await projects.content.newProject.pwLocator.click();
       projectOneName = `test-1-${v4()}`;
-      await projects.content.createProjectModal.projectName.pwLocator.fill(projectOneName);
-      await projects.content.createProjectModal.description.pwLocator.fill(v4());
-      await projects.content.createProjectModal.footer.submit.pwLocator.click();
+      await projects.content.createModal.projectName.pwLocator.fill(projectOneName);
+      await projects.content.createModal.description.pwLocator.fill(v4());
+      await projects.content.createModal.footer.submit.pwLocator.click();
       await page.waitForURL('**/projects/*/experiments');
       await workspacesPage.nav.sidebar.sidebarItem(wsCreatedWithButton).pwLocator.click();
       expect(projects.content.cardWithName(projectOneName).pwLocator).toBeVisible();
     });
+
     await test.step('Archive a project', async () => {});
     await test.step('Unarchive a project', async () => {});
     await test.step('Navigation on projects page - sorting and list', async () => {});
@@ -117,19 +118,19 @@ test.describe('Projects', () => {
     await test.step('Delete a project', async () => {
       await workspacesPage.nav.sidebar.sidebarItem(wsCreatedWithButton).pwLocator.click();
       await workspacesPage.details.projects.pwLocator.click();
-      const projectCard = workspacesPage.details.projects.content.cardWithName(projectOneName);
+      const projectContent = workspacesPage.details.projects.content
+      const projectCard = projectContent.cardWithName(projectOneName);
       await projectCard.actionMenu.pwLocator.click();
       await projectCard.actionMenu.delete.pwLocator.click();
+      await projectContent.deleteModal.nameConfirmation.pwLocator.fill(projectOneName);
+      await projectContent.deleteModal.footer.submit.pwLocator.click();
     });
     await test.step('Delete a workspace', async () => {
       if (wsCreatedWithButton !== '') {
         await workspacesPage.nav.sidebar.workspaces.pwLocator.click();
-        await workspacesPage.list.cardWithName(wsCreatedWithButton).pwLocator.click();
-        const projectContent = workspacesPage.details.projects.content
-        const projectCard = projectContent.cardWithName(projectOneName);
-        await projectCard.actionMenu.pwLocator.click();
-        await projectCard.actionMenu.delete.pwLocator.click();
-        // await projectContent.deleteProjectModal
+        const workspaceCard = workspacesPage.list.cardWithName(wsCreatedWithButton)
+        await workspaceCard.actionMenu.pwLocator.click();
+        await workspaceCard.actionMenu.delete.pwLocator.click();
         await workspacesPage.deleteModal.nameConfirmation.pwLocator.fill(wsCreatedWithButton);
         await workspacesPage.deleteModal.footer.submit.pwLocator.click();
       }
@@ -140,7 +141,7 @@ test.describe('Projects', () => {
           .sidebarItem(wsCreatedWithSidebar)
           .pwLocator.click({ button: 'right' });
         await workspacesPage.nav.sidebar.actionMenu.delete.pwLocator.click();
-        await workspacesPage.deleteModal.nameConfirmation.pwLocator.fill(wsCreatedWithButton); // wrong name
+        await workspacesPage.deleteModal.nameConfirmation.pwLocator.fill(wsCreatedWithButton); // wrong name should fail
         expect(workspacesPage.deleteModal.footer.submit.pwLocator).toBeDisabled();
         await workspacesPage.deleteModal.nameConfirmation.pwLocator.fill(wsCreatedWithSidebar);
         await workspacesPage.deleteModal.footer.submit.pwLocator.click();

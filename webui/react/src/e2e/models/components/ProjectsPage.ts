@@ -2,6 +2,7 @@ import { BaseComponent, NamedComponent } from 'e2e/models/BaseComponent';
 import { ProjectCreateModal } from './ProjectCreateModal';
 import { Card } from 'e2e/models/hew/Card';
 import { ProjectActionDropdown } from './ProjcetActionDropdown';
+import { ProjectDeleteModal } from './ProjectDeleteModal';
 
 
 /**
@@ -13,12 +14,14 @@ import { ProjectActionDropdown } from './ProjcetActionDropdown';
  */
 export class ProjectsComponent extends NamedComponent {
   override defaultSelector: string = '[id$=projects]';
-
   readonly newProject = new BaseComponent({
     parent: this,
     selector: '[data-testid=newProject]',
   });
-  readonly createProjectModal = new ProjectCreateModal({
+  readonly createModal = new ProjectCreateModal({
+    parent: this.root
+  });
+  readonly deleteModal = new ProjectDeleteModal({
     parent: this.root
   });
   readonly cardWithName = (name: string): ProjectsCard => {
