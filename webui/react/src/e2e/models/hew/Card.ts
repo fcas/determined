@@ -1,4 +1,6 @@
 import { NamedComponent, NamedComponentArgs, CanBeParent } from 'e2e/models/BaseComponent';
+import { WorkspaceActionDropdown } from 'e2e/models/components/WorkspaceActionDropdown';
+import { Dropdown } from './Dropdown';
 
 /**
  * Returns a representation of the card component from Hew.
@@ -11,9 +13,9 @@ export class Card extends NamedComponent {
   override defaultSelector: string = ''; // must be provided
   static ActionMenuSelector = '[aria-label="Action menu"]';
 
-  readonly actionMenu = new WorkspaceActionDropdown({
+  readonly actionMenu: Dropdown = new WorkspaceActionDropdown({
     parent: this,
-    selector: '[aria-label="Action menu"]',
+    selector: Card.ActionMenuSelector,
   });
 
   static withName<T extends Card>(props: {parent: CanBeParent, name: string}, cardType: new (args: NamedComponentArgs) => T): T {

@@ -27,7 +27,7 @@ export class ProjectsComponent extends NamedComponent {
 }
 
 class ProjectsCard extends Card {
-  readonly actionMenu: ProjectActionDropdown = new ProjectActionDropdown({
+  override readonly actionMenu = new ProjectActionDropdown({
     parent: this,
     selector: Card.ActionMenuSelector,
   });

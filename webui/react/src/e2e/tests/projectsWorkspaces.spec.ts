@@ -5,6 +5,7 @@ import { BasePage } from 'e2e/models/BasePage';
 import { WorkspaceCreateModal } from 'e2e/models/components/WorkspaceCreateModal';
 import { Workspaces } from 'e2e/models/pages/Workspaces';
 import { randId, safeName } from 'e2e/utils/naming';
+import { v4 } from 'uuid';
 
 test.describe('Projects', () => {
   test.setTimeout(120_000);
@@ -128,7 +129,7 @@ test.describe('Projects', () => {
         const projectCard = projectContent.cardWithName(projectOneName);
         await projectCard.actionMenu.pwLocator.click();
         await projectCard.actionMenu.delete.pwLocator.click();
-        await projectContent.deleteProjectModal
+        // await projectContent.deleteProjectModal
         await workspacesPage.deleteModal.nameConfirmation.pwLocator.fill(wsCreatedWithButton);
         await workspacesPage.deleteModal.footer.submit.pwLocator.click();
       }
