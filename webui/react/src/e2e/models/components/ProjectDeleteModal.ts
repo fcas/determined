@@ -10,6 +10,6 @@ import { Modal } from 'e2e/models/hew/Modal';
 export class ProjectDeleteModal extends Modal {
   readonly nameConfirmation: BaseComponent = new BaseComponent({
     parent: this,
-    selector: 'input[id="workspaceName"]',
+    selector: 'input[id="projectName"]',
   });
 }
