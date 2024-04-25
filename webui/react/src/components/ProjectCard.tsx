@@ -46,8 +46,8 @@ const ProjectCard: React.FC<Props> = ({
   const classnames = [];
   if (project.archived) classnames.push(css.archived);
   if (project.workspaceId === 1) classnames.push(css.uncategorized);
-  const testId = `card-${project.name}`
-  
+  const testId = `card-${project.name}`;
+
   return (
     <Card
       actionMenu={!project.immutable && !hideActionMenu ? menu : undefined}

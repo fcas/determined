@@ -17,16 +17,16 @@ export class WorkspaceDetails extends NamedComponent {
   // The details sections are all subpages wrapped with a Pivot tab
   readonly projects = new ProjectsPivot({
     parent: this,
-  })
+  });
   readonly tasks = new TasksPivot({
     parent: this,
-  })
+  });
   readonly modelRegistry = new ModelsPivot({
     parent: this,
-  })
+  });
   readonly resourcePools = new PoolsPivot({
     parent: this,
-  })
+  });
 }
 
 class ProjectsPivot extends Pivot {
@@ -36,7 +36,7 @@ class ProjectsPivot extends Pivot {
   });
   readonly content: ProjectsComponent = new ProjectsComponent({
     parent: this.tabContent, // DNJ TODO - tabContent vs Content is weird. Better Name?
-  })
+  });
 }
 
 class TasksPivot extends Pivot {
@@ -46,7 +46,7 @@ class TasksPivot extends Pivot {
   });
   readonly content: TasksComponent = new TasksComponent({
     parent: this.tabContent,
-  })
+  });
 }
 
 class ModelsPivot extends Pivot {
@@ -56,7 +56,7 @@ class ModelsPivot extends Pivot {
   });
   readonly content: ModelRegistryPage = new ModelRegistryPage({
     parent: this.tabContent,
-  })
+  });
 }
 
 class PoolsPivot extends Pivot {
@@ -66,5 +66,5 @@ class PoolsPivot extends Pivot {
   });
   readonly content: ResourcePoolsComponent = new ResourcePoolsComponent({
     parent: this.tabContent,
-  })
+  });
 }

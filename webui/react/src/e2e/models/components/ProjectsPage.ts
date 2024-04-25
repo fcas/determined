@@ -4,7 +4,6 @@ import { Card } from 'e2e/models/hew/Card';
 import { ProjectActionDropdown } from './ProjcetActionDropdown';
 import { ProjectDeleteModal } from './ProjectDeleteModal';
 
-
 /**
  * Returns a representation of the Projects Page component.
  * This constructor represents the contents in src/components/Page.tsx.
@@ -19,13 +18,13 @@ export class ProjectsComponent extends NamedComponent {
     selector: '[data-testid=newProject]',
   });
   readonly createModal = new ProjectCreateModal({
-    parent: this.root
+    parent: this.root,
   });
   readonly deleteModal = new ProjectDeleteModal({
-    parent: this.root
+    parent: this.root,
   });
   readonly cardWithName = (name: string): ProjectsCard => {
-    return Card.withName({ parent: this, name: name }, ProjectsCard)
+    return Card.withName({ parent: this, name: name }, ProjectsCard);
   };
 }
 

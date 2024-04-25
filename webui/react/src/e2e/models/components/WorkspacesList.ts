@@ -16,7 +16,7 @@ export class WorkspacesList extends NamedComponent {
     selector: '[data-testid="newWorkspace"]',
   });
   readonly cardWithName = (name: string): WorkspaceCard => {
-    return Card.withName({parent: this, name: name}, WorkspaceCard)
+    return Card.withName({ parent: this, name: name }, WorkspaceCard);
   };
 }
 

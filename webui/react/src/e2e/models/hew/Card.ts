@@ -18,10 +18,13 @@ export class Card extends NamedComponent {
     selector: Card.ActionMenuSelector,
   });
 
-  static withName<T extends Card>(props: {parent: CanBeParent, name: string}, cardType: new (args: NamedComponentArgs) => T): T {
+  static withName<T extends Card>(
+    props: { parent: CanBeParent; name: string },
+    cardType: new (args: NamedComponentArgs) => T,
+  ): T {
     return new cardType({
       parent: props.parent,
       selector: `[data-testid="card-${props.name}"]`,
     });
-  };
+  }
 }
