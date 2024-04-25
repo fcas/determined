@@ -1,5 +1,6 @@
-import { NamedComponent, NamedComponentArgs, CanBeParent } from 'e2e/models/BaseComponent';
+import { CanBeParent, NamedComponent, NamedComponentArgs } from 'e2e/models/BaseComponent';
 import { WorkspaceActionDropdown } from 'e2e/models/components/WorkspaceActionDropdown';
+
 import { Dropdown } from './Dropdown';
 
 /**
@@ -19,7 +20,7 @@ export class Card extends NamedComponent {
   });
 
   static withName<T extends Card>(
-    props: { parent: CanBeParent; name: string },
+    props: { name: string; parent: CanBeParent },
     cardType: new (args: NamedComponentArgs) => T,
   ): T {
     return new cardType({

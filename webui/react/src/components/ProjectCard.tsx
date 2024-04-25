@@ -51,9 +51,9 @@ const ProjectCard: React.FC<Props> = ({
   return (
     <Card
       actionMenu={!project.immutable && !hideActionMenu ? menu : undefined}
+      testId={testId}
       onClick={(e: AnyMouseEvent) => handlePath(e, { path: paths.projectDetails(project.id) })}
-      onDropdown={onClick}
-      testId={testId}>
+      onDropdown={onClick}>
       <div className={classnames.join(' ')}>
         <Column>
           <Row justifyContent="space-between" width={125}>

@@ -1,7 +1,8 @@
 import { BaseComponent, NamedComponent } from 'e2e/models/BaseComponent';
-import { ProjectCreateModal } from './ProjectCreateModal';
 import { Card } from 'e2e/models/hew/Card';
+
 import { ProjectActionDropdown } from './ProjcetActionDropdown';
+import { ProjectCreateModal } from './ProjectCreateModal';
 import { ProjectDeleteModal } from './ProjectDeleteModal';
 
 /**
@@ -24,7 +25,7 @@ export class ProjectsComponent extends NamedComponent {
     parent: this.root,
   });
   readonly cardWithName = (name: string): ProjectsCard => {
-    return Card.withName({ parent: this, name: name }, ProjectsCard);
+    return Card.withName({ name: name, parent: this }, ProjectsCard);
   };
 }
 

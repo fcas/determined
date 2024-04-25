@@ -1,5 +1,6 @@
 import { BaseComponent, NamedComponent } from 'e2e/models/BaseComponent';
 import { Card } from 'e2e/models/hew/Card';
+
 import { WorkspaceActionDropdown } from './WorkspaceActionDropdown';
 
 /**
@@ -16,7 +17,7 @@ export class WorkspacesList extends NamedComponent {
     selector: '[data-testid="newWorkspace"]',
   });
   readonly cardWithName = (name: string): WorkspaceCard => {
-    return Card.withName({ parent: this, name: name }, WorkspaceCard);
+    return Card.withName({ name: name, parent: this }, WorkspaceCard);
   };
 }
 

@@ -1,9 +1,10 @@
 import { BaseComponent, NamedComponent } from 'e2e/models/BaseComponent';
-import { Pivot } from '../hew/Pivot';
+import { Pivot } from 'e2e/models/hew/Pivot';
+
 import { ModelRegistryPage } from './ModelRegistry';
 import { ProjectsComponent } from './ProjectsPage';
-import { TasksComponent } from './TasksPage';
 import { ResourcePoolsComponent } from './ResourcePoolsPage';
+import { TasksComponent } from './TasksPage';
 
 /**
  * Returns a representation of the Workspace Details Page component.
