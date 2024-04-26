@@ -8,19 +8,19 @@ import { Dropdown } from 'e2e/models/hew/Dropdown';
  * @param {string} [obj.selector] - Used instead of `defaultSelector`
  */
 export class ProjectActionDropdown extends Dropdown {
-  readonly edit: BaseComponent = new BaseComponent({
+  readonly edit = new BaseComponent({
     parent: this._menu,
     selector: Dropdown.selectorTemplate('edit'),
   });
-  readonly move: BaseComponent = new BaseComponent({
+  readonly move = new BaseComponent({
     parent: this._menu,
     selector: Dropdown.selectorTemplate('move'),
   });
-  readonly archive: BaseComponent = new BaseComponent({
+  readonly archive = new BaseComponent({
     parent: this._menu,
     selector: Dropdown.selectorTemplate('switchArchive'),
   });
-  readonly delete: BaseComponent = new BaseComponent({
+  readonly delete = new BaseComponent({
     parent: this._menu,
     selector: Dropdown.selectorTemplate('delete'),
   });

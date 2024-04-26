@@ -1,4 +1,8 @@
-import { CanBeParent, NamedComponent, NamedComponentArgs } from 'e2e/models/BaseComponent';
+import {
+  CanBeParent,
+  NamedComponent,
+  NamedComponentArgs,
+} from 'e2e/models/BaseComponent';
 import { WorkspaceActionDropdown } from 'e2e/models/components/WorkspaceActionDropdown';
 
 import { Dropdown } from './Dropdown';
@@ -12,11 +16,11 @@ import { Dropdown } from './Dropdown';
  */
 export class Card extends NamedComponent {
   override defaultSelector: string = ''; // must be provided
-  static ActionMenuSelector = '[aria-label="Action menu"]';
+  static actionMenuSelector = '[aria-label="Action menu"]';
 
   readonly actionMenu: Dropdown = new WorkspaceActionDropdown({
     parent: this,
-    selector: Card.ActionMenuSelector,
+    selector: Card.actionMenuSelector,
   });
 
   static withName<T extends Card>(

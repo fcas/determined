@@ -24,6 +24,6 @@ export class WorkspacesList extends NamedComponent {
 class WorkspaceCard extends Card {
   override readonly actionMenu = new WorkspaceActionDropdown({
     parent: this,
-    selector: Card.ActionMenuSelector,
+    selector: Card.actionMenuSelector,
   });
 }
