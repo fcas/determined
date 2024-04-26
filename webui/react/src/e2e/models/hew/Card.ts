@@ -1,8 +1,4 @@
-import {
-  CanBeParent,
-  NamedComponent,
-  NamedComponentArgs,
-} from 'e2e/models/BaseComponent';
+import { CanBeParent, NamedComponent, NamedComponentArgs } from 'e2e/models/BaseComponent';
 import { WorkspaceActionDropdown } from 'e2e/models/components/WorkspaceActionDropdown';
 
 import { Dropdown } from './Dropdown';
