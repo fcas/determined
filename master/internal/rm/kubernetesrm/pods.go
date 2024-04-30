@@ -401,9 +401,9 @@ func (p *pods) startClientSet() error {
 		return errors.Wrap(err, "failed to initialize kubernetes clientSet")
 	}
 
-	namespaces, err := workspace.GetAllNamespacesForRM(context.TODO(), p.clusterName, p.namespace)
+	namespaces, err := workspace.GetAllNamespacesForRM(context.Background(), p.clusterName, p.namespace)
 	if err != nil {
-		return errors.Wrap(err, "failed to get namespaces for resource manager")
+		return fmt.Errorf("failed to get namespaces for resource manager: %w", err)
 	}
 	for _, ns := range namespaces {
 		p.podInterfaces[ns] = p.clientSet.CoreV1().Pods(ns)
@@ -462,9 +462,9 @@ func (p *pods) reattachAllocationPods(msg reattachAllocationPods) ([]reattachPod
 	if err != nil {
 		return nil, errors.Wrap(err, "error listing config maps checking if they can be restored")
 	}
-	ns, err := workspace.GetAllNamespacesForRM(context.TODO(), p.clusterName, p.namespace)
+	ns, err := workspace.GetAllNamespacesForRM(context.Background(), p.clusterName, p.namespace)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get namespaces for resource manager")
+		return nil, fmt.Errorf("failed to get namespaces for resource manager: %w", err)
 	}
 	existingConfigMaps := make(set.Set[string])
 	for _, cm := range configMaps.Items {
@@ -661,9 +661,9 @@ func (p *pods) refreshPodStates(allocationID model.AllocationID) error {
 	if err != nil {
 		return errors.Wrap(err, "error listing pods checking if they can be restored")
 	}
-	ns, err := workspace.GetAllNamespacesForRM(context.TODO(), p.clusterName, p.namespace)
+	ns, err := workspace.GetAllNamespacesForRM(context.Background(), p.clusterName, p.namespace)
 	if err != nil {
-		return errors.Wrap(err, "failed to get namespaces for resource manager")
+		return fmt.Errorf("failed to get namespaces for resource manager: %w", err)
 	}
 
 	for _, pod := range pods.Items {
@@ -707,9 +707,9 @@ func (p *pods) deleteDoomedKubernetesResources() error {
 	}
 	toKillPods := &k8sV1.PodList{}
 	savedPodNames := make(set.Set[string])
-	ns, err := workspace.GetAllNamespacesForRM(context.TODO(), p.clusterName, p.namespace)
+	ns, err := workspace.GetAllNamespacesForRM(context.Background(), p.clusterName, p.namespace)
 	if err != nil {
-		return errors.Wrap(err, "failed to get namespaces for resource manager")
+		return fmt.Errorf("failed to get namespaces for resource manager: %w", err)
 	}
 	for _, pod := range pods.Items {
 		if !slices.Contains(ns, pod.Namespace) {
@@ -767,9 +767,9 @@ func (p *pods) deleteDoomedKubernetesResources() error {
 }
 
 func (p *pods) startPodInformer() error {
-	ns, err := workspace.GetAllNamespacesForRM(context.TODO(), p.clusterName, p.namespace)
+	ns, err := workspace.GetAllNamespacesForRM(context.Background(), p.clusterName, p.namespace)
 	if err != nil {
-		return errors.Wrap(err, "failed to get namespaces for resource manager")
+		return fmt.Errorf("failed to get namespaces for resource manager: %w", err)
 	}
 	for _, namespace := range ns {
 		i, err := newPodInformer(
@@ -811,9 +811,9 @@ func (p *pods) startNodeInformer() error {
 }
 
 func (p *pods) startEventListeners() error {
-	ns, err := workspace.GetAllNamespacesForRM(context.TODO(), p.clusterName, p.namespace)
+	ns, err := workspace.GetAllNamespacesForRM(context.Background(), p.clusterName, p.namespace)
 	if err != nil {
-		return errors.Wrap(err, "failed to get namespaces for resource manager")
+		return fmt.Errorf("failed to get namespaces for resource manager: %w", err)
 	}
 	for _, namespace := range ns {
 		l, err := newEventInformer(
@@ -834,9 +834,9 @@ func (p *pods) startEventListeners() error {
 }
 
 func (p *pods) startPreemptionListeners() error {
-	ns, err := workspace.GetAllNamespacesForRM(context.TODO(), p.clusterName, p.namespace)
+	ns, err := workspace.GetAllNamespacesForRM(context.Background(), p.clusterName, p.namespace)
 	if err != nil {
-		return errors.Wrap(err, "failed to get namespaces for resource manager")
+		return fmt.Errorf("failed to get namespaces for resource manager: %w", err)
 	}
 	for _, namespace := range ns {
 		l, err := newPodInformer(

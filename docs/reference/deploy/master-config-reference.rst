@@ -360,8 +360,8 @@ Optional. This field has been deprecated, use ``default_namespace`` instead.
 ``default_namespace``
 ---------------------
 
-Optional. The default namespace where Determined will deploy Pods and ConfigMaps, if the workspace
-is not bound to a particular namespace.
+Optional. Specifies the default namespace where Determined will deploy Pods and ConfigMaps if the
+workspace is not bound to a specific namespace.
 
 .. _master-config-reference-max-slots-per-pod:
 

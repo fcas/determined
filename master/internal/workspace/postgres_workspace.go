@@ -140,12 +140,12 @@ func GetNamespaceFromWorkspace(ctx context.Context, workspaceName string, cluste
 	err := db.Bun().
 		NewSelect().
 		TableExpr("workspaces as w").
-		ColumnExpr("n.name").
-		Join("JOIN namespaces AS n ON  n.workspace_id = w.id").
+		ColumnExpr("n.namespace_name").
+		Join("JOIN workspace_namespace_bindings AS n ON  n.workspace_id = w.id").
 		Where("w.name = ? and n.cluster_name = ?", workspaceName, clusterName).
 		Scan(ctx, &ns)
 	if err != nil {
-		return "", errors.Wrapf(err, "failed to get namespace")
+		return "", fmt.Errorf("failed to get namespace: %w", err)
 	}
 	return ns, nil
 }
@@ -156,12 +156,12 @@ func GetAllNamespacesForRM(ctx context.Context, rmName string, defaultNs string)
 	var ns []string
 	err := db.Bun().
 		NewSelect().
-		Table("namespaces").
-		ColumnExpr("DISTINCT name").
+		Table("workspace_namespace_bindings").
+		ColumnExpr("DISTINCT namespace_name").
 		Where("cluster_name = ?", rmName).
 		Scan(ctx, &ns)
 	if err != nil {
-		return ns, errors.Wrapf(err, "failed to get namespace")
+		return ns, fmt.Errorf("failed to get all namespaces for %v: %w", rmName, err)
 	}
 	if defaultNs == "" {
 		defaultNs = "default"

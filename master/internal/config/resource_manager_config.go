@@ -233,7 +233,7 @@ func (k KubernetesResourceManagerConfig) Validate() []error {
 	var checkRMNamespace error
 	if len(k.DefaultNamespace) > 0 && len(k.Namespace) > 0 {
 		checkRMNamespace = errors.Errorf("Both ``namespace`` and ``default_namespace`` provided. " +
-			"Please provide only ``default_namespace`` as ``namespace`` has been depracated.")
+			"Please provide only ``default_namespace`` as ``namespace`` has been deprecated.")
 	} else {
 		checkRMNamespace = nil
 	}

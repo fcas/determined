@@ -713,10 +713,10 @@ func (p k8sPodResources) Start(
 	spec.ExtraEnvVars[sproto.ResourcesTypeEnvVar] = string(sproto.ResourcesTypeK8sPod)
 	spec.ExtraEnvVars[resourcePoolEnvVar] = p.req.ResourcePool
 	ns, err := workspace.GetNamespaceFromWorkspace(context.TODO(), spec.Workspace, p.clusterName)
-	if errors.Is(err, db.ErrNotFound) || errors.Cause(err) == sql.ErrNoRows {
+	if errors.Is(err, db.ErrNotFound) || errors.Is(err, sql.ErrNoRows) {
 		ns = p.defaultNamespace
 	} else if err != nil {
-		return err
+		return fmt.Errorf("getting namespace for workspace: %w", err)
 	}
 	return p.podsService.StartTaskPod(StartTaskPod{
 		Req:          p.req,
