@@ -395,6 +395,16 @@ func (m *MultiRMRouter) CreateNamespace(autoCreateNamespace bool, namespaceName 
 	return nil
 }
 
+func (m *MultiRMRouter) DeleteNamespace(namespaceName string) (*string, error) {
+	_, err := fanOutRMCall(m, func(rm rm.ResourceManager) (*string, error) {
+		return rm.DeleteNamespace(namespaceName)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
 func (m *MultiRMRouter) getRMName(rpName rm.ResourcePoolName) (string, error) {
 	// If not given RP name, route to default RM.
 	if rpName == "" {
