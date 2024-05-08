@@ -8705,6 +8705,7 @@ class v1ModelVersion(Printable):
 
 class v1ModifyWorkspaceNamespaceBindingRequest(Printable):
     """Request for modifying a namespace binding to a workspace."""
+    autoCreateNamespace: "typing.Optional[bool]" = None
     clusterName: "typing.Optional[str]" = None
     namespaceName: "typing.Optional[str]" = None
 
@@ -8712,10 +8713,13 @@ class v1ModifyWorkspaceNamespaceBindingRequest(Printable):
         self,
         *,
         id: int,
+        autoCreateNamespace: "typing.Union[bool, None, Unset]" = _unset,
         clusterName: "typing.Union[str, None, Unset]" = _unset,
         namespaceName: "typing.Union[str, None, Unset]" = _unset,
     ):
         self.id = id
+        if not isinstance(autoCreateNamespace, Unset):
+            self.autoCreateNamespace = autoCreateNamespace
         if not isinstance(clusterName, Unset):
             self.clusterName = clusterName
         if not isinstance(namespaceName, Unset):
@@ -8726,6 +8730,8 @@ class v1ModifyWorkspaceNamespaceBindingRequest(Printable):
         kwargs: "typing.Dict[str, typing.Any]" = {
             "id": obj["id"],
         }
+        if "autoCreateNamespace" in obj:
+            kwargs["autoCreateNamespace"] = obj["autoCreateNamespace"]
         if "clusterName" in obj:
             kwargs["clusterName"] = obj["clusterName"]
         if "namespaceName" in obj:
@@ -8736,6 +8742,8 @@ class v1ModifyWorkspaceNamespaceBindingRequest(Printable):
         out: "typing.Dict[str, typing.Any]" = {
             "id": self.id,
         }
+        if not omit_unset or "autoCreateNamespace" in vars(self):
+            out["autoCreateNamespace"] = self.autoCreateNamespace
         if not omit_unset or "clusterName" in vars(self):
             out["clusterName"] = self.clusterName
         if not omit_unset or "namespaceName" in vars(self):
@@ -10935,6 +10943,7 @@ class v1PostWebhookResponse(Printable):
 class v1PostWorkspaceRequest(Printable):
     """Request for creating a workspace."""
     agentUserGroup: "typing.Optional[v1AgentUserGroup]" = None
+    autoCreateNamespace: "typing.Optional[bool]" = None
     checkpointStorageConfig: "typing.Optional[typing.Dict[str, typing.Any]]" = None
     clusterName: "typing.Optional[str]" = None
     defaultAuxPool: "typing.Optional[str]" = None
@@ -10946,6 +10955,7 @@ class v1PostWorkspaceRequest(Printable):
         *,
         name: str,
         agentUserGroup: "typing.Union[v1AgentUserGroup, None, Unset]" = _unset,
+        autoCreateNamespace: "typing.Union[bool, None, Unset]" = _unset,
         checkpointStorageConfig: "typing.Union[typing.Dict[str, typing.Any], None, Unset]" = _unset,
         clusterName: "typing.Union[str, None, Unset]" = _unset,
         defaultAuxPool: "typing.Union[str, None, Unset]" = _unset,
@@ -10955,6 +10965,8 @@ class v1PostWorkspaceRequest(Printable):
         self.name = name
         if not isinstance(agentUserGroup, Unset):
             self.agentUserGroup = agentUserGroup
+        if not isinstance(autoCreateNamespace, Unset):
+            self.autoCreateNamespace = autoCreateNamespace
         if not isinstance(checkpointStorageConfig, Unset):
             self.checkpointStorageConfig = checkpointStorageConfig
         if not isinstance(clusterName, Unset):
@@ -10973,6 +10985,8 @@ class v1PostWorkspaceRequest(Printable):
         }
         if "agentUserGroup" in obj:
             kwargs["agentUserGroup"] = v1AgentUserGroup.from_json(obj["agentUserGroup"]) if obj["agentUserGroup"] is not None else None
+        if "autoCreateNamespace" in obj:
+            kwargs["autoCreateNamespace"] = obj["autoCreateNamespace"]
         if "checkpointStorageConfig" in obj:
             kwargs["checkpointStorageConfig"] = obj["checkpointStorageConfig"]
         if "clusterName" in obj:
@@ -10991,6 +11005,8 @@ class v1PostWorkspaceRequest(Printable):
         }
         if not omit_unset or "agentUserGroup" in vars(self):
             out["agentUserGroup"] = None if self.agentUserGroup is None else self.agentUserGroup.to_json(omit_unset)
+        if not omit_unset or "autoCreateNamespace" in vars(self):
+            out["autoCreateNamespace"] = self.autoCreateNamespace
         if not omit_unset or "checkpointStorageConfig" in vars(self):
             out["checkpointStorageConfig"] = self.checkpointStorageConfig
         if not omit_unset or "clusterName" in vars(self):
