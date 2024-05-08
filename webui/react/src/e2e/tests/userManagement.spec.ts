@@ -1,24 +1,36 @@
-import { expect } from '@playwright/test';
-import playwright from 'playwright';
-
 import { AuthFixture } from 'e2e/fixtures/auth.fixture';
 import { test } from 'e2e/fixtures/global-fixtures';
-import { User, UserFixture } from 'e2e/fixtures/user.fixture';
+import {
+  User,
+  UserFixture,
+} from 'e2e/fixtures/user.fixture';
 import { UserManagement } from 'e2e/models/pages/Admin/UserManagement';
 import { SignIn } from 'e2e/models/pages/SignIn';
 import { sessionRandomHash } from 'e2e/utils/naming';
 import { repeatWithFallback } from 'e2e/utils/polling';
+import playwright from 'playwright';
+import { UsersApi } from 'services/api-ts-sdk/api';
+
+import { expect } from '@playwright/test';
 
 // creating users while running tests in parallel can cause the users table to refresh at unexpected times
 test.describe.configure({ mode: 'serial' });
 
 test.describe('User Management', () => {
-  test.beforeEach(async ({ auth, dev, page }) => {
+  test.beforeEach(async ({ auth, dev, page, apiAuth }) => {
     await dev.setServerAddress();
     await auth.login();
     const userManagementPage = new UserManagement(page);
     await userManagementPage.goto();
-
+    console.log('DNJ 11111');
+    const userResp = await new UsersApi({
+      accessToken: (await apiAuth.apiContext?.storageState())?.
+        cookies.
+        find((cookie) => { return cookie.name === 'auth' })?.value
+    },
+      'http://localhost:3001', fetch).
+      postUser({ user: { username: 'dnj111', admin: false, active: true } }, {});
+    console.log(`DNJ ${userResp}`);
     // wait for table to be stable and select page 1
     await userManagementPage.table.table.rows.pwLocator.count();
     const page1 = userManagementPage.table.table.pagination.pageButtonLocator(1);
