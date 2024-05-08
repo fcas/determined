@@ -405,6 +405,18 @@ func (m *MultiRMRouter) DeleteNamespace(namespaceName string) (*string, error) {
 	return nil, nil
 }
 
+func (m *MultiRMRouter) CreateQuota(quota int, namespaceName, clusterName string) error {
+	rm, err := m.getRM(clusterName)
+	if err != nil {
+		return fmt.Errorf("Error getting resource manager for cluster %s: %w", clusterName, err)
+	}
+	err = rm.CreateQuota(quota, namespaceName, clusterName)
+	if err != nil {
+		return fmt.Errorf("Error creating quota for namespace %s: %w", namespaceName, err)
+	}
+	return nil
+}
+
 func (m *MultiRMRouter) getRMName(rpName rm.ResourcePoolName) (string, error) {
 	// If not given RP name, route to default RM.
 	if rpName == "" {

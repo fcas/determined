@@ -589,6 +589,10 @@ func (a *ResourceManager) DeleteNamespace(namespaceName string) (*string, error)
 	return nil, nil
 }
 
+func (a *ResourceManager) CreateQuota(quota int, namespaceName string, clusterName string) error {
+	return fmt.Errorf("Cannot create quota with resource manager type AgentRM.")
+}
+
 func (a *ResourceManager) createResourcePool(
 	db db.DB, config config.ResourcePoolConfig, cert *tls.Certificate,
 ) (*resourcePool, error) {
