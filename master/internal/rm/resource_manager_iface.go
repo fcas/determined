@@ -56,6 +56,8 @@ type ResourceManager interface {
 	// Namespaces and Quotas for workspace slot caps.
 	CreateNamespace(bool, string, string) error
 	DeleteNamespace(string) (*string, error)
+	SetQuota(int, string, string) error
+	// DeleteQuota()
 }
 
 // ResourcePoolName holds the name of the resource pool, and describes the input/output

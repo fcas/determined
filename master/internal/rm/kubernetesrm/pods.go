@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -357,6 +358,12 @@ func (p *pods) DeleteNamespace(namespaceName string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.handleDeleteNamespaceRequest(namespaceName)
+}
+
+func (p *pods) SetQuota(quota int, namespaceName string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.handleSetQuotaRequest(quota, namespaceName)
 }
 
 func readClientConfig(kubeconfigPath string) (*rest.Config, error) {
@@ -1393,6 +1400,97 @@ func (p *pods) handleDeleteNamespaceRequest(namespaceName string) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (p *pods) handleSetQuotaRequest(quota int, namespaceName string) error {
+	var k8sDeterminedLabel = map[string]string{determinedLabel: namespaceName}
+
+	k8sNamespace, err := p.clientSet.CoreV1().Namespaces().Get(context.TODO(), namespaceName,
+		metaV1.GetOptions{
+			TypeMeta: metaV1.TypeMeta{
+				Kind:       "Namespace",
+				APIVersion: "v1",
+			},
+		})
+	if err != nil {
+		return errors.Wrapf(err, "error finding namespace %s", namespaceName)
+	}
+
+	if _, ok := k8sNamespace.Labels[determinedLabel]; !ok {
+		return errors.Wrapf(err, "Cannot set quota on namespace %s. Namespace needs determined label",
+			namespaceName)
+	}
+
+	quotaName := namespaceName + "-quota"
+	// Create resource quota contianing GPU requests limit.
+	resourceQuota := &k8sV1.ResourceQuota{
+		TypeMeta: metaV1.TypeMeta{
+			Kind:       "ResourceQuota",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metaV1.ObjectMeta{Labels: k8sDeterminedLabel, Name: quotaName},
+		Spec: k8sV1.ResourceQuotaSpec{
+			Hard: k8sV1.ResourceList{
+				k8sV1.ResourceName("requests." + ResourceTypeNvidia): *resource.
+					NewQuantity(int64(quota), resource.DecimalSI),
+			},
+		},
+	}
+
+	k8sQuotas, err := p.clientSet.CoreV1().ResourceQuotas(namespaceName).List(context.TODO(),
+		metaV1.ListOptions{})
+	quotas := k8sQuotas.Items
+	currentQuota := float64(quota)
+	var detQuota *k8sV1.ResourceQuota
+	for _, q := range quotas {
+		qResources := q.Spec.Hard
+		for name, quantity := range qResources {
+			if name == "requests."+ResourceTypeNvidia {
+				currentQuota = math.Min(currentQuota, quantity.AsApproximateFloat64())
+				if _, ok := q.Labels[determinedLabel]; ok {
+					q.Spec.Hard[name] = *resource.NewQuantity(int64(quota), resource.DecimalSI)
+					if quantity.AsApproximateFloat64() <= currentQuota {
+						detQuota = &q
+					}
+				}
+			}
+		}
+	}
+
+	if detQuota != nil {
+		// if currentQuota < float64(quota) {
+		// 	return fmt.Errorf("Cannot set quota because there already exists a quota in namespace %s of limit %d", namespaceName, currentQuota)
+		// }
+		detQuotaToByteArray, err := json.Marshal(detQuota)
+		if err != nil {
+			return errors.Wrapf(err, "error marshaling quota %s", detQuota.Name)
+		}
+		_, err = p.clientSet.CoreV1().ResourceQuotas(namespaceName).Patch(context.TODO(),
+			resourceQuota.Name,
+			types.MergePatchType,
+			detQuotaToByteArray,
+			metaV1.PatchOptions{})
+
+		if err != nil {
+			return errors.Wrapf(err, "error applying patch to resource quota %s", resourceQuota.Name)
+		}
+	} else {
+		// The given namespace does not any attached determined quotas.
+		if currentQuota < float64(quota) {
+			return errors.Wrapf(err, "Cannot set quota because there already exists a quota in namespace %s of limit %d", namespaceName, currentQuota)
+		}
+		_, err = p.clientSet.CoreV1().ResourceQuotas(namespaceName).Create(context.TODO(),
+			resourceQuota,
+			metaV1.CreateOptions{},
+		)
+
+		if err != nil {
+			return errors.Wrapf(err, "error creating resource quota %s for namespace %s",
+				quotaName, namespaceName)
+		}
+	}
+
 	return nil
 }
 

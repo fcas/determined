@@ -409,6 +409,19 @@ func (k *ResourceManager) DeleteNamespace(namespaceName string) (*string, error)
 	return nil, nil
 }
 
+// SetQuota implements rm.ResourceManager.
+func (k *ResourceManager) SetQuota(quota int, namespaceName string, clusterName string) error {
+	configClusterName := rm.ClusterName(k.config.ClusterName)
+	if clusterName != configClusterName.String() {
+		return nil
+	}
+	err := k.podsService.SetQuota(quota, namespaceName)
+	if err != nil {
+		return fmt.Errorf("error creating quota %s: %w", namespaceName, err)
+	}
+	return nil
+}
+
 // getResourcePoolRef gets an actor ref to a resource pool by name.
 func (k ResourceManager) resourcePoolExists(name string) error {
 	resp, err := k.GetResourcePools()

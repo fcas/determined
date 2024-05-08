@@ -77,10 +77,14 @@ func maskStorageConfigSecrets(w *workspacev1.Workspace) error {
 }
 
 func validatePostWorkspaceRequest(req *apiv1.PostWorkspaceRequest) error {
-	if req.ClusterName != nil &&
+	if (req.ClusterName != nil || req.Quota != nil) &&
 		(req.NamespaceName == nil && !req.AutoCreateNamespace) {
 		return status.Errorf(codes.InvalidArgument,
 			"Must specify either an existing Kubernetes namespace or indicate that you would like a namespace to be auto-created")
+	}
+	if req.NamespaceName != nil && req.Quota != nil {
+		return status.Errorf(codes.InvalidArgument,
+			"You cannot set a quota on an already existing k8s namespace.")
 	}
 	if (req.AutoCreateNamespace || req.NamespaceName != nil) && req.ClusterName == nil {
 		return status.Errorf(codes.InvalidArgument,
@@ -441,6 +445,17 @@ func (a *apiServer) PostWorkspace(
 		if err != nil {
 			return nil, fmt.Errorf("Failed to create namespace binding: %w", err)
 		}
+		if req.Quota != nil {
+			quotaReq := &apiv1.SetResourceQuotaRequest{
+				Quota:       *req.Quota,
+				ClusterName: *req.ClusterName,
+				Id:          int32(w.ID),
+			}
+			_, err = a.setResourceQuota(ctx, quotaReq, &tx, w)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to set the resource quota")
+			}
+		}
 	}
 
 	pin := &model.WorkspacePin{WorkspaceID: w.ID, UserID: w.UserID}
@@ -682,6 +697,48 @@ func (a *apiServer) ModifyWorkspaceNamespaceBinding(ctx context.Context,
 		return nil, errors.Wrap(err, "could not commit modify workspace-namespace bindings transcation")
 	}
 	return res, nil
+}
+
+func (a *apiServer) setResourceQuota(ctx context.Context, req *apiv1.SetResourceQuotaRequest,
+	tx *bun.Tx, w *model.Workspace) (*apiv1.SetResourceQuotaResponse, error) {
+	// Get the namespace bound to the workspace from the db. If the workspace is not bound to a namespace,
+	// return an error.
+	var wsns model.WorkspaceNamespace
+	err := tx.NewSelect().Model(&model.WorkspaceNamespace{}).Where("workspace_id = ?", req.Id).Scan(ctx, &wsns)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.Wrapf(err, "workspace %s has no namespace binding", w.Name)
+		}
+		return nil, errors.Wrap(err, "error getting workspace-namespace binding")
+	}
+
+	namespaceName, err := generateNamespaceName(w.Name)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error getting generated namespace name for workspace %s", w.Name)
+	}
+	if *namespaceName != wsns.NamespaceName {
+		return nil, errors.Wrapf(err, "cannot set quota on a workspace that is not bound to an auto-created namespace")
+	}
+	err = a.m.rm.SetQuota(int(req.Quota), wsns.NamespaceName, req.ClusterName)
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to create quota in Kubernetes")
+	}
+	resp := apiv1.SetResourceQuotaResponse{}
+	return &resp, nil
+}
+
+func (a *apiServer) SetResourceQuota(ctx context.Context, req *apiv1.SetResourceQuotaRequest) (*apiv1.SetResourceQuotaResponse, error) {
+	license.RequireLicense("set resource quota")
+	tx, err := db.Bun().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	var w model.Workspace
+	err = tx.NewSelect().Model(&model.Workspace{}).Where("id = ?", req.Id).Scan(ctx, &w)
+	if err != nil {
+		return nil, errors.Wrapf(err, "workspace with name %s not found", w.Name)
+	}
+	return a.setResourceQuota(ctx, req, &tx, &w)
 }
 
 func (a *apiServer) deleteWorkspace(

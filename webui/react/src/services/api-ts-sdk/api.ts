@@ -8024,6 +8024,12 @@ export interface V1PostWorkspaceRequest {
      * @memberof V1PostWorkspaceRequest
      */
     autoCreateNamespace?: boolean;
+    /**
+     * Optional quota to set on the bound namespace.
+     * @type {number}
+     * @memberof V1PostWorkspaceRequest
+     */
+    quota?: number;
 }
 /**
  * Response to PostWorkspaceRequest.
@@ -9925,6 +9931,38 @@ export interface V1SetNotebookPriorityResponse {
      * @memberof V1SetNotebookPriorityResponse
      */
     notebook?: V1Notebook;
+}
+/**
+ * Request to set the resource quota for a workspace.
+ * @export
+ * @interface V1SetResourceQuotaRequest
+ */
+export interface V1SetResourceQuotaRequest {
+    /**
+     * The unique name of the workspace.
+     * @type {number}
+     * @memberof V1SetResourceQuotaRequest
+     */
+    id: number;
+    /**
+     * The quota request limit to be put on the workspace.
+     * @type {number}
+     * @memberof V1SetResourceQuotaRequest
+     */
+    quota?: number;
+    /**
+     * Cluster containing the namespace.
+     * @type {string}
+     * @memberof V1SetResourceQuotaRequest
+     */
+    clusterName?: string;
+}
+/**
+ * Response for setting the resource quota for a workspace.
+ * @export
+ * @interface V1SetResourceQuotaResponse
+ */
+export interface V1SetResourceQuotaResponse {
 }
 /**
  * SetSearcherProgressOperation informs the master of the progress of the custom searcher.
@@ -33603,6 +33641,50 @@ export const WorkspacesApiFetchParamCreator = function (configuration?: Configur
         },
         /**
          * 
+         * @summary Set resource quota for a worksoace.
+         * @param {number} id The unique name of the workspace.
+         * @param {V1SetResourceQuotaRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        setResourceQuota(id: number, body: V1SetResourceQuotaRequest, options: any = {}): FetchArgs {
+            // verify required parameter 'id' is not null or undefined
+            if (id === null || id === undefined) {
+                throw new RequiredError('id','Required parameter id was null or undefined when calling setResourceQuota.');
+            }
+            // verify required parameter 'body' is not null or undefined
+            if (body === null || body === undefined) {
+                throw new RequiredError('body','Required parameter body was null or undefined when calling setResourceQuota.');
+            }
+            const localVarPath = `/api/v1/workspaces/{id}/quota`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'POST', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            localVarRequestOptions.body = JSON.stringify(body)
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary Unarchive a workspace.
          * @param {number} id The id of the workspace.
          * @param {*} [options] Override http request option.
@@ -33895,6 +33977,26 @@ export const WorkspacesApiFp = function (configuration?: Configuration) {
         },
         /**
          * 
+         * @summary Set resource quota for a worksoace.
+         * @param {number} id The unique name of the workspace.
+         * @param {V1SetResourceQuotaRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        setResourceQuota(id: number, body: V1SetResourceQuotaRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1SetResourceQuotaResponse> {
+            const localVarFetchArgs = WorkspacesApiFetchParamCreator(configuration).setResourceQuota(id, body, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
          * @summary Unarchive a workspace.
          * @param {number} id The id of the workspace.
          * @param {*} [options] Override http request option.
@@ -34060,6 +34162,17 @@ export const WorkspacesApiFactory = function (configuration?: Configuration, fet
          */
         postWorkspace(body: V1PostWorkspaceRequest, options?: any) {
             return WorkspacesApiFp(configuration).postWorkspace(body, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Set resource quota for a worksoace.
+         * @param {number} id The unique name of the workspace.
+         * @param {V1SetResourceQuotaRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        setResourceQuota(id: number, body: V1SetResourceQuotaRequest, options?: any) {
+            return WorkspacesApiFp(configuration).setResourceQuota(id, body, options)(fetch, basePath);
         },
         /**
          * 
@@ -34230,6 +34343,19 @@ export class WorkspacesApi extends BaseAPI {
      */
     public postWorkspace(body: V1PostWorkspaceRequest, options?: any) {
         return WorkspacesApiFp(this.configuration).postWorkspace(body, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Set resource quota for a worksoace.
+     * @param {number} id The unique name of the workspace.
+     * @param {V1SetResourceQuotaRequest} body
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkspacesApi
+     */
+    public setResourceQuota(id: number, body: V1SetResourceQuotaRequest, options?: any) {
+        return WorkspacesApiFp(this.configuration).setResourceQuota(id, body, options)(this.fetch, this.basePath)
     }
     
     /**

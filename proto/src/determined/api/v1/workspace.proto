@@ -162,6 +162,8 @@ message PostWorkspaceRequest {
   optional string namespace_name = 17;
   // Optional indication whether we auto-create a namespace. 
   bool auto_create_namespace = 18;
+  // Optional quota to set on the bound namespace.
+  optional int32 quota = 19;
 }
 
 // Response to PostWorkspaceRequest.
@@ -255,6 +257,23 @@ message ListWorkspaceNamespaceBindingsRequest {
   // Optional name of the namespace to which we bind the workspace.
   optional string namespace_name = 3;
 }
+
+// Request to set the resource quota for a workspace.
+message SetResourceQuotaRequest {
+  option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+    json_schema: { required: [ "id" ] }
+  };
+
+  // The unique name of the workspace.
+  int32 id = 1;
+  // The quota request limit to be put on the workspace.
+  int32 quota = 2;
+  // Cluster containing the namespace.
+  string cluster_name = 3;
+}
+
+// Response for setting the resource quota for a workspace.
+message SetResourceQuotaResponse {}
 
 // Request for archiving a workspace.
 message ArchiveWorkspaceRequest {

@@ -10949,6 +10949,7 @@ class v1PostWorkspaceRequest(Printable):
     defaultAuxPool: "typing.Optional[str]" = None
     defaultComputePool: "typing.Optional[str]" = None
     namespaceName: "typing.Optional[str]" = None
+    quota: "typing.Optional[int]" = None
 
     def __init__(
         self,
@@ -10961,6 +10962,7 @@ class v1PostWorkspaceRequest(Printable):
         defaultAuxPool: "typing.Union[str, None, Unset]" = _unset,
         defaultComputePool: "typing.Union[str, None, Unset]" = _unset,
         namespaceName: "typing.Union[str, None, Unset]" = _unset,
+        quota: "typing.Union[int, None, Unset]" = _unset,
     ):
         self.name = name
         if not isinstance(agentUserGroup, Unset):
@@ -10977,6 +10979,8 @@ class v1PostWorkspaceRequest(Printable):
             self.defaultComputePool = defaultComputePool
         if not isinstance(namespaceName, Unset):
             self.namespaceName = namespaceName
+        if not isinstance(quota, Unset):
+            self.quota = quota
 
     @classmethod
     def from_json(cls, obj: Json) -> "v1PostWorkspaceRequest":
@@ -10997,6 +11001,8 @@ class v1PostWorkspaceRequest(Printable):
             kwargs["defaultComputePool"] = obj["defaultComputePool"]
         if "namespaceName" in obj:
             kwargs["namespaceName"] = obj["namespaceName"]
+        if "quota" in obj:
+            kwargs["quota"] = obj["quota"]
         return cls(**kwargs)
 
     def to_json(self, omit_unset: bool = False) -> typing.Dict[str, typing.Any]:
@@ -11017,6 +11023,8 @@ class v1PostWorkspaceRequest(Printable):
             out["defaultComputePool"] = self.defaultComputePool
         if not omit_unset or "namespaceName" in vars(self):
             out["namespaceName"] = self.namespaceName
+        if not omit_unset or "quota" in vars(self):
+            out["quota"] = self.quota
         return out
 
 class v1PostWorkspaceResponse(Printable):
@@ -13562,6 +13570,45 @@ class v1SetNotebookPriorityResponse(Printable):
         }
         if not omit_unset or "notebook" in vars(self):
             out["notebook"] = None if self.notebook is None else self.notebook.to_json(omit_unset)
+        return out
+
+class v1SetResourceQuotaRequest(Printable):
+    """Request to set the resource quota for a workspace."""
+    clusterName: "typing.Optional[str]" = None
+    quota: "typing.Optional[int]" = None
+
+    def __init__(
+        self,
+        *,
+        id: int,
+        clusterName: "typing.Union[str, None, Unset]" = _unset,
+        quota: "typing.Union[int, None, Unset]" = _unset,
+    ):
+        self.id = id
+        if not isinstance(clusterName, Unset):
+            self.clusterName = clusterName
+        if not isinstance(quota, Unset):
+            self.quota = quota
+
+    @classmethod
+    def from_json(cls, obj: Json) -> "v1SetResourceQuotaRequest":
+        kwargs: "typing.Dict[str, typing.Any]" = {
+            "id": obj["id"],
+        }
+        if "clusterName" in obj:
+            kwargs["clusterName"] = obj["clusterName"]
+        if "quota" in obj:
+            kwargs["quota"] = obj["quota"]
+        return cls(**kwargs)
+
+    def to_json(self, omit_unset: bool = False) -> typing.Dict[str, typing.Any]:
+        out: "typing.Dict[str, typing.Any]" = {
+            "id": self.id,
+        }
+        if not omit_unset or "clusterName" in vars(self):
+            out["clusterName"] = self.clusterName
+        if not omit_unset or "quota" in vars(self):
+            out["quota"] = self.quota
         return out
 
 class v1SetSearcherProgressOperation(Printable):
@@ -22286,6 +22333,31 @@ def post_SetNotebookPriority(
     if _resp.status_code == 200:
         return v1SetNotebookPriorityResponse.from_json(_resp.json())
     raise APIHttpError("post_SetNotebookPriority", _resp)
+
+def post_SetResourceQuota(
+    session: "api.BaseSession",
+    *,
+    body: "v1SetResourceQuotaRequest",
+    id: int,
+) -> None:
+    """Set resource quota for a worksoace.
+
+    - id: The unique name of the workspace.
+    """
+    _params = None
+    _resp = session._do_request(
+        method="POST",
+        path=f"/api/v1/workspaces/{id}/quota",
+        params=_params,
+        json=body.to_json(True),
+        data=None,
+        headers=None,
+        timeout=None,
+        stream=False,
+    )
+    if _resp.status_code == 200:
+        return
+    raise APIHttpError("post_SetResourceQuota", _resp)
 
 def post_SetShellPriority(
     session: "api.BaseSession",

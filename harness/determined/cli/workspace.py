@@ -166,6 +166,18 @@ def add_workspace_namespace_binding(args: argparse.Namespace):
     print("Workspace " + workspace_name + " is bound to " + n)
     return None
 
+def set_quota(args: argparse.Namespace):
+    sess = cli.setup_session(args)
+    w = api.workspace_by_name(sess, args.workspace_name)
+    content = bindings.v1SetResourceQuotaRequest(
+        id=w.id,
+        quota=args.resource_quota,
+        clusterName=args.cluster_name,
+    )
+    ws_name = str(args.workspace_name)
+    bindings.post_SetResourceQuota(sess, body=content, id=w.id)
+    print("Successfully set resource quota " + str(args.resource_quota) + " for workspace " + str(ws_name))
+    return None
 
 def _parse_agent_user_group_args(args: argparse.Namespace) -> Optional[bindings.v1AgentUserGroup]:
     if args.agent_uid or args.agent_gid or args.agent_user or args.agent_group:
@@ -194,12 +206,23 @@ def _parse_checkpoint_storage_args(args: argparse.Namespace) -> Any:
 def create_workspace(args: argparse.Namespace) -> None:
     agent_user_group = _parse_agent_user_group_args(args)
     checkpoint_storage = _parse_checkpoint_storage_args(args)
-
-    if args.cluster_name and (not args.namespace and not args.auto_create_namespace):
-        raise api.errors.BadRequestException(
+    
+    if args.namespace and args.auto_create_namespace:
+         raise api.errors.BadRequestException(
             "must provide either --auto-create-namespace or --namespace NAMESPACE"
         )
 
+    if (args.cluster_name or args.quota) and (not args.namespace and not args.auto_create_namespace):
+        raise api.errors.BadRequestException(
+            "must provide either --auto-create-namespace or --namespace NAMESPACE"
+        )
+    if args.namespace and args.quota:
+        raise api.errors.BadRequestException(
+            "you cannot set the quota on a preexisting namesapce. If you would like to set the \
+            quota on the namespace bound to your workspace, please specify the \
+            --auto-create-namesapce flag, and we will create a Kubernetes namesapce for \
+            you!"
+        )
     if (args.namespace or args.auto_create_namespace) and not args.cluster_name:
         raise api.errors.BadRequestException(
             "must specify --cluster-name CLUSTER_NAME"
@@ -213,10 +236,17 @@ def create_workspace(args: argparse.Namespace) -> None:
         defaultComputePool=args.default_compute_pool,
         defaultAuxPool=args.default_aux_pool,
         clusterName=args.cluster_name,
+        quota=args.quota,
         namespaceName=args.namespace,
         autoCreateNamespace=args.auto_create_namespace,
     )
     w = bindings.post_PostWorkspace(sess, body=content).workspace
+    
+    if args.namespace or args.auto_create_namespace:
+        ns = args.namespace
+        if args.auto_create_namespace:
+            ns = "det-" + w.name
+        print("bound workspace " + w.name + " to namespace " + ns)
 
     if args.json:
         render.print_json(w.to_json())
@@ -420,6 +450,8 @@ args_description = [
                     cli.Arg("--json", action="store_true", help="print as JSON"),
                     cli.Arg("--cluster-name", type=str, help="cluster within which we create the \
                         workspace-namespace binding"),
+                    cli.Arg("-q", "--quota", type=int, help="resource quota to which the \
+                        namespace is limited"),
                     cli.Group(
                          cli.Arg("-n", "--namespace", type=str, help="existing namespace to which \
                             the workspace is bound"),
@@ -481,6 +513,23 @@ args_description = [
                                 to auto-create a namespace for the specified workspace"),
                             cli.Arg("--namespace_name", type=str, help="existing namespace to which \
                                 the workspace is bound."),
+                        ],
+                    ),
+                    cli.Cmd(
+                        "set",
+                        None,
+                        "manage quotas",
+                        [
+                            cli.Cmd("quota",
+                                    set_quota,
+                                    "set quota",
+                                [
+                                    cli.Arg("workspace_name", type=str, help="name of the workspace"), 
+                                    cli.Arg("resource_quota", type=int, help="quota for the workspace"),
+                                    cli.Arg("cluster_name", type=str, help="cluster within which we create \
+                                    the quota"),
+                                ],
+                            ),
                         ],
                     ),
                 ],
