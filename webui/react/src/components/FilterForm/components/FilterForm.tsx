@@ -36,7 +36,7 @@ const FilterForm = ({ formStore, columns, onHidePopOver }: Props): JSX.Element =
   };
 
   return (
-    <div className={css.base}>
+    <div className={css.base} data-test-component="filterForm">
       {Loadable.match(loadableData, {
         Failed: () => null, // TODO inform user if data fails to load
         Loaded: (data) => (

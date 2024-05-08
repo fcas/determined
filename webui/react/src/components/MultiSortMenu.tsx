@@ -128,6 +128,7 @@ export const sortMenuItemsForColumn = (
 
 const DirectionOptions: React.FC<DirectionOptionsProps> = ({ onChange, type, value }) => (
   <Select
+    data-test="order"
     options={optionsByColumnType[type]}
     placeholder="Select direction"
     value={value}
@@ -139,6 +140,7 @@ const DirectionOptions: React.FC<DirectionOptionsProps> = ({ onChange, type, val
 const ColumnOptions: React.FC<ColumnOptionsProps> = ({ onChange, columns, value }) => (
   <Select
     autoFocus
+    data-test="column"
     dropdownMatchSelectWidth={300}
     loading={Loadable.isNotLoaded(columns)}
     options={Loadable.getOrElse([], columns)
@@ -176,6 +178,7 @@ const MultiSortRow: React.FC<MultiSortRowProps> = ({ sort, columns, onChange, on
       </div>
       <div>
         <Button
+          data-test="remove"
           icon={<Icon name="close" title="Remove sort" />}
           size="small"
           type="text"
@@ -207,7 +210,7 @@ const MultiSort: React.FC<MultiSortProps> = ({ sorts, columns, onChange }) => {
   };
 
   return (
-    <div className={css.base}>
+    <div className={css.base} data-test-component="multiSort">
       <div>Sort by</div>
       <div className={css.rows}>
         {sorts.map((sort, idx) => {
@@ -227,10 +230,14 @@ const MultiSort: React.FC<MultiSortProps> = ({ sorts, columns, onChange }) => {
         })}
       </div>
       <div className={css.actions}>
-        <Button icon={<Icon decorative name="add" size="tiny" />} type="text" onClick={addRow}>
+        <Button
+          data-test="add"
+          icon={<Icon decorative name="add" size="tiny" />}
+          type="text"
+          onClick={addRow}>
           Add sort
         </Button>
-        <Button type="text" onClick={clearAll}>
+        <Button data-test="reset" type="text" onClick={clearAll}>
           Reset
         </Button>
       </div>
@@ -255,7 +262,7 @@ const MultiSortMenu: React.FC<MultiSortProps> = ({
     <Dropdown
       content={<MultiSort columns={columns} sorts={sorts} onChange={onChange} />}
       onOpenChange={onSortPopoverOpenChange}>
-      <Button hideChildren={isMobile} icon={<SortButtonIcon />}>
+      <Button data-test-component="multiSortMenu" hideChildren={isMobile} icon={<SortButtonIcon />}>
         Sort {validSorts.length ? `(${validSorts.length})` : ''}
       </Button>
     </Dropdown>
