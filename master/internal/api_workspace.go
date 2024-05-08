@@ -749,18 +749,42 @@ func (a *apiServer) DeleteWorkspace(
 	if err != nil {
 		return nil, fmt.Errorf("error deleting workspace (%d) templates: %w", req.Id, err)
 	}
+	// Delete workspace-namespace binding.
+	_, err = db.Bun().NewDelete().
+		Model(&model.WorkspaceNamespace{}).
+		Where("workspace_id =  ?", req.Id).
+		Exec(ctx)
+
+	// Delete the workspace in Kubernetes.
+	var wsToDelete model.Workspace
+	err = db.Bun().NewSelect().Model(&model.Workspace{}).Where("id = ?", req.Id).Scan(ctx, &wsToDelete)
+	if err != nil {
+		return nil, err
+	}
 
 	if len(projects) == 0 {
 		err = a.m.db.QueryProto("delete_workspace", holder, req.Id)
 		if err != nil {
 			return nil, fmt.Errorf("error deleting workspace (%d): %w", req.Id, err)
 		}
+		namespaceName, err := generateNamespaceName(wsToDelete.Name)
+		_, err = a.m.rm.DeleteNamespace(*namespaceName)
+		if err != nil {
+			return nil, err
+		}
+
 		return &apiv1.DeleteWorkspaceResponse{Completed: true}, nil
 	}
 
 	go func() {
 		a.deleteWorkspace(ctx, req.Id, projects)
 	}()
+
+	namespaceName, err := generateNamespaceName(wsToDelete.Name)
+	_, err = a.m.rm.DeleteNamespace(*namespaceName)
+	if err != nil {
+		return nil, err
+	}
 
 	return &apiv1.DeleteWorkspaceResponse{Completed: false}, nil
 }
