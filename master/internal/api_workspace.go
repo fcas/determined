@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"unicode"
@@ -31,7 +32,22 @@ import (
 	"github.com/determined-ai/determined/proto/pkg/workspacev1"
 )
 
-const kubernetesDefaultNamespace = "default"
+const (
+	// defaultKubernetesNamespace is the name of Kubernete's default namespace for a given cluster.
+	defaultKubernetesNamespace = "default"
+	// maxNamespaceLength is the maximum character length that a Kubernetes namespace can be.
+	maxNamespaceLength = 63
+	// extraDetChars is the maximum amount of additional characters that can be added to a
+	// Kubernetes namespace name. Kubernetes namespace name length cannot exceed 63 characters as
+	// they must comply with RFC 1123 DNS labels. However, to ensure that all auto-generated
+	// namespace names are both given a determined prefix and are guaranteed to be unique, we must
+	// attach the det- prefix to the name while also appending _<workspace_id> to the end of the
+	// namespace name. Allowing the workspace ID to occupy up to 6 characters (<= 999,999 unique
+	// workspaces), and considering the _ preceding the workspace ID, we allow for determined to
+	// occupy up to 4 + 1 + 6 = 11 characters of the auto-generated namespace name, which is
+	// accounted for using extraDetChars below.
+	extraDetChars = 11
+)
 
 func maskStorageConfigSecrets(w *workspacev1.Workspace) error {
 	if w.CheckpointStorageConfig == nil {
@@ -75,7 +91,7 @@ func validateWorkspaceName(name string) error {
 	switch {
 	case len(name) < 1:
 		return status.Errorf(codes.InvalidArgument, "name '%s' must be at least 1 character long", name)
-	case len(name) > 53:
+	case len(name) > 80:
 		return status.Errorf(codes.InvalidArgument, "name '%s' must be at most 53 character long", name)
 	case len(strings.TrimFunc(name, unicode.IsSpace)) == 0:
 		return status.Error(codes.InvalidArgument, "name must contain at least non-whitespace letter")
@@ -83,13 +99,20 @@ func validateWorkspaceName(name string) error {
 		return nil
 	}
 }
-
-func generateNamespaceName(workspace string) (*string, error) {
-	namespace := "det-" + workspace
-	// Ensure the namespace name is <= 63 characters.
-	if len(namespace) > 63 {
-		return nil, status.Error(codes.InvalidArgument, "The namespace name must be at most 63 characters")
+func generateNamespaceName(workspace string, workspaceID int) (*string, error) {
+	// Kubernetes namespace names must follow the regex pattern [a-z0-9]([-a-z0-9]*[a-z0-9])? and
+	// therefore cannot contain any capital letters nor special characters other than "-".
+	// Ensure namespace name is lowercased and strip workspace of all characters that are out of
+	// compliance with the kubernetes namespace name.
+	workspace = strings.ToLower(workspace)
+	badChars := []string{"!", "?", ".", "_", " ", "(", ")", "&", "^", "%", "$", "#", "@", "*", "+"}
+	for _, badChar := range badChars {
+		workspace = strings.ReplaceAll(workspace, badChar, "")
 	}
+	cap := math.Min(float64(len(workspace)), float64(maxNamespaceLength-extraDetChars))
+	workspacePrefix := workspace[0:int(cap)]
+	id := strconv.Itoa(workspaceID)
+	namespace := "det-" + workspacePrefix + "_" + id
 	return &namespace, nil
 }
 

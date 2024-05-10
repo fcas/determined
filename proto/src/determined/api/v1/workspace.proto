@@ -238,6 +238,20 @@ message ModifyWorkspaceNamespaceBindingResponse {
   string name = 1;
 }
 
+// Request for modifying a namespace binding to a workspace.
+message ListWorkspaceNamespaceBindingsRequest {
+  option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+    json_schema: { required: [ "id" ] }
+  };
+
+  // The unique name of the workspace.
+  int32 id = 1;
+  // Optional name of the cluster containing the namespace.
+  string cluster_name = 2;
+  // Optional name of the namespace to which we bind the workspace.
+  optional string namespace_name = 3;
+}
+
 // Request for archiving a workspace.
 message ArchiveWorkspaceRequest {
   option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
