@@ -3,6 +3,7 @@ import { expect, Page } from '@playwright/test';
 import { UserManagement } from 'e2e/models/pages/Admin/UserManagement';
 import { safeName } from 'e2e/utils/naming';
 import { repeatWithFallback } from 'e2e/utils/polling';
+import { V1PostUserRequest } from 'services/api-ts-sdk/api';
 
 export interface User {
   username: string;
@@ -171,20 +172,23 @@ export class UserFixture {
   }
 
   /**
-   * Delete a user via the UI.
+   * Validate a user via the UI matches the expected.
    * @param {User} obj - Representation of the user to validate against the table
    */
-  async validateUser({ username, displayName, id, isAdmin, isActive }: User): Promise<void> {
-    const row = await this.userManagementPage.getRowByUsernameSearch(username);
-    expect(await row.getId()).toEqual(id);
-    await expect(row.user.name.pwLocator).toContainText(username);
-    if (displayName) {
-      await expect(row.user.alias.pwLocator).toContainText(displayName);
+  async validateUser({ user }: V1PostUserRequest): Promise<void> {
+    if (user === undefined) {
+      throw new Error('Can not validate undefined user.');
+    }
+    const row = await this.userManagementPage.getRowByUsernameSearch(user.username);
+    expect(Number(await row.getId())).toEqual(user.id);
+    await expect(row.user.name.pwLocator).toContainText(user.username);
+    if (user.displayName) {
+      await expect(row.user.alias.pwLocator).toContainText(user.displayName);
     } else {
       await row.user.alias.pwLocator.waitFor({ state: 'hidden' });
     }
-    await expect(row.role.pwLocator).toContainText(isAdmin ? 'Admin' : 'Member');
-    await expect(row.status.pwLocator).toContainText(isActive ? 'Active' : 'Inactive');
+    await expect(row.role.pwLocator).toContainText(user.admin ? 'Admin' : 'Member');
+    await expect(row.status.pwLocator).toContainText(user.active ? 'Active' : 'Inactive');
   }
 
   /**

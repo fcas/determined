@@ -1,10 +1,4 @@
-import {
-  APIRequest,
-  APIRequestContext,
-  Browser,
-  BrowserContext,
-  Page,
-} from '@playwright/test';
+import { APIRequest, APIRequestContext, Browser, BrowserContext, Page } from '@playwright/test';
 
 export class ApiAuthFixture {
   apiContext: APIRequestContext | undefined;
@@ -22,7 +16,12 @@ export class ApiAuthFixture {
   readonly #USERNAME: string;
   readonly #PASSWORD: string;
   context: BrowserContext | undefined;
-  constructor(request: APIRequest, browser: Browser, baseURL: string | undefined, existingPage: Page | undefined = undefined) {
+  constructor(
+    request: APIRequest,
+    browser: Browser,
+    baseURL: string | undefined,
+    existingPage: Page | undefined = undefined,
+  ) {
     if (process.env.PW_USER_NAME === undefined) {
       throw new Error('username must be defined');
     }
