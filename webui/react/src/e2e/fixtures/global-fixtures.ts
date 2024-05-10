@@ -1,6 +1,10 @@
-import { test as base, Page } from '@playwright/test';
+import {
+  test as base,
+  Page,
+} from '@playwright/test';
 
 import { ApiAuthFixture } from './api.auth.fixture';
+import { ApiUserFixture } from './api.user.fixture';
 import { AuthFixture } from './auth.fixture';
 import { DevFixture } from './dev.fixture';
 import { UserFixture } from './user.fixture';
@@ -10,14 +14,17 @@ type CustomFixtures = {
   auth: AuthFixture;
   apiAuth: ApiAuthFixture;
   user: UserFixture;
+  apiUser: ApiUserFixture;
   authedPage: Page;
 };
 
 // https://playwright.dev/docs/test-fixtures
 export const test = base.extend<CustomFixtures>({
   // get the auth but allow yourself to log in through the api manually.
-  apiAuth: async ({ playwright, browser }, use) => {
-    const apiAuth = new ApiAuthFixture(playwright.request, browser);
+  apiAuth: async ({ playwright, browser, dev, baseURL }, use) => {
+    await dev.setServerAddress();
+    const apiAuth = new ApiAuthFixture(playwright.request, browser, baseURL, dev.page);
+    await apiAuth.login();
     await use(apiAuth);
   },
 
@@ -27,11 +34,13 @@ export const test = base.extend<CustomFixtures>({
   },
 
   // get a page already logged in
-  authedPage: async ({ playwright, browser, dev }, use) => {
-    await dev.setServerAddress();
-    const apiAuth = new ApiAuthFixture(playwright.request, browser, dev.page);
-    await apiAuth.login();
+  authedPage: async ({ apiAuth }, use) => {
     await use(apiAuth.page);
+  },
+
+  apiUser: async ({ apiAuth }, use) => {
+    const apiUser = new ApiUserFixture(apiAuth.request, apiAuth.browser, apiAuth.baseURL, apiAuth.page);
+    await use(apiUser);
   },
 
   dev: async ({ page }, use) => {

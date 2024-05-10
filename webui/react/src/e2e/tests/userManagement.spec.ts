@@ -9,7 +9,6 @@ import { SignIn } from 'e2e/models/pages/SignIn';
 import { sessionRandomHash } from 'e2e/utils/naming';
 import { repeatWithFallback } from 'e2e/utils/polling';
 import playwright from 'playwright';
-import { UsersApi } from 'services/api-ts-sdk/api';
 
 import { expect } from '@playwright/test';
 
@@ -17,25 +16,14 @@ import { expect } from '@playwright/test';
 test.describe.configure({ mode: 'serial' });
 
 test.describe('User Management', () => {
-  test.beforeEach(async ({ auth, dev, page, apiAuth }) => {
-    await dev.setServerAddress();
-    await auth.login();
-    const userManagementPage = new UserManagement(page);
+  test.beforeEach(async ({ authedPage }) => {
+    const userManagementPage = new UserManagement(authedPage);
     await userManagementPage.goto();
-    console.log('DNJ 11111');
-    const userResp = await new UsersApi({
-      accessToken: (await apiAuth.apiContext?.storageState())?.
-        cookies.
-        find((cookie) => { return cookie.name === 'auth' })?.value
-    },
-      'http://localhost:3001', fetch).
-      postUser({ user: { username: 'dnj111', admin: false, active: true } }, {});
-    console.log(`DNJ ${userResp}`);
     // wait for table to be stable and select page 1
     await userManagementPage.table.table.rows.pwLocator.count();
     const page1 = userManagementPage.table.table.pagination.pageButtonLocator(1);
     if (await userManagementPage.table.table.pagination.pwLocator.isVisible()) {
-      await expect(
+      await expect( // DNJ TODO - How necessary is this? Being stable at the start shouldn't make it more stable later from my understanding
         repeatWithFallback(
           async () => {
             await expect(page1).toHaveClass(/ant-pagination-item-active/);
@@ -48,11 +36,11 @@ test.describe('User Management', () => {
     }
   });
 
-  test('Navigate to User Management', async ({ page }) => {
-    const userManagementPage = new UserManagement(page);
+  test('Navigate to User Management', async ({ authedPage }) => {
+    const userManagementPage = new UserManagement(authedPage);
     await (await userManagementPage.nav.sidebar.headerDropdown.open()).admin.pwLocator.click();
-    await expect(page).toHaveTitle(userManagementPage.title);
-    await expect(page).toHaveURL(userManagementPage.url);
+    await expect(authedPage).toHaveTitle(userManagementPage.title);
+    await expect(authedPage).toHaveURL(userManagementPage.url);
   });
 
   test.describe('With New User Teardown', () => {
