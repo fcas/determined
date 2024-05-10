@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"unicode"
@@ -98,13 +99,20 @@ func validateWorkspaceName(name string) error {
 		return nil
 	}
 }
-
-func generateNamespaceName(workspace string) (*string, error) {
-	namespace := "det-" + workspace
-	// Ensure the namespace name is <= 63 characters.
-	if len(namespace) > 63 {
-		return nil, status.Error(codes.InvalidArgument, "The namespace name must be at most 63 characters")
+func generateNamespaceName(workspace string, workspaceID int) (*string, error) {
+	// Kubernetes namespace names must follow the regex pattern [a-z0-9]([-a-z0-9]*[a-z0-9])? and
+	// therefore cannot contain any capital letters nor special characters other than "-".
+	// Ensure namespace name is lowercased and strip workspace of all characters that are out of
+	// compliance with the kubernetes namespace name.
+	workspace = strings.ToLower(workspace)
+	badChars := []string{"!", "?", ".", "_", " ", "(", ")", "&", "^", "%", "$", "#", "@", "*", "+"}
+	for _, badChar := range badChars {
+		workspace = strings.ReplaceAll(workspace, badChar, "")
 	}
+	cap := math.Min(float64(len(workspace)), float64(maxNamespaceLength-extraDetChars))
+	workspacePrefix := workspace[0:int(cap)]
+	id := strconv.Itoa(workspaceID)
+	namespace := "det-" + workspacePrefix + "_" + id
 	return &namespace, nil
 }
 
@@ -782,18 +790,42 @@ func (a *apiServer) DeleteWorkspace(
 	if err != nil {
 		return nil, fmt.Errorf("error deleting workspace (%d) templates: %w", req.Id, err)
 	}
+	// Delete workspace-namespace binding.
+	_, err = db.Bun().NewDelete().
+		Model(&model.WorkspaceNamespace{}).
+		Where("workspace_id =  ?", req.Id).
+		Exec(ctx)
+
+	// Delete the workspace in Kubernetes.
+	var wsToDelete model.Workspace
+	err = db.Bun().NewSelect().Model(&model.Workspace{}).Where("id = ?", req.Id).Scan(ctx, &wsToDelete)
+	if err != nil {
+		return nil, err
+	}
 
 	if len(projects) == 0 {
 		err = a.m.db.QueryProto("delete_workspace", holder, req.Id)
 		if err != nil {
 			return nil, fmt.Errorf("error deleting workspace (%d): %w", req.Id, err)
 		}
+		namespaceName, err := generateNamespaceName(wsToDelete.Name)
+		_, err = a.m.rm.DeleteNamespace(*namespaceName)
+		if err != nil {
+			return nil, err
+		}
+
 		return &apiv1.DeleteWorkspaceResponse{Completed: true}, nil
 	}
 
 	go func() {
 		a.deleteWorkspace(ctx, req.Id, projects)
 	}()
+
+	namespaceName, err := generateNamespaceName(wsToDelete.Name)
+	_, err = a.m.rm.DeleteNamespace(*namespaceName)
+	if err != nil {
+		return nil, err
+	}
 
 	return &apiv1.DeleteWorkspaceResponse{Completed: false}, nil
 }

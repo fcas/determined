@@ -399,6 +399,15 @@ func (k *ResourceManager) VerifyNamespaceExists(namespaceName string, clusterNam
 	return nil
 }
 
+// CreateNamespace implements rm.ResourceManager.
+func (k *ResourceManager) DeleteNamespace(namespaceName string) (*string, error) {
+	err := k.podsService.DeleteNamespace(namespaceName)
+	if err != nil {
+		return nil, fmt.Errorf("error deleting namespace %s: %w", namespaceName, err)
+	}
+	return nil, nil
+}
+
 // getResourcePoolRef gets an actor ref to a resource pool by name.
 func (k ResourceManager) resourcePoolExists(name string) error {
 	resp, err := k.GetResourcePools()

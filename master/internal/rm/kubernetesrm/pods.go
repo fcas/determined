@@ -363,6 +363,12 @@ func (p *pods) VerifyNamespaceExists(namespaceName string) error {
 	return p.handleVerifyNamespaceExistsRequest(namespaceName)
 }
 
+func (p *pods) DeleteNamespace(namespaceName string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.handleDeleteNamespaceRequest(namespaceName)
+}
+
 func readClientConfig(kubeconfigPath string) (*rest.Config, error) {
 	if len(kubeconfigPath) == 0 {
 		// The default in-cluster case.  Internally, k8s.io/client-go/rest is going to look for
@@ -1356,6 +1362,31 @@ func (p *pods) handleVerifyNamespaceExistsRequest(namespaceName string) error {
 		})
 	if err != nil {
 		return errors.Wrapf(err, "error finding namespace %s", namespaceName)
+	}
+	return nil
+}
+
+func (p *pods) handleDeleteNamespaceRequest(namespaceName string) error {
+	namespace, err := p.clientSet.CoreV1().Namespaces().Get(context.TODO(), namespaceName, metaV1.GetOptions{})
+	if err != nil && !strings.Contains(err.Error(), "not found") {
+		return err
+	}
+	if _, ok := namespace.Labels[determinedLabel]; ok {
+		err = p.clientSet.CoreV1().Namespaces().Delete(context.TODO(), namespaceName, metaV1.DeleteOptions{})
+		if err != nil && !strings.Contains(err.Error(), "not found") {
+			return err
+		}
+	}
+	quotaName := namespaceName + "-quota"
+	quota, err := p.clientSet.CoreV1().ResourceQuotas(namespaceName).Get(context.TODO(), quotaName, metaV1.GetOptions{})
+	if err != nil && !strings.Contains(err.Error(), "not found") {
+		return err
+	}
+	if _, ok := quota.Labels[determinedLabel]; ok {
+		err = p.clientSet.CoreV1().ResourceQuotas(namespaceName).Delete(context.TODO(), quotaName, metaV1.DeleteOptions{})
+		if err != nil && !strings.Contains(err.Error(), "not found") {
+			return err
+		}
 	}
 	return nil
 }
