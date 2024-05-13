@@ -20,6 +20,7 @@ import (
 	"github.com/determined-ai/determined/master/internal/command"
 	"github.com/determined-ai/determined/master/internal/db"
 	"github.com/determined-ai/determined/master/internal/grpcutil"
+	"github.com/determined-ai/determined/master/internal/license"
 	"github.com/determined-ai/determined/master/internal/templates"
 	"github.com/determined-ai/determined/master/internal/workspace"
 	"github.com/determined-ai/determined/master/pkg/model"
@@ -76,11 +77,12 @@ func maskStorageConfigSecrets(w *workspacev1.Workspace) error {
 }
 
 func validatePostWorkspaceRequest(req *apiv1.PostWorkspaceRequest) error {
-	if req.ClusterName != nil && req.NamespaceName == nil {
+	if req.ClusterName != nil &&
+		(req.NamespaceName == nil && !req.AutoCreateNamespace) {
 		return status.Errorf(codes.InvalidArgument,
-			"Must specify either an existing Kubernetes namespace")
+			"Must specify either an existing Kubernetes namespace or indicate that you would like a namespace to be auto-created")
 	}
-	if req.NamespaceName != nil && req.ClusterName == nil {
+	if (req.AutoCreateNamespace || req.NamespaceName != nil) && req.ClusterName == nil {
 		return status.Errorf(codes.InvalidArgument,
 			"You must specify a cluster for the specified namespace that you would like to bind.")
 	}
@@ -429,9 +431,10 @@ func (a *apiServer) PostWorkspace(
 	// Verify that the specified cluster name is also provided in the master config.
 	if req.ClusterName != nil {
 		newReq := &apiv1.ModifyWorkspaceNamespaceBindingRequest{
-			Id:            int32(w.ID),
-			ClusterName:   *req.ClusterName,
-			NamespaceName: req.NamespaceName,
+			Id:                  int32(w.ID),
+			ClusterName:         *req.ClusterName,
+			NamespaceName:       req.NamespaceName,
+			AutoCreateNamespace: req.AutoCreateNamespace,
 		}
 
 		_, err := a.modifyWorkspaceNamespaceBinding(ctx, newReq, &tx, w)
@@ -595,8 +598,20 @@ func (a *apiServer) PatchWorkspace(
 
 func (a *apiServer) modifyWorkspaceNamespaceBinding(ctx context.Context,
 	req *apiv1.ModifyWorkspaceNamespaceBindingRequest, tx *bun.Tx, w *model.Workspace) (*apiv1.ModifyWorkspaceNamespaceBindingResponse, error) {
+	if req.AutoCreateNamespace {
+		license.RequireLicense("auto-create namespace")
+		if req.NamespaceName != nil {
+			return nil, status.Error(codes.InvalidArgument, "Cannot specify a namespace if you want to auto-create")
+		}
+		namespaceName, err := generateNamespaceName(w.Name, w.ID)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error creating namespace %s", *namespaceName)
+		}
+		req.NamespaceName = namespaceName
+	}
+
 	// Create the namespace in Kubernetes.
-	err := a.m.rm.CreateNamespace(false, *req.NamespaceName, req.ClusterName)
+	err := a.m.rm.CreateNamespace(req.AutoCreateNamespace, *req.NamespaceName, req.ClusterName)
 	if err != nil {
 		return nil, fmt.Errorf("error creating k8s namespace: %w", err)
 	}
@@ -767,7 +782,7 @@ func (a *apiServer) DeleteWorkspace(
 		if err != nil {
 			return nil, fmt.Errorf("error deleting workspace (%d): %w", req.Id, err)
 		}
-		namespaceName, err := generateNamespaceName(wsToDelete.Name)
+		namespaceName, err := generateNamespaceName(wsToDelete.Name, wsToDelete.ID)
 		_, err = a.m.rm.DeleteNamespace(*namespaceName)
 		if err != nil {
 			return nil, err
@@ -780,7 +795,7 @@ func (a *apiServer) DeleteWorkspace(
 		a.deleteWorkspace(ctx, req.Id, projects)
 	}()
 
-	namespaceName, err := generateNamespaceName(wsToDelete.Name)
+	namespaceName, err := generateNamespaceName(wsToDelete.Name, wsToDelete.ID)
 	_, err = a.m.rm.DeleteNamespace(*namespaceName)
 	if err != nil {
 		return nil, err

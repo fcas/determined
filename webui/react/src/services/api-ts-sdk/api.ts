@@ -6448,6 +6448,12 @@ export interface V1ModifyWorkspaceNamespaceBindingRequest {
      * @memberof V1ModifyWorkspaceNamespaceBindingRequest
      */
     namespaceName?: string;
+    /**
+     * Optional indication of whether we auto-create a namespace.
+     * @type {boolean}
+     * @memberof V1ModifyWorkspaceNamespaceBindingRequest
+     */
+    autoCreateNamespace?: boolean;
 }
 /**
  * Response for modify a namespace binding to a workspace.
@@ -8012,6 +8018,12 @@ export interface V1PostWorkspaceRequest {
      * @memberof V1PostWorkspaceRequest
      */
     namespaceName?: string;
+    /**
+     * Optional indication whether we auto-create a namespace.
+     * @type {boolean}
+     * @memberof V1PostWorkspaceRequest
+     */
+    autoCreateNamespace?: boolean;
 }
 /**
  * Response to PostWorkspaceRequest.

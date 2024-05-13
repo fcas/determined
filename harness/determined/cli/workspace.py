@@ -152,6 +152,7 @@ def add_workspace_namespace_binding(args: argparse.Namespace):
     w = api.workspace_by_name(sess, args.workspace_name)
     content= bindings.v1ModifyWorkspaceNamespaceBindingRequest(
         id=w.id,
+        autoCreateNamespace=args.auto_create_namespace,
         clusterName=args.cluster_name,
         namespaceName=args.namespace_name,
     )
@@ -194,12 +195,12 @@ def create_workspace(args: argparse.Namespace) -> None:
     agent_user_group = _parse_agent_user_group_args(args)
     checkpoint_storage = _parse_checkpoint_storage_args(args)
 
-    if args.cluster_name and not args.namespace:
+    if args.cluster_name and (not args.namespace and not args.auto_create_namespace):
         raise api.errors.BadRequestException(
-            "must provide --namespace NAMESPACE"
+            "must provide either --auto-create-namespace or --namespace NAMESPACE"
         )
 
-    if args.namespace and not args.cluster_name:
+    if (args.namespace or args.auto_create_namespace) and not args.cluster_name:
         raise api.errors.BadRequestException(
             "must specify --cluster-name CLUSTER_NAME"
         )
@@ -213,6 +214,7 @@ def create_workspace(args: argparse.Namespace) -> None:
         defaultAuxPool=args.default_aux_pool,
         clusterName=args.cluster_name,
         namespaceName=args.namespace,
+        autoCreateNamespace=args.auto_create_namespace,
     )
     w = bindings.post_PostWorkspace(sess, body=content).workspace
 
@@ -421,6 +423,8 @@ args_description = [
                     cli.Group(
                          cli.Arg("-n", "--namespace", type=str, help="existing namespace to which \
                             the workspace is bound"),
+                         cli.Arg("--auto-create-namespace", action="store_true", help="newly created namespace \
+                             to which the workspace is bound within the specified cluster")
                     ),
                 ],
             ),
@@ -473,6 +477,8 @@ args_description = [
                             cli.Arg("workspace_name", type=str, help="name of the workspace"),
                             cli.Arg("cluster_name", type=str, help="cluster within which we create \
                                 the workspace-namespace binding"),
+                            cli.Arg("--auto-create-namespace", action="store_true",help="indication \
+                                to auto-create a namespace for the specified workspace"),
                             cli.Arg("--namespace_name", type=str, help="existing namespace to which \
                                 the workspace is bound."),
                         ],

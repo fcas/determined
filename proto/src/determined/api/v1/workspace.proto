@@ -160,6 +160,8 @@ message PostWorkspaceRequest {
   optional string cluster_name = 16;
   // Optional name of the namespace to which we bind the workspace.
   optional string namespace_name = 17;
+  // Optional indication whether we auto-create a namespace. 
+  bool auto_create_namespace = 18;
 }
 
 // Response to PostWorkspaceRequest.
@@ -226,6 +228,8 @@ message ModifyWorkspaceNamespaceBindingRequest {
   string cluster_name = 2;
   // Optional name of the namespace to which we bind the workspace.
   optional string namespace_name = 3;
+  // Optional indication of whether we auto-create a namespace. 
+  bool auto_create_namespace = 4;
 }
 
 // Response for modify a namespace binding to a workspace.
