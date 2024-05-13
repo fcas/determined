@@ -1,31 +1,29 @@
-import { expect, Page } from '@playwright/test';
-
 import { UserManagement } from 'e2e/models/pages/Admin/UserManagement';
 import { safeName } from 'e2e/utils/naming';
 import { repeatWithFallback } from 'e2e/utils/polling';
+import _ from 'lodash';
 import { V1PostUserRequest } from 'services/api-ts-sdk/api';
 
-export interface User {
-  username: string;
-  displayName: string | undefined;
-  id: string;
-  isAdmin: boolean;
-  isActive: boolean;
-  password: string;
-}
-interface UserArgs {
+import {
+  expect,
+  Page,
+} from '@playwright/test';
+
+// export interface User {
+//   username: string;
+//   displayName: string | undefined;
+//   id: string;
+//   isAdmin: boolean;
+//   isActive: boolean;
+//   password: string;
+// }
+interface UserArgs { // DNJ TODO - do we keep?
   username?: string;
   displayName?: string;
-  isAdmin?: boolean;
+  admin?: boolean;
   password?: string;
 }
 
-// One list of users per test session. This is to encourage a final teardown
-// instance of the user fixture to deactivate all users created by the different
-// instances of the fixture used in each test scenario.
-// Note: This is can't collide when running tests in parallel because playwright
-// workers can't share variables.
-const users = new Map<string, User>();
 
 export class UserFixture {
   readonly userManagementPage: UserManagement;
@@ -36,22 +34,18 @@ export class UserFixture {
 
   /**
    * Fills the create/edit user form and submits it.
-   * @param {UserArgs} obj
-   * @param {string} [obj.username] - The username to fill in the form
-   * @param {string} [obj.displayName] - The display name to fill in the form
-   * @param {boolean} [obj.isAdmin] - Whether the user should be an admin
-   * @param {string} [obj.password] - The password to fill in the form
+   * @param {V1PostUserRequest} edit user settings to set user too.
    */
-  async fillUserForm({ username, displayName, isAdmin, password }: UserArgs): Promise<void> {
-    if (username !== undefined) {
-      await this.userManagementPage.createUserModal.username.pwLocator.fill(username);
+  async fillUserForm(edit: UserArgs): Promise<void> {
+    if (edit.username !== undefined) {
+      await this.userManagementPage.createUserModal.username.pwLocator.fill(edit.username);
     }
-    if (displayName !== undefined) {
-      await this.userManagementPage.createUserModal.displayName.pwLocator.fill(displayName);
+    if (edit.displayName !== undefined) {
+      await this.userManagementPage.createUserModal.displayName.pwLocator.fill(edit.displayName);
     }
-    if (password !== undefined) {
-      await this.userManagementPage.createUserModal.password.pwLocator.fill(password);
-      await this.userManagementPage.createUserModal.confirmPassword.pwLocator.fill(password);
+    if (edit.password !== undefined) {
+      await this.userManagementPage.createUserModal.password.pwLocator.fill(edit.password);
+      await this.userManagementPage.createUserModal.confirmPassword.pwLocator.fill(edit.password);
     }
 
     const checkedAttribute =
@@ -62,7 +56,7 @@ export class UserFixture {
       throw new Error('Expected attribute aria-checked to be present.');
     }
     const adminState = JSON.parse(checkedAttribute);
-    if (!!isAdmin !== adminState) {
+    if (!!edit.admin !== adminState) {
       await this.userManagementPage.createUserModal.adminToggle.pwLocator.click();
     }
 
@@ -85,9 +79,9 @@ export class UserFixture {
   async createUser({
     username = 'test-user',
     displayName,
-    isAdmin,
+    admin = false,
     password = 'TestPassword1',
-  }: UserArgs = {}): Promise<User> {
+  }: UserArgs = {}): Promise<V1PostUserRequest> {
     const safeUsername = safeName(username);
     await expect(
       repeatWithFallback(
@@ -104,7 +98,8 @@ export class UserFixture {
     await expect(this.userManagementPage.createUserModal.header.title.pwLocator).toContainText(
       'Add User',
     );
-    await this.fillUserForm({ displayName, isAdmin, password, username: safeUsername });
+    
+    await this.fillUserForm({username: safeUsername, admin, displayName, password}); 
     // Hashing a password after form submit might take a little extra time, so this can be a slower operation
     await expect(this.userManagementPage.toast.pwLocator).toBeVisible({ timeout: 10_000 });
     await expect(this.userManagementPage.toast.message.pwLocator).toContainText(
@@ -113,16 +108,18 @@ export class UserFixture {
     await this.userManagementPage.toast.close.pwLocator.click();
     await expect(this.userManagementPage.toast.pwLocator).toHaveCount(0);
     const row = await this.userManagementPage.getRowByUsernameSearch(safeUsername);
-    const id = await row.getId();
-    const user = {
-      displayName,
-      id,
-      isActive: true,
-      isAdmin: !!isAdmin,
+    const id = parseInt(await row.getId());
+    const user: V1PostUserRequest = {
+      user: {
+        displayName,
+        id,
+        active: true,
+        username: safeUsername,
+        admin: !!admin,
+      },
       password,
-      username: safeUsername,
+      isHashed: false
     };
-    users.set(String(id), user);
     return user;
   }
 
@@ -135,8 +132,12 @@ export class UserFixture {
    * @param {boolean} [edit.isAdmin] - Whether the user should be an admin
    * @returns {Promise<User>} Representation of the edited user
    */
-  async editUser(user: User, edit: UserArgs = {}): Promise<User> {
-    const row = await this.userManagementPage.getRowByUsernameSearch(user.username);
+  async editUser(user: V1PostUserRequest, edit: UserArgs = {}): Promise<V1PostUserRequest> {
+    if (user.user === undefined) {
+      throw new Error("Trying to edit user that is Undefined.");
+    }
+    const editedUser = {...user}
+    const row = await this.userManagementPage.getRowByUsernameSearch(user.user.username);
     await (await row.actions.open()).edit.pwLocator.click();
     await expect(this.userManagementPage.createUserModal.pwLocator).toBeVisible();
     await expect(this.userManagementPage.createUserModal.header.title.pwLocator).toContainText(
@@ -145,7 +146,7 @@ export class UserFixture {
     await expect(this.userManagementPage.createUserModal.username.pwLocator).toBeDisabled();
     expect(
       await this.userManagementPage.createUserModal.displayName.pwLocator.getAttribute('value'),
-    ).toEqual(user.displayName || '');
+    ).toEqual(user.user.displayName || '');
     const checkedAttribute =
       await this.userManagementPage.createUserModal.adminToggle.pwLocator.getAttribute(
         'aria-checked',
@@ -154,7 +155,7 @@ export class UserFixture {
       throw new Error('Expected attribute aria-checked to be present.');
     }
     const adminState = JSON.parse(checkedAttribute);
-    if (user.isAdmin) {
+    if (user.user.admin) {
       expect(adminState).toBeTruthy();
     } else {
       expect(adminState).not.toBeTruthy();
@@ -166,8 +167,17 @@ export class UserFixture {
     );
     await this.userManagementPage.toast.close.pwLocator.click();
     await expect(this.userManagementPage.toast.pwLocator).toHaveCount(0);
-    const editedUser = { ...user, ...edit };
-    users.set(String(user.id), editedUser);
+    if (editedUser.user === undefined) {
+      throw new Error("Result from edit user is Undefined.");
+    }
+    editedUser.password=edit.password;
+    if (edit.admin !== undefined){
+      editedUser.user.admin=edit.admin; 
+    }
+    if (edit.displayName !== undefined){
+      editedUser.user.displayName=edit.displayName; 
+    }
+    // users.set(String(user.id), editedUser); DNJ TODO
     return editedUser;
   }
 
@@ -196,7 +206,7 @@ export class UserFixture {
    */
   async deactivateTestUsersOnTable(): Promise<void> {
     // get all user ids so we can update the status later
-    const ids = await this.userManagementPage.table.table.allRowKeys();
+    // const ids = await this.userManagementPage.table.table.allRowKeys(); DNJ TODO
     // select all users
     await this.userManagementPage.table.table.headRow.selectAll.pwLocator.click();
     await expect(this.userManagementPage.table.table.headRow.selectAll.pwLocator).toBeChecked();
@@ -207,15 +217,15 @@ export class UserFixture {
     await this.userManagementPage.changeUserStatusModal.status.openMenu();
     await this.userManagementPage.changeUserStatusModal.status.deactivate.pwLocator.click();
     await this.userManagementPage.changeUserStatusModal.footer.submit.pwLocator.click();
-    for (const id of ids) {
-      const user = users.get(id);
-      if (user === undefined) {
-        throw new Error(
-          `Expected user with id ${id} present on the table to have been created during this session`,
-        );
-      }
-      users.set(String(id), { ...user, isActive: false });
-    }
+    // for (const id of ids) { DNJ TODO
+    //   const user = users.get(id); 
+    //   if (user === undefined) {
+    //     throw new Error(
+    //       `Expected user with id ${id} present on the table to have been created during this session`,
+    //     );
+    //   }
+    //   users.set(String(id), { ...user, isActive: false });
+    // }
   }
 
   /**
@@ -224,14 +234,17 @@ export class UserFixture {
    * @param {boolean} activate - Whether to activate or deactivate the user
    * @returns {Promise<User>} The updated user
    */
-  async changeStatusUser(user: User, activate: boolean): Promise<User> {
-    if (user.isActive === activate) {
+  async changeStatusUser(user: V1PostUserRequest, activate: boolean): Promise<V1PostUserRequest> {
+    if (user.user?.active === activate) {
       return user;
     }
     await expect(async () => {
+      if (user.user === undefined) {
+        throw new Error("Trying to change status on user that is Undefined.");
+      }
       // user table can flake if running in parrallel
       const actions = await (
-        await this.userManagementPage.getRowByUsernameSearch(user.username)
+        await this.userManagementPage.getRowByUsernameSearch(user.user.username)
       ).actions.open();
       if (
         (await actions.state.pwLocator.textContent()) !== (activate ? 'Activate' : 'Deactivate')
@@ -244,17 +257,17 @@ export class UserFixture {
       );
       await this.userManagementPage.toast.close.pwLocator.click();
     }).toPass({ timeout: 35_000 });
-    const editedUser = { ...user, isActive: activate };
-    users.set(String(user.id), editedUser);
+    const editedUser = _.merge(user, { user: { active: true }});
+    // users.set(String(user.id), editedUser); DNJ TODO
     return editedUser;
   }
 
   /**
    * Deactivates all test users created during this session.
    */
-  async deactivateAllTestUsers(): Promise<void> {
-    for await (const user of users.values()) {
-      await this.changeStatusUser(user, false);
-    }
+  async deactivateAllTestUsers(users: Map<number, V1PostUserRequest>): Promise < void> {
+  for await (const user of users.values()) { // DNJ TODO
+  await this.changeStatusUser(user, false);
+}
   }
 }

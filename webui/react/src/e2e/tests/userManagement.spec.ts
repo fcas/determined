@@ -45,7 +45,7 @@ test.describe('User Management', () => {
     // instances of the fixture used in each test scenario.
     // Note: This is can't collide when running tests in parallel because playwright
     // workers can't share variables.
-    const users = new Map<string, V1PostUserRequest>();
+    const users = new Map<number, V1PostUserRequest>();
     test.afterAll(async ({ browser }) => {
       const pageSetupTeardown = await browser.newPage();
       const authFixtureSetupTeardown = new AuthFixture(pageSetupTeardown);
@@ -54,7 +54,7 @@ test.describe('User Management', () => {
       await authFixtureSetupTeardown.login();
       await test.step('Deactivate Users', async () => {
         await userManagementPageSetupTeardown.goto();
-        await userFixtureSetupTeardown.deactivateAllTestUsers(); // DNJ TODO FINISH
+        await userFixtureSetupTeardown.deactivateAllTestUsers(users); // DNJ TODO FINISH
       });
       await pageSetupTeardown.close();
     });
@@ -62,10 +62,17 @@ test.describe('User Management', () => {
     test.describe('With a Test User', () => {
       let testUser: V1PostUserRequest;
 
-      test.beforeEach(async ({ apiUser }) => {
-        // DNJ TODO - before All has issues here with the fixture, what is the right fix?
+      test.beforeEach(async ({ user }) => {
+        // DNJ TODO - before All has issues here with the fixture, what is the right fix? - should probably do this one user through the UI
         await test.step('Create User', async () => {
-          testUser = await apiUser.createUser(apiUser.newRandom());
+          testUser = await user.createUser();
+          if (testUser.user == undefined){
+            throw new Error("Test user is undefined after being created without error.");
+          }
+          if (testUser.user.id == undefined){
+            throw new Error("Test user id is undefined after being created without error.");
+          }
+          users.set(testUser.user.id ,testUser)
         });
       });
 
@@ -73,29 +80,30 @@ test.describe('User Management', () => {
         await user.validateUser(testUser);
       });
 
-      //   test('New user acess', async ({ page, auth }) => {
-      //     const userManagementPage = new UserManagement(page);
-      //     await auth.logout();
-      //     await auth.login(testUser);
-      //     await userManagementPage.nav.sidebar.headerDropdown.open();
-      //     await userManagementPage.nav.sidebar.headerDropdown.settings.pwLocator.waitFor();
-      //     await userManagementPage.nav.sidebar.headerDropdown.admin.pwLocator.waitFor({
-      //       state: 'hidden',
-      //     });
-      //   });
+        test('New user acess', async ({ page, auth }) => {
+          const userManagementPage = new UserManagement(page);
+          await auth.logout();
+          await auth.login({username: testUser.user?.username, password: testUser.password});
+          await userManagementPage.nav.sidebar.headerDropdown.open();
+          await userManagementPage.nav.sidebar.headerDropdown.settings.pwLocator.waitFor({ state: 'visible' });
+          await userManagementPage.nav.sidebar.headerDropdown.admin.pwLocator.waitFor({
+            state: 'hidden',
+          });
+        });
 
-      //   test('Edit user', async ({ user }) => {
-      //     await test.step('Edit once', async () => {
-      //       testUser = await user.editUser(testUser, {
-      //         displayName: testUser.username + '_edited',
-      //       });
-      //       await user.validateUser(testUser);
-      //     });
-      //     await test.step('Edit again', async () => {
-      //       testUser = await user.editUser(testUser, { displayName: '', isAdmin: true });
-      //       await user.validateUser(testUser);
-      //     });
-      //   });
+        test('Edit user', async ({ user }) => {
+          await test.step('Edit once', async () => {    
+            if (testUser.user === undefined){
+              throw new Error("Trying to edit an undefined user.")
+            }       
+            testUser = await user.editUser(testUser, {displayName: testUser.user.username + '_edited'});
+            await user.validateUser(testUser);
+          });
+          await test.step('Edit again', async () => {
+            testUser = await user.editUser(testUser, {displayName: '', admin: true});
+            await user.validateUser(testUser);
+          });
+        });
     });
 
     // test.describe('With Test User we Deactivate', () => {
