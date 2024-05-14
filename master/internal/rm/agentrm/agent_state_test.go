@@ -362,8 +362,8 @@ func TestSlotStates(t *testing.T) {
 		drain:   ptrs.Ptr(true),
 	})
 	require.NoError(t, err)
-	require.Equal(t, true, slot.Draining)
-	require.Equal(t, false, slot.Enabled)
+	require.True(t, slot.Draining)
+	require.False(t, slot.Enabled)
 	require.Equal(t, 2, state.numSlots())
 
 	slots = state.patchAllSlotsState(patchAllSlotsState{

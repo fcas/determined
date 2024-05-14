@@ -225,7 +225,7 @@ func TestExternalPreemptionPending(t *testing.T) {
 
 func TestIsReattachable(t *testing.T) {
 	val := testMultiRM.IsReattachableOnlyAfterStarted()
-	require.Equal(t, true, val)
+	require.True(t, val)
 }
 
 func TestGetResourcePools(t *testing.T) {

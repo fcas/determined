@@ -803,7 +803,7 @@ func TestDeleteExperiments(t *testing.T) {
 
 		for _, id := range ids {
 			_, inRm := removed[id]
-			require.Equal(t, false, inRm)
+			require.False(t, inRm)
 		}
 	}
 

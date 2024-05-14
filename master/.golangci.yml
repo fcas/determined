@@ -138,7 +138,7 @@ linters:
   enable-all: true
   disable:
     # Linters that need triaging. Put all linters here if you upgrade.
-    # Below here are new linters from upgrading to 1.43.0. Since we enable all and disable
+    # Below here are new linters from upgrading to 1.57.0. Since we enable all and disable
     # selectively, when we upgrade we get a ton of new linters. For convenience next upgrade,
     # golangci-lint can tell you which linters are enabled:
     #   golangci-lint linters | sed -n '/Enabled/,/Disabled/p'
@@ -156,8 +156,7 @@ linters:
     - funlen # TODO(DET-9959)
     - nestif # TODO(DET-9960)
     - revive
-    - testifylint
-    - inamedparam
+    #- testifylint
 
     # Toss up linters.
     - predeclared
@@ -174,6 +173,8 @@ linters:
     - gochecknoinits
     - goerr113
     - gomnd
+    - inamedparam # We don't enforce this now, but might be useful in the future.
+
 
     # Linters that we should probably keep disabled.
     - errchkjson # Requiring us to ignore errors (even if they won't be non nil) feels strange.
