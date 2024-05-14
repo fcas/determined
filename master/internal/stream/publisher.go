@@ -309,7 +309,6 @@ func (ps *PublisherSet) processStream(
 		defer streamer.Cond.L.Unlock()
 
 		for len(*startups) == 0 && len(streamer.Msgs) == 0 && !streamer.Closed {
-			fmt.Println("has message(s)")
 			streamer.Cond.Wait()
 		}
 		// steal outputs
@@ -324,7 +323,6 @@ func (ps *PublisherSet) processStream(
 	}
 	for {
 		startup, msgs, closed := waitForSomething()
-		fmt.Println("sending messages")
 
 		// is the streamer closed?
 		if closed {
@@ -338,7 +336,6 @@ func (ps *PublisherSet) processStream(
 
 		// otherwise write all the messages we just got
 		err = WriteAll(socket, msgs)
-		fmt.Println("messages sent")
 		if err != nil {
 			if !websocket.IsCloseError(err, websocket.CloseAbnormalClosure) {
 				log.Errorf("unable to handle startup message: %s", err.Error())
@@ -404,9 +401,6 @@ func publishLoop[T stream.Msg](
 			if err != nil {
 				return err
 			}
-			// fmt.Printf("\npayload: %+v\n\n", notification.Extra)
-			// fmt.Printf("\nevent after: %+v, type: %+v\n\n", *event.After, reflect.TypeOf(*event.After))
-			// fmt.Printf("\nevent before: %+v\n\n", *event.After)
 			events = append(events, event)
 			// Collect all available notifications before proceeding.
 			keepGoing := true
