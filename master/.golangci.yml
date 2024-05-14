@@ -1,8 +1,8 @@
 run:
-  go: 1.20
+  go: "1.20"
 
-  # Deadline for individual linters to complete by.
-  deadline: 1m
+  # Timeout for individual linters to complete by.
+  timeout: 1m
 
   # Include tests files in linting process.
   tests: true
@@ -10,12 +10,10 @@ run:
   # The exit code when at least one issue was found.
   issues-exit-code: 1
 
-  skip-files:
-    - pkg/schemas/expconf/latest.go
-
 output:
-  # Linter output format.
-  format: colored-line-number
+  formats:
+    # Linter output format.
+    - format: colored-line-number
 
   # Print lines of code with issue.
   print-issued-lines: true
@@ -31,23 +29,80 @@ issues:
     - Consider preallocating
     # Exclude "gosec: Errors unhandled" because it duplicates errcheck.
     - G104
+    - G601
     - and that stutters
     - declaration of "(err|ctx)" shadows declaration at
 
   # Independently from option `exclude` golangci-lint uses default exclude patterns.
   exclude-use-default: false
 
+  exclude-files:
+    - pkg/schemas/expconf/latest.go
+
   # Disable the maximum issue count per linter.
-  max-per-linter: 0
+  max-issues-per-linter: 0
 
 linters-settings:
   depguard:
-    list-type: blacklist
-    include-go-root: true
-    packages:
-      - errors
-      - gopkg.in/yaml.v2
-      - github.com/dgrijalva/jwt-go
+    rules:
+      main:
+        #        list-mode: lax
+        allow:
+          - $gostd
+          - cloud.google.com/go/compute/metadata
+          - cloud.google.com/go/storage
+          - github.com/Masterminds/semver/v3
+          - github.com/Masterminds/sprig/v3
+          - github.com/aws/aws-sdk-go
+          - github.com/cenkalti/backoff/v4
+          - github.com/coreos/go-oidc/v3/oidc
+          - github.com/coreos/go-systemd/activation
+          - github.com/crewjam/saml
+          - github.com/davecgh/go-spew/spew
+          - github.com/determined-ai/determined
+          - github.com/docker
+          - github.com/dustinkirkland/golang-petname
+          - github.com/elastic/go-elasticsearch/v7
+          - github.com/emirpasic/gods/sets/treeset
+          - github.com/emirpasic/gods/trees/redblacktree
+          - github.com/ghodss/yaml
+          - github.com/go-co-op/gocron/v2
+          - github.com/go-pg/migrations/v8
+          - github.com/go-pg/pg/v10
+          - github.com/go-test
+          - github.com/golang-jwt/jwt/v4
+          - github.com/golang/protobuf
+          - github.com/google/go-cmp/cmp
+          - github.com/google/uuid
+          - github.com/gorilla/websocket
+          - github.com/grpc-ecosystem
+          - github.com/hashicorp/go-cleanhttp
+          - github.com/hashicorp/go-multierror
+          - github.com/hashicorp/golang-lru/v2
+          - github.com/huandu/xstrings
+          - github.com/jackc/pgconn
+          - github.com/jackc/pgtype
+          - github.com/jackc/pgx/v4/stdlib
+          - github.com/jinzhu/copier
+          - github.com/jmoiron/sqlx
+          - github.com/jonboulle/clockwork
+          - github.com/labstack/echo-contrib/prometheus
+          - github.com/labstack/echo/v4
+          - github.com/labstack/gommon/log
+          - github.com/lib/pq
+          - github.com/o1egl/paseto
+          - github.com/pkg/errors
+          - github.com/prometheus/client_golang
+          - github.com/robfig/cron/v3
+          - github.com/santhosh-tekuri/jsonschema/v2
+          - github.com/shopspring/decimal
+          - github.com/sirupsen/logrus
+          - github.com/soheilhy/cmux
+          - github.com/spf13
+          - github.com/stretchr/testify
+          - github.com/uptrace/bun
+          - github.hpe.com/hpe/hpc-ard-launcher-go/launcher
+          - k8s.io
   dupl:
     threshold: 210
   goconst:
@@ -56,34 +111,28 @@ linters-settings:
   gocritic:
     disabled-checks:
       - singleCaseSwitch
-  golint:
-    min-confidence: 0
   goimports:
     local-prefixes: github.com/determined-ai/determined
-  govet:
-    check-shadowing: true
   errcheck:
     exclude-functions:
-      - '(*database/sql.Rows).Close'
-      - '(*github.com/jmoiron/sqlx.NamedStmt).Close'
+      - "(*database/sql.Rows).Close"
+      - "(*github.com/jmoiron/sqlx.NamedStmt).Close"
   lll:
     line-length: 120
   misspell:
     locale: US
   exhaustruct:
     include:
-      - 'github.com/determined-ai/determined/master/pkg/schemas/expconf.*Config*'
-      - 'github.com/determined-ai/determined/proto/pkg/userv1.UserWebSetting'
+      - "github.com/determined-ai/determined/master/pkg/schemas/expconf.*Config*"
+      - "github.com/determined-ai/determined/proto/pkg/userv1.UserWebSetting"
   forbidigo:
     forbid:
       - 'fmt\.Print.*'
-      - 'metaV1.NamespaceAll' # Will error if someone has namespace restricted permissions.
-      - 'bundebug.WithVerbose'
-      - 'http.Client' # Use cleanhttp instead.
-      - 'http.Transport' # Use cleanhttp instead.
+      - "metaV1.NamespaceAll" # Will error if someone has namespace restricted permissions.
+      - "bundebug.WithVerbose"
+      - "http.Client" # Use cleanhttp instead.
+      - "http.Transport" # Use cleanhttp instead.
       - 'defer .*\.Lock\(\)'
-  staticcheck:
-    go: "1.20"
 
 linters:
   enable-all: true
@@ -97,15 +146,20 @@ linters:
     #   comm -13 <(cut -d : -f 1 <oldlinters.txt) <(cut -d : -f 1 <newlinters.txt)
 
     # Linters that we should probably enable. Please give each a ticket.
-    - cyclop          # TODO(DET-9951)
-    - errorlint       # TODO(DET-9952)
+    - cyclop # TODO(DET-9951)
+    - errorlint # TODO(DET-9952)
     - forcetypeassert # TODO(DET-9953)
-    - wrapcheck       # TODO(DET-9954)
-    - maintidx        # TODO(DET-9956)
-    - gocyclo         # TODO(DET-9957)
-    - gocognit        # TODO(DET-9958)
-    - funlen          # TODO(DET-9959)
-    - nestif          # TODO(DET-9960)
+    - wrapcheck # TODO(DET-9954)
+    - maintidx # TODO(DET-9956)
+    - gocyclo # TODO(DET-9957)
+    - gocognit # TODO(DET-9958)
+    - funlen # TODO(DET-9959)
+    - nestif # TODO(DET-9960)
+    - tagalign
+    - revive
+    - testifylint
+    - inamedparam
+    - perfsprint
 
     # Toss up linters.
     - predeclared
@@ -124,30 +178,32 @@ linters:
     - gomnd
 
     # Linters that we should probably keep disabled.
-    - errchkjson       # Requiring us to ignore errors (even if they won't be non nil) feels strange.
-    - musttag          # Really buggy now.
-    - prealloc         # Nick thinks this is premature optimization.
-    - varnamelen       # This is overally opinionated.
-    - paralleltest     # I don't understand this linter.
-    - gomoddirectives  # Seems unneeded and just going to make us make exceptions when we need to.
-    - gci              # We aren't using the gci tool.
-    - nolintlint       # Ideally should enable, but gofumpt adds leading space to // nolint for funcs.
-    - nlreturn         # This is overally opinionated.
-    - testpackage      # We don't use seperate test packages.
-    - unparam          # We have a lot of unused parameters.
+    - errchkjson # Requiring us to ignore errors (even if they won't be non nil) feels strange.
+    - musttag # Really buggy now.
+    - prealloc # Nick thinks this is premature optimization.
+    - varnamelen # This is overally opinionated.
+    - paralleltest # I don't understand this linter.
+    - gomoddirectives # Seems unneeded and just going to make us make exceptions when we need to.
+    - gci # We aren't using the gci tool.
+    - nolintlint # Ideally should enable, but gofumpt adds leading space to // nolint for funcs.
+    - nlreturn # This is overally opinionated.
+    - testpackage # We don't use seperate test packages.
+    - unparam # We have a lot of unused parameters.
     - gochecknoglobals # We have globals currently and don't have an issue with too many.
-    - exhaustive       # We often use switch statements as if statements.
+    - exhaustive # We often use switch statements as if statements.
+    - nakedret # Sometimes these are needed, and there's no easy way to replace them.
+    - protogetter # Carolina thinks this is overkill.
 
     # Linters that are deprecated / replaced / removed.
-    - nosnakecase      # Replaced by revive(var-naming).
-    - ifshort          # The repository of the linter has been deprecated by the owner.
-    - interfacer       # Linter archived since it can give bad suggestions.
-    - wastedassign     # We already have ineffassign.
-    - scopelint        # Replaced by exportloopref.
+    - nosnakecase # Replaced by revive(var-naming).
+    - ifshort # The repository of the linter has been deprecated by the owner.
+    - interfacer # Linter archived since it can give bad suggestions.
+    - wastedassign # We already have ineffassign.
+    - scopelint # Replaced by exportloopref.
     - exhaustivestruct # Replaced by exhaustruct.
-    - structcheck      # Replaced by unusued.
-    - varcheck         # Replaced by unusued.
-    - deadcode         # Replaced by unusued.
-    - maligned         # Replaced by govet 'fieldalignment'.
-    - golint           # Replaced by revive.
+    - structcheck # Replaced by unusued.
+    - varcheck # Replaced by unusued.
+    - deadcode # Replaced by unusued.
+    - maligned # Replaced by govet 'fieldalignment'.
+    - golint # Replaced by revive.
 

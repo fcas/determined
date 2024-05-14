@@ -182,7 +182,6 @@ func MetricBatches(
 		Where(fmt.Sprintf("m.metrics->'%s' ? '%s'", JSONKey, metricName)).
 		Where("m.end_time > ?", startTime).
 		Group("batches_processed").Scan(context.Background(), &rows)
-
 	if err != nil {
 		return nil, endTime, errors.Wrapf(err, "error querying DB for metric batches")
 	}

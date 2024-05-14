@@ -359,7 +359,6 @@ func (a *apiServer) PostWorkspace(
 	}
 
 	_, err = tx.NewInsert().Model(w).Exec(ctx)
-
 	if err != nil {
 		if strings.Contains(err.Error(), db.CodeUniqueViolation) {
 			return nil,

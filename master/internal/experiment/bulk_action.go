@@ -905,7 +905,6 @@ func BulkUpdateLogRentention(
 		}
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}

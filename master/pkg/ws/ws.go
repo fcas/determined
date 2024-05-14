@@ -232,7 +232,7 @@ func (s *WebSocket[TIn, TOut]) closeGraceful() error {
 	}
 
 	select {
-	case <-time.After(closeDeadline.Sub(time.Now())):
+	case <-time.After(time.Until(closeDeadline)):
 		return fmt.Errorf("did not close within the deadline")
 	case <-s.Done:
 	}

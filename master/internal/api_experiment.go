@@ -2848,7 +2848,6 @@ func (a *apiServer) PutTrial(ctx context.Context, req *apiv1.PutTrialRequest) (
 		trial = innerResp.Trial
 		return nil
 	})
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to run create trial tx: %w", err)
 	}
