@@ -32,7 +32,7 @@ type PermissionWithSubject struct {
 func (p PermissionWithSubject) String() string {
 	switch {
 	case len(p.PermissionTypes) == 0 && len(p.SubjectIDs) == 0:
-		return fmt.Sprintf("operation on type %s", p.SubjectType)
+		return "operation on type " + p.SubjectType
 	case len(p.PermissionTypes) == 0:
 		return fmt.Sprintf("operation on type %s with IDs %s", p.SubjectType, p.SubjectIDs)
 	case len(p.SubjectIDs) == 0:

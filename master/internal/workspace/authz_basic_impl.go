@@ -2,7 +2,8 @@ package workspace
 
 import (
 	"context"
-	"fmt"
+
+	"github.com/pkg/errors"
 
 	"github.com/determined-ai/determined/master/pkg/model"
 	"github.com/determined-ai/determined/proto/pkg/projectv1"
@@ -31,7 +32,7 @@ func (a *WorkspaceAuthZBasic) CanModifyRPWorkspaceBindings(
 	ctx context.Context, curUser model.User, workspaceIDs []int32,
 ) error {
 	if !curUser.Admin {
-		return fmt.Errorf("only admin privileged users can bind resource pool to a workspace")
+		return errors.New("only admin privileged users can bind resource pool to a workspace")
 	}
 	return nil
 }
@@ -67,7 +68,7 @@ func (a *WorkspaceAuthZBasic) CanCreateWorkspaceWithAgentUserGroup(
 	ctx context.Context, curUser model.User,
 ) error {
 	if !curUser.Admin {
-		return fmt.Errorf("only admin privileged users can set workspace agent user groups")
+		return errors.New("only admin privileged users can set workspace agent user groups")
 	}
 	return nil
 }
@@ -78,7 +79,7 @@ func (a *WorkspaceAuthZBasic) CanSetWorkspacesName(
 	ctx context.Context, curUser model.User, workspace *workspacev1.Workspace,
 ) error {
 	if !curUser.Admin && curUser.ID != model.UserID(workspace.UserId) {
-		return fmt.Errorf("only admins may set other user's workspaces names")
+		return errors.New("only admins may set other user's workspaces names")
 	}
 	return nil
 }
@@ -88,7 +89,7 @@ func (a *WorkspaceAuthZBasic) CanSetWorkspacesAgentUserGroup(
 	ctx context.Context, curUser model.User, workspace *workspacev1.Workspace,
 ) error {
 	if !curUser.Admin {
-		return fmt.Errorf("only admin privileged users can set workspace agent user groups")
+		return errors.New("only admin privileged users can set workspace agent user groups")
 	}
 	return nil
 }
@@ -99,7 +100,7 @@ func (a *WorkspaceAuthZBasic) CanDeleteWorkspace(
 	ctx context.Context, curUser model.User, workspace *workspacev1.Workspace,
 ) error {
 	if !curUser.Admin && curUser.ID != model.UserID(workspace.UserId) {
-		return fmt.Errorf("only admins may delete other user's workspaces")
+		return errors.New("only admins may delete other user's workspaces")
 	}
 	return nil
 }
@@ -110,7 +111,7 @@ func (a *WorkspaceAuthZBasic) CanArchiveWorkspace(
 	ctx context.Context, curUser model.User, workspace *workspacev1.Workspace,
 ) error {
 	if !curUser.Admin && curUser.ID != model.UserID(workspace.UserId) {
-		return fmt.Errorf("only admins may archive other user's workspaces")
+		return errors.New("only admins may archive other user's workspaces")
 	}
 	return nil
 }
@@ -121,7 +122,7 @@ func (a *WorkspaceAuthZBasic) CanUnarchiveWorkspace(
 	ctx context.Context, curUser model.User, workspace *workspacev1.Workspace,
 ) error {
 	if !curUser.Admin && curUser.ID != model.UserID(workspace.UserId) {
-		return fmt.Errorf("only admins may unarchive other user's workspaces")
+		return errors.New("only admins may unarchive other user's workspaces")
 	}
 	return nil
 }
@@ -146,7 +147,7 @@ func (a *WorkspaceAuthZBasic) CanSetWorkspacesCheckpointStorageConfig(
 	ctx context.Context, curUser model.User, workspace *workspacev1.Workspace,
 ) error {
 	if !curUser.Admin && curUser.ID != model.UserID(workspace.UserId) {
-		return fmt.Errorf("only admins may set checkpoint storage config on other user's workspaces")
+		return errors.New("only admins may set checkpoint storage config on other user's workspaces")
 	}
 	return nil
 }

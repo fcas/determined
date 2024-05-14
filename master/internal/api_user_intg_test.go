@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/pkg/errors"
 
 	"github.com/determined-ai/determined/master/internal/job/jobservice"
 	"github.com/determined-ai/determined/master/internal/rm"
@@ -136,7 +137,7 @@ func setupAPITest(t *testing.T, pgdb *db.PgDB,
 	userModel, err := user.ByUsername(context.TODO(), username)
 	require.NoError(t, err, "Couldn't get admin user")
 	ctx := metadata.NewIncomingContext(context.TODO(),
-		metadata.Pairs("x-user-token", fmt.Sprintf("Bearer %s", resp.Token)))
+		metadata.Pairs("x-user-token", "Bearer "+resp.Token))
 
 	return api, *userModel, ctx
 }
@@ -232,14 +233,14 @@ func TestAuthMiddleware(t *testing.T) {
 			"Accept": "application/json",
 		}},
 		{proxiedSubRoute, http.StatusOK, "", map[string]string{
-			allocationHeader: fmt.Sprintf("Bearer %s", allocationToken),
+			allocationHeader: "Bearer " + allocationToken,
 		}},
 		{proxiedSubRoute, http.StatusSeeOther, redirectedSubRoute, map[string]string{
-			allocationHeader: fmt.Sprintf("Bearer %s", "invalid-token"),
+			allocationHeader: "Bearer invalid-token",
 		}},
 		{proxiedSubRoute, http.StatusUnauthorized, "", map[string]string{
 			"Accept":         "application/json",
-			allocationHeader: fmt.Sprintf("Bearer %s", "invalid-token"),
+			allocationHeader: "Bearer invalid-token",
 		}},
 		{"/non-proxied-path", http.StatusUnauthorized, "", map[string]string{}},
 		{"/non-proxied-path", http.StatusUnauthorized, "", map[string]string{
@@ -689,7 +690,7 @@ func TestAuthzGetUsers(t *testing.T) {
 	api, authzUsers, curUser, ctx := setupUserAuthzTest(t, nil)
 
 	// Error just passes error through.
-	expectedErr := fmt.Errorf("filterUseList")
+	expectedErr := errors.New("filterUseList")
 	authzUsers.On("FilterUserList", mock.Anything, curUser, mock.Anything).
 		Return(nil, expectedErr).Once()
 	_, err := api.GetUsers(ctx, &apiv1.GetUsersRequest{})
@@ -715,7 +716,7 @@ func TestAuthzGetUser(t *testing.T) {
 	api, authzUsers, curUser, ctx := setupUserAuthzTest(t, nil)
 
 	// Error passes through when CanGetUser returns non nil error.
-	expectedErr := fmt.Errorf("canGetUserError")
+	expectedErr := errors.New("canGetUserError")
 	authzUsers.On("CanGetUser", mock.Anything, curUser, mock.Anything).
 		Return(expectedErr).Once()
 	_, err := api.GetUser(ctx, &apiv1.GetUserRequest{UserId: 1})
@@ -748,7 +749,7 @@ func TestAuthzPostUser(t *testing.T) {
 			GID:   6,
 			User:  "five",
 			Group: "six",
-		}).Return(fmt.Errorf("canCreateUserError")).Once()
+		}).Return(errors.New("canCreateUserError")).Once()
 
 	var five int32 = 5
 	var six int32 = 6
@@ -793,7 +794,7 @@ func TestAuthzSetUserPassword(t *testing.T) {
 	// If we can view the user we can get the error message from CanSetUsersPassword.
 	expectedErr := status.Error(codes.PermissionDenied, "canSetUsersPassword")
 	authzUsers.On("CanSetUsersPassword", mock.Anything, curUser, mock.Anything).
-		Return(fmt.Errorf("canSetUsersPassword")).Once()
+		Return(errors.New("canSetUsersPassword")).Once()
 	authzUsers.On("CanGetUser", mock.Anything, curUser, mock.Anything).Return(nil).Once()
 
 	_, err := api.SetUserPassword(ctx, &apiv1.SetUserPasswordRequest{UserId: int32(curUser.ID)})
@@ -804,16 +805,16 @@ func TestAuthzSetUserPassword(t *testing.T) {
 	require.Equal(t, apiPkg.NotFoundErrs("user", "", true).Error(), notFoundError.Error())
 
 	authzUsers.On("CanSetUsersPassword", mock.Anything, curUser, mock.Anything).
-		Return(fmt.Errorf("canSetUsersPassword")).Once()
+		Return(errors.New("canSetUsersPassword")).Once()
 	authzUsers.On("CanGetUser", mock.Anything, curUser,
 		mock.Anything).Return(authz2.PermissionDeniedError{}).Once()
 	_, err = api.SetUserPassword(ctx, &apiv1.SetUserPasswordRequest{UserId: int32(curUser.ID)})
 	require.Equal(t, apiPkg.NotFoundErrs("user", "", true).Error(), err.Error())
 
 	// If CanGetUser returns an error we also return that error.
-	cantViewUserError := fmt.Errorf("cantViewUserError")
+	cantViewUserError := errors.New("cantViewUserError")
 	authzUsers.On("CanSetUsersPassword", mock.Anything, curUser, mock.Anything).
-		Return(fmt.Errorf("canSetUsersPassword")).Once()
+		Return(errors.New("canSetUsersPassword")).Once()
 	authzUsers.On("CanGetUser", mock.Anything, curUser, mock.Anything).
 		Return(cantViewUserError).Once()
 	_, err = api.SetUserPassword(ctx, &apiv1.SetUserPasswordRequest{UserId: int32(curUser.ID)})
@@ -826,7 +827,7 @@ func TestAuthzPatchUser(t *testing.T) {
 	// If we can view the user we get the error from canSetUsersDisplayName.
 	expectedErr := status.Error(codes.PermissionDenied, "canSetUsersDisplayName")
 	authzUsers.On("CanSetUsersDisplayName", mock.Anything, curUser, mock.Anything).
-		Return(fmt.Errorf("canSetUsersDisplayName")).Once()
+		Return(errors.New("canSetUsersDisplayName")).Once()
 	authzUsers.On("CanGetUser", mock.Anything, curUser, mock.Anything).Return(nil).Once()
 
 	req := &apiv1.PatchUserRequest{
@@ -839,9 +840,9 @@ func TestAuthzPatchUser(t *testing.T) {
 	require.Equal(t, expectedErr.Error(), err.Error())
 
 	// If CanGetUser returns an error we also return the error.
-	cantViewUserError := fmt.Errorf("cantViewUserError")
+	cantViewUserError := errors.New("cantViewUserError")
 	authzUsers.On("CanSetUsersDisplayName", mock.Anything, curUser, mock.Anything).
-		Return(fmt.Errorf("canSetUsersDisplayName")).Once()
+		Return(errors.New("canSetUsersDisplayName")).Once()
 	authzUsers.On("CanGetUser", mock.Anything, curUser, mock.Anything).
 		Return(cantViewUserError).Once()
 	_, err = api.PatchUser(ctx, req)
@@ -849,7 +850,7 @@ func TestAuthzPatchUser(t *testing.T) {
 
 	// If we can't view the user get the same as passing in user not found.
 	authzUsers.On("CanSetUsersDisplayName", mock.Anything, curUser, mock.Anything).
-		Return(fmt.Errorf("canSetUsersDisplayName")).Once()
+		Return(errors.New("canSetUsersDisplayName")).Once()
 	authzUsers.On("CanGetUser", mock.Anything, curUser,
 		mock.Anything).Return(authz2.PermissionDeniedError{}).Once()
 	_, err = api.PatchUser(ctx, req)
@@ -865,7 +866,7 @@ func TestAuthzGetUserSetting(t *testing.T) {
 
 	expectedErr := status.Error(codes.PermissionDenied, "canGetUsersOwnSettings")
 	authzUsers.On("CanGetUsersOwnSettings", mock.Anything, curUser).
-		Return(fmt.Errorf("canGetUsersOwnSettings")).Once()
+		Return(errors.New("canGetUsersOwnSettings")).Once()
 
 	_, err := api.GetUserSetting(ctx, &apiv1.GetUserSettingRequest{})
 	require.Equal(t, expectedErr.Error(), err.Error())
@@ -877,7 +878,7 @@ func TestAuthzPostUserSetting(t *testing.T) {
 	expectedErr := status.Error(codes.PermissionDenied, "canCreateUsersOwnSetting")
 	authzUsers.On("CanCreateUsersOwnSetting", mock.Anything, curUser,
 		[]*model.UserWebSetting{{UserID: curUser.ID, Key: "k", Value: "v"}}).
-		Return(fmt.Errorf("canCreateUsersOwnSetting")).Once()
+		Return(errors.New("canCreateUsersOwnSetting")).Once()
 
 	_, err := api.PostUserSetting(ctx, &apiv1.PostUserSettingRequest{
 		Settings: []*userv1.UserWebSetting{{Key: "k", Value: "v"}},
@@ -890,7 +891,7 @@ func TestAuthzResetUserSetting(t *testing.T) {
 
 	expectedErr := status.Error(codes.PermissionDenied, "canResetUsersOwnSettings")
 	authzUsers.On("CanResetUsersOwnSettings", mock.Anything, curUser).
-		Return(fmt.Errorf("canResetUsersOwnSettings")).Once()
+		Return(errors.New("canResetUsersOwnSettings")).Once()
 
 	_, err := api.ResetUserSetting(ctx, &apiv1.ResetUserSettingRequest{})
 	require.Equal(t, expectedErr.Error(), err.Error())

@@ -1,7 +1,7 @@
 package provisioner
 
 import (
-	"fmt"
+	"errors"
 	"testing"
 	"time"
 
@@ -169,7 +169,7 @@ func (c *mockProvider) launchSuccess(instanceNum int) error {
 func (c *mockProvider) launchOne(instanceNum int) error {
 	c.history = append(c.history, newMockFuncCall("launch", c.mockInstanceType, instanceNum))
 	if c.failProvisioning && len(c.instances) == c.maxInstances-1 {
-		return fmt.Errorf("max instances reached")
+		return errors.New("max instances reached")
 	}
 	name := uuid.New().String()
 	inst := model.Instance{
@@ -183,7 +183,7 @@ func (c *mockProvider) launchOne(instanceNum int) error {
 }
 
 func (c *mockProvider) launchFail() error {
-	return fmt.Errorf("failed to launch")
+	return errors.New("failed to launch")
 }
 
 func (c *mockProvider) Terminate(instanceIDs []string) {

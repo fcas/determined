@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
@@ -528,7 +529,7 @@ func TestCheckpointAuthZ(t *testing.T) {
 				curCase.IDToReqCall(checkpointID))
 		}
 
-		expectedErr := fmt.Errorf("canGetExperimentError")
+		expectedErr := errors.New("canGetExperimentError")
 		authZExp.On("CanGetExperiment", mock.Anything, curUser, mock.Anything).
 			Return(expectedErr).Once()
 		authZModel.On("CanGetModel", mock.Anything, mock.Anything,
@@ -541,7 +542,7 @@ func TestCheckpointAuthZ(t *testing.T) {
 		authZModel.On("CanGetModel", mock.Anything, mock.Anything,
 			mock.Anything, mock.Anything).Return(authz2.PermissionDeniedError{}).Once()
 		authZExp.On(curCase.DenyFuncName, mock.Anything, curUser, mock.Anything).
-			Return(fmt.Errorf(curCase.DenyFuncName + "Error")).Once()
+			Return(errors.New(curCase.DenyFuncName + "Error")).Once()
 		require.Equal(t, expectedErr, curCase.IDToReqCall(checkpointID))
 	}
 }

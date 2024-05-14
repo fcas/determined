@@ -198,5 +198,5 @@ func APICredentials(ctx context.Context, cl apiv1.DeterminedClient) (context.Con
 		return nil, fmt.Errorf("failed to login: %w", err)
 	}
 	return metadata.AppendToOutgoingContext(
-		ctx, "x-user-token", fmt.Sprintf("Bearer %s", resp.Token)), nil
+		ctx, "x-user-token", "Bearer "+resp.Token), nil
 }

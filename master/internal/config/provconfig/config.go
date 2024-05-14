@@ -53,7 +53,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		AgentDockerRuntime:     "runc",
 		AgentDockerNetwork:     "default",
-		AgentDockerImage:       fmt.Sprintf("determinedai/determined-agent:%s", version.Version),
+		AgentDockerImage:       "determinedai/determined-agent:" + version.Version,
 		MaxIdleAgentPeriod:     model.Duration(20 * time.Minute),
 		MaxAgentStartingPeriod: model.Duration(20 * time.Minute),
 		MinInstances:           0,

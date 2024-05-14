@@ -72,7 +72,7 @@ func validateWorkspaceName(name string) error {
 func (a *apiServer) GetWorkspaceByID(
 	ctx context.Context, id int32, curUser model.User, rejectImmutable bool,
 ) (*workspacev1.Workspace, error) {
-	notFoundErr := api.NotFoundErrs("workspace", fmt.Sprint(id), true)
+	notFoundErr := api.NotFoundErrs("workspace", strconv.Itoa(int(id)), true)
 	w := &workspacev1.Workspace{}
 
 	if err := a.m.db.QueryProto("get_workspace", w, id, curUser.ID); errors.Is(err, db.ErrNotFound) {
@@ -191,7 +191,7 @@ func (a *apiServer) GetWorkspaceProjects(
 			sortColMap[req.SortBy], orderByMap[req.OrderBy], orderByMap[req.OrderBy],
 		)
 	default:
-		orderExpr = fmt.Sprintf("id %s", orderByMap[req.OrderBy])
+		orderExpr = "id " + orderByMap[req.OrderBy]
 	}
 
 	resp := &apiv1.GetWorkspaceProjectsResponse{}
@@ -263,7 +263,7 @@ func (a *apiServer) GetWorkspaces(
 			sortColMap[req.SortBy], orderByMap[req.OrderBy], orderByMap[req.OrderBy],
 		)
 	default:
-		orderExpr = fmt.Sprintf("id %s", orderByMap[req.OrderBy])
+		orderExpr = "id " + orderByMap[req.OrderBy]
 	}
 
 	resp := &apiv1.GetWorkspacesResponse{}

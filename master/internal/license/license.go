@@ -4,6 +4,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"fmt"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -41,7 +42,7 @@ func RequireLicense(resource string) {
 		}
 		blk, _ := pem.Decode(pemData)
 		if blk == nil {
-			return nil, fmt.Errorf("error decoding pem")
+			return nil, errors.New("error decoding pem")
 		}
 		key, err := x509.ParsePKIXPublicKey(blk.Bytes)
 		if err != nil {

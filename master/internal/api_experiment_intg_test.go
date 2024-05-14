@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -462,7 +463,7 @@ func TestDeleteExperimentWithoutCheckpoints(t *testing.T) {
 	for i := 0; i < 60; i++ {
 		e, err := api.GetExperiment(ctx, &apiv1.GetExperimentRequest{ExperimentId: int32(exp.ID)})
 		if err != nil {
-			require.Equal(t, apiPkg.NotFoundErrs("experiment", fmt.Sprint(exp.ID), true), err)
+			require.Equal(t, apiPkg.NotFoundErrs("experiment", strconv.Itoa(exp.ID), true), err)
 			return
 		}
 		require.NotEqual(t, experimentv1.State_STATE_DELETE_FAILED, e.Experiment.State)
@@ -1388,11 +1389,11 @@ func TestAuthZGetExperiment(t *testing.T) {
 	authZExp.On("CanGetExperiment", mock.Anything, mockUserArg, mock.Anything).
 		Return(authz2.PermissionDeniedError{}).Once()
 	_, err = api.GetExperiment(ctx, &apiv1.GetExperimentRequest{ExperimentId: int32(exp.ID)})
-	require.Equal(t, apiPkg.NotFoundErrs("experiment", fmt.Sprint(exp.ID), true).Error(),
+	require.Equal(t, apiPkg.NotFoundErrs("experiment", strconv.Itoa(exp.ID), true).Error(),
 		err.Error())
 
 	// Error returns error unmodified.
-	expectedErr := fmt.Errorf("canGetExperimentError")
+	expectedErr := errors.New("canGetExperimentError")
 	authZExp.On("CanGetExperiment", mock.Anything, mockUserArg, mock.Anything).
 		Return(expectedErr).Once()
 	_, err = api.GetExperiment(ctx, &apiv1.GetExperimentRequest{ExperimentId: int32(exp.ID)})
@@ -1418,13 +1419,13 @@ func TestAuthZGetExperiments(t *testing.T) {
 	authZProject.On("CanGetProject", mock.Anything, mockUserArg,
 		mock.Anything).Return(authz2.PermissionDeniedError{}).Once()
 	_, err := api.GetExperiments(ctx, &apiv1.GetExperimentsRequest{ProjectId: int32(projectID)})
-	require.Equal(t, apiPkg.NotFoundErrs("project", fmt.Sprint(projectID), true).Error(),
+	require.Equal(t, apiPkg.NotFoundErrs("project", strconv.Itoa(projectID), true).Error(),
 		err.Error())
 
 	// Error from FilterExperimentsQuery passes through.
 	authZProject.On("CanGetProject", mock.Anything, mockUserArg, mock.Anything).
 		Return(nil).Once()
-	expectedErr := fmt.Errorf("filterExperimentsQueryError")
+	expectedErr := errors.New("filterExperimentsQueryError")
 	authZExp.On("FilterExperimentsQuery", mock.Anything, mockUserArg, mock.Anything, mock.Anything,
 		[]rbacv1.PermissionType{rbacv1.PermissionType_PERMISSION_TYPE_VIEW_EXPERIMENT_METADATA}).
 		Return(nil, expectedErr).Once()
@@ -1452,7 +1453,7 @@ func TestAuthZPreviewHPSearch(t *testing.T) {
 	// Can't preview hp search returns error with PermissionDenied
 	expectedErr := status.Errorf(codes.PermissionDenied, "canPreviewHPSearchError")
 	authZExp.On("CanPreviewHPSearch", mock.Anything, curUser).
-		Return(fmt.Errorf("canPreviewHPSearchError")).Once()
+		Return(errors.New("canPreviewHPSearchError")).Once()
 	_, err := api.PreviewHPSearch(ctx, &apiv1.PreviewHPSearchRequest{})
 	require.Equal(t, expectedErr.Error(), err.Error())
 }
@@ -1470,13 +1471,13 @@ func TestAuthZGetExperimentLabels(t *testing.T) {
 	_, err := api.GetExperimentLabels(ctx, &apiv1.GetExperimentLabelsRequest{
 		ProjectId: int32(projectID),
 	})
-	require.Equal(t, apiPkg.NotFoundErrs("project", fmt.Sprint(projectID), true).Error(),
+	require.Equal(t, apiPkg.NotFoundErrs("project", strconv.Itoa(projectID), true).Error(),
 		err.Error())
 
 	// Error from FilterExperimentsLabelsQuery passes through.
 	authZProject.On("CanGetProject", mock.Anything, curUser,
 		mock.Anything).Return(nil).Once()
-	expectedErr := fmt.Errorf("filterExperimentLabelsQueryError")
+	expectedErr := errors.New("filterExperimentLabelsQueryError")
 	authZExp.On("FilterExperimentLabelsQuery", mock.Anything, curUser, mock.Anything, mock.Anything).
 		Return(nil, expectedErr).Once()
 	_, err = api.GetExperimentLabels(ctx, &apiv1.GetExperimentLabelsRequest{
@@ -1513,14 +1514,14 @@ func TestAuthZCreateExperiment(t *testing.T) {
 			ParentId: int32(forkFrom.ID),
 		})
 		require.Equal(t, apiPkg.NotFoundErrs("experiment",
-			fmt.Sprint(forkFrom.ID), true), err)
+			strconv.Itoa(forkFrom.ID), true), err)
 	})
 
 	t.Run("can't fork from experiment", func(t *testing.T) {
 		expectedErr := status.Errorf(codes.PermissionDenied, "canForkExperimentError")
 		authZExp.On("CanGetExperiment", mock.Anything, mockUserArg, mock.Anything).Return(nil).Once()
 		authZExp.On("CanForkFromExperiment", mock.Anything, mockUserArg, mock.Anything).
-			Return(fmt.Errorf("canForkExperimentError")).Once()
+			Return(errors.New("canForkExperimentError")).Once()
 		_, err := api.CreateExperiment(ctx, &apiv1.CreateExperimentRequest{
 			ParentId: int32(forkFrom.ID),
 		})
@@ -1534,7 +1535,7 @@ func TestAuthZCreateExperiment(t *testing.T) {
 			ProjectId: int32(projectID),
 			Config:    minExpConfToYaml(t),
 		})
-		require.Equal(t, apiPkg.NotFoundErrs("project", fmt.Sprint(projectID), true), err)
+		require.Equal(t, apiPkg.NotFoundErrs("project", strconv.Itoa(projectID), true), err)
 	})
 
 	t.Run("can't view project passed in from config", func(t *testing.T) {
@@ -1574,7 +1575,7 @@ func TestAuthZCreateExperiment(t *testing.T) {
 		expectedErr := status.Errorf(codes.PermissionDenied, "canCreateExperimentError")
 		pAuthZ.On("CanGetProject", mock.Anything, mockUserArg, mock.Anything).Return(nil).Once()
 		authZExp.On("CanCreateExperiment", mock.Anything, mockUserArg, mock.Anything).
-			Return(fmt.Errorf("canCreateExperimentError")).Once()
+			Return(errors.New("canCreateExperimentError")).Once()
 		_, err := api.CreateExperiment(ctx, &apiv1.CreateExperimentRequest{
 			ProjectId:       int32(projectID),
 			Config:          minExpConfToYaml(t),
@@ -1589,7 +1590,7 @@ func TestAuthZCreateExperiment(t *testing.T) {
 		authZExp.On("CanCreateExperiment", mock.Anything, mockUserArg, mock.Anything).
 			Return(nil).Once()
 		authZExp.On("CanEditExperiment", mock.Anything, mockUserArg, mock.Anything, mock.Anything).Return(
-			fmt.Errorf("canActivateExperimentError")).Once()
+			errors.New("canActivateExperimentError")).Once()
 		_, err := api.CreateExperiment(ctx, &apiv1.CreateExperimentRequest{
 			Activate:        true,
 			Config:          minExpConfToYaml(t),
@@ -1754,11 +1755,11 @@ func TestAuthZGetExperimentAndCanDoActions(t *testing.T) {
 
 		authZExp.On("CanGetExperiment", mock.Anything, mockUserArg, mock.Anything).
 			Return(authz2.PermissionDeniedError{}).Once()
-		require.Equal(t, apiPkg.NotFoundErrs("experiment", fmt.Sprint(exp.ID), true),
+		require.Equal(t, apiPkg.NotFoundErrs("experiment", strconv.Itoa(exp.ID), true),
 			curCase.IDToReqCall(exp.ID))
 
 		// CanGetExperiment error returns unmodified.
-		expectedErr := fmt.Errorf("canGetExperimentError")
+		expectedErr := errors.New("canGetExperimentError")
 		authZExp.On("CanGetExperiment", mock.Anything, mockUserArg, mock.Anything).
 			Return(expectedErr).Once()
 		require.Equal(t, expectedErr, curCase.IDToReqCall(exp.ID))
@@ -1768,7 +1769,7 @@ func TestAuthZGetExperimentAndCanDoActions(t *testing.T) {
 		authZExp.On("CanGetExperiment", mock.Anything, mockUserArg, mock.Anything).
 			Return(nil).Once()
 		authZExp.On(curCase.DenyFuncName, mock.Anything, mockUserArg, mock.Anything).
-			Return(fmt.Errorf(curCase.DenyFuncName + "Error")).Once()
+			Return(errors.New(curCase.DenyFuncName + "Error")).Once()
 		require.Equal(t, expectedErr.Error(), curCase.IDToReqCall(exp.ID).Error())
 	}
 
@@ -1817,11 +1818,11 @@ func TestAuthZGetExperimentAndCanDoActions(t *testing.T) {
 			q := args.Get(3).(*bun.SelectQuery).Where("0 = 1")
 			*resQuery = *q
 		})
-		require.Equal(t, apiPkg.NotFoundErrs("experiment", fmt.Sprint(exp.ID), true),
+		require.Equal(t, apiPkg.NotFoundErrs("experiment", strconv.Itoa(exp.ID), true),
 			curCase.IDToReqCall(exp.ID))
 
 		// FilterExperimentsQuery error returned unmodified.
-		expectedErr := fmt.Errorf("canGetExperimentError")
+		expectedErr := errors.New("canGetExperimentError")
 		authZExp.On("FilterExperimentsQuery", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 			mock.Anything).
 			Return(resQuery, expectedErr).Once().Run(func(args mock.Arguments) {
@@ -1907,10 +1908,10 @@ func TestAuthZGetExperimentAndCanDoActions(t *testing.T) {
 		})
 		results, _ := curCase.IDToReqCall(exp.ID)
 		require.Equal(t, apiPkg.NotFoundErrs("experiment",
-			fmt.Sprint(exp.ID), true).Error(), results[0].Error)
+			strconv.Itoa(exp.ID), true).Error(), results[0].Error)
 
 		// FilterExperimentsQuery error returned unmodified.
-		expectedErr := fmt.Errorf("canGetExperimentError")
+		expectedErr := errors.New("canGetExperimentError")
 		authZExp.On("FilterExperimentsQuery", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 			mock.Anything).
 			Return(resQuery, expectedErr).Once().Run(func(args mock.Arguments) {
@@ -2156,7 +2157,7 @@ func TestDeleteExperiments(t *testing.T) {
 		for _, expID := range expIDs {
 			e, err := api.GetExperiment(ctx, &apiv1.GetExperimentRequest{ExperimentId: expID})
 			if err != nil {
-				require.Equal(t, apiPkg.NotFoundErrs("experiment", fmt.Sprint(expID), true), err)
+				require.Equal(t, apiPkg.NotFoundErrs("experiment", strconv.Itoa(int(expID)), true), err)
 				deleted++
 				continue
 			}
@@ -2233,7 +2234,7 @@ func TestDeleteExperimentsFiltered(t *testing.T) {
 		for _, expID := range expIDs {
 			e, err := api.GetExperiment(ctx, &apiv1.GetExperimentRequest{ExperimentId: expID})
 			if err != nil {
-				require.Equal(t, apiPkg.NotFoundErrs("experiment", fmt.Sprint(expID), true), err)
+				require.Equal(t, apiPkg.NotFoundErrs("experiment", strconv.Itoa(int(expID)), true), err)
 				deleted++
 				continue
 			}

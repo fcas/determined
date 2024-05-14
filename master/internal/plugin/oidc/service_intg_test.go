@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -160,9 +159,8 @@ func TestFailToExtractClaims(t *testing.T) {
 func mockService(t *testing.T, url string) *Service {
 	clientID := "123456"
 	clientSecret := "abcdefgh"
-	idpssoURL := fmt.Sprint(url)
 
-	p, err := oidc.NewProvider(context.Background(), idpssoURL)
+	p, err := oidc.NewProvider(context.Background(), url)
 	require.NoError(t, err)
 
 	return &Service{
@@ -171,7 +169,7 @@ func mockService(t *testing.T, url string) *Service {
 			Provider:                    "Okta",
 			ClientID:                    clientID,
 			ClientSecret:                clientSecret,
-			IDPSSOURL:                   idpssoURL,
+			IDPSSOURL:                   url,
 			IDPRecipientURL:             "https://dev-123456.okta.com",
 			AuthenticationClaim:         "email",
 			SCIMAuthenticationAttribute: "userName",
@@ -184,7 +182,7 @@ func mockService(t *testing.T, url string) *Service {
 			ClientID:     clientID,
 			ClientSecret: clientSecret,
 			Endpoint:     p.Endpoint(),
-			RedirectURL:  fmt.Sprint(url + "/oidc/callback"),
+			RedirectURL:  url + "/oidc/callback",
 			Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "groups"},
 		},
 	}

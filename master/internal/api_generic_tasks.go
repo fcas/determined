@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -100,7 +101,7 @@ func (a *apiServer) getGenericTaskLaunchParameters(
 	resources := model.ParseJustResources(configBytes)
 
 	if resources.Slots < 0 {
-		return nil, nil, nil, fmt.Errorf("resource slots must be >= 0")
+		return nil, nil, nil, errors.New("resource slots must be >= 0")
 	}
 	isSingleNode := resources.IsSingleNode != nil && *resources.IsSingleNode
 	poolName, launchWarnings, err := a.m.ResolveResources(resources.ResourcePool,
@@ -164,7 +165,7 @@ func (a *apiServer) canCreateGenericTask(ctx context.Context, projectID int) err
 		return err
 	}
 
-	errProjectNotFound := api.NotFoundErrs("project", fmt.Sprint(projectID), true)
+	errProjectNotFound := api.NotFoundErrs("project", strconv.Itoa(projectID), true)
 	p := &projectv1.Project{}
 	// Get project details
 	projectExperimentsQuery := db.Bun().NewSelect().
@@ -261,7 +262,7 @@ func (a *apiServer) CreateGenericTask(
 	}
 	if req.InheritContext != nil && *req.InheritContext {
 		if req.ParentId == nil {
-			return nil, fmt.Errorf("could not inherit config directory since no parent task id provided")
+			return nil, errors.New("could not inherit config directory since no parent task id provided")
 		}
 		contextDirectoryBytes, err = db.NonExperimentTasksContextDirectory(ctx, model.TaskID(*req.ParentId))
 		if err != nil {
@@ -496,11 +497,11 @@ func (a *apiServer) KillGenericTask(
 		return nil, fmt.Errorf("%s (make sure task is of type GENERIC)", err)
 	}
 	if taskModel.TaskType != model.TaskTypeGeneric {
-		return nil, fmt.Errorf("this operation is currently only supported for generic tasks")
+		return nil, errors.New("this operation is currently only supported for generic tasks")
 	}
 	// Validate state
 	if taskModel.State == nil {
-		return nil, fmt.Errorf("task state is NULL")
+		return nil, errors.New("task state is NULL")
 	}
 	overrideStates := []model.TaskState{model.TaskStateCanceled, model.TaskStateCompleted}
 	if slices.Contains(overrideStates, *taskModel.State) {

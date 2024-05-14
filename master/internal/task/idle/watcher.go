@@ -2,24 +2,23 @@ package idle
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
-	"github.com/determined-ai/determined/master/pkg/ptrs"
-	"github.com/determined-ai/determined/master/pkg/syncx/waitgroupx"
-
 	log "github.com/sirupsen/logrus"
 
-	"github.com/determined-ai/determined/master/internal/sproto"
-
 	"github.com/determined-ai/determined/master/internal/proxy"
+	"github.com/determined-ai/determined/master/internal/sproto"
+	"github.com/determined-ai/determined/master/pkg/ptrs"
+	"github.com/determined-ai/determined/master/pkg/syncx/waitgroupx"
 )
 
 var syslog = log.WithField("component", "idle-watcher")
 
 // ErrIdle indicates that, according to the Watcher configuration, the service is idle.
-var ErrIdle = fmt.Errorf("service is inactive")
+var ErrIdle = errors.New("service is inactive")
 
 // TickInterval is the interval at which to check the proxy activity.
 var TickInterval = 5 * time.Second

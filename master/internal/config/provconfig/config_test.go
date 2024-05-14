@@ -2,7 +2,6 @@ package provconfig
 
 import (
 	"encoding/json"
-	"fmt"
 	"testing"
 	"time"
 
@@ -28,7 +27,7 @@ func TestProvisionerConfigMissingFields(t *testing.T) {
 		MaxInstances:           5,
 		AgentDockerRuntime:     "runc",
 		AgentDockerNetwork:     "default",
-		AgentDockerImage:       fmt.Sprintf("determinedai/determined-agent:%s", version.Version),
+		AgentDockerImage:       "determinedai/determined-agent:" + version.Version,
 		AgentReconnectAttempts: aproto.AgentReconnectAttempts,
 		AgentReconnectBackoff:  aproto.AgentReconnectBackoffValue,
 	}

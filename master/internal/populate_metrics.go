@@ -206,7 +206,7 @@ func PopulateExpTrialsMetrics(pgdb *db.PgDB, masterConfig *config.Config, trivia
 	}
 
 	ctx := metadata.NewIncomingContext(context.TODO(),
-		metadata.Pairs("x-user-token", fmt.Sprintf("Bearer %s", resp.Token)))
+		metadata.Pairs("x-user-token", "Bearer "+resp.Token))
 
 	// create exp and config
 	maxLength := expconf.NewLengthInBatches(100)

@@ -1,9 +1,10 @@
 package config
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/pkg/errors"
 
 	"github.com/determined-ai/determined/master/pkg/device"
 	"github.com/determined-ai/determined/master/pkg/ptrs"
@@ -39,13 +40,13 @@ func TestDispatcherResourceManagerConfig_Validate(t *testing.T) {
 				LauncherContainerRunType: "singularity",
 				SlotType:                 ptrs.Ptr("invalid-type"),
 			},
-			want: []error{fmt.Errorf(
+			want: []error{errors.New(
 				"invalid slot_type 'invalid-type'.  Specify one of cuda, rocm, or cpu")},
 		},
 		{
 			name:   "Invalid type case",
 			fields: fields{LauncherContainerRunType: "invalid-type"},
-			want:   []error{fmt.Errorf("invalid launch container run type: 'invalid-type'")},
+			want:   []error{errors.New("invalid launch container run type: 'invalid-type'")},
 		},
 		{
 			name:   "singularity case",
@@ -100,7 +101,7 @@ func TestDispatcherResourceManagerConfig_Validate(t *testing.T) {
 				LauncherContainerRunType: "enroot",
 				JobProjectSource:         ptrs.Ptr("something-bad"),
 			},
-			want: []error{fmt.Errorf(
+			want: []error{errors.New(
 				"invalid job_project_source value: 'something-bad'. " +
 					"Specify one of project, workspace or label[:value]")},
 		},

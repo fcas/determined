@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1015,7 +1016,7 @@ func addSlotToAgent(
 	}
 	slotRef := fmt.Sprintf("/agents/%s/slots/%d", node.Name, slotID)
 	slot := agentv1.Slot{
-		Id:       fmt.Sprintf("%d", slotID),
+		Id:       strconv.Itoa(slotID),
 		Device:   &device,
 		Enabled:  true,
 		Draining: false,

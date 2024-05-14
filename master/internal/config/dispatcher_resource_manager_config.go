@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/pkg/errors"
+
 	"github.com/determined-ai/determined/master/pkg/device"
 	"github.com/determined-ai/determined/master/pkg/model"
 )
@@ -75,7 +77,7 @@ func (c DispatcherResourceManagerConfig) Validate() []error {
 		return []error{fmt.Errorf("invalid launch container run type: '%s'", c.LauncherContainerRunType)}
 	}
 	if c.ApptainerImageRoot != "" && c.SingularityImageRoot != "" {
-		return []error{fmt.Errorf("apptainer_image_root and singularity_image_root cannot be both set")}
+		return []error{errors.New("apptainer_image_root and singularity_image_root cannot be both set")}
 	}
 	if c.SlotType != nil {
 		switch *c.SlotType {

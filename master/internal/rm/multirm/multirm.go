@@ -1,6 +1,7 @@
 package multirm
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
@@ -89,14 +90,14 @@ func (m *MultiRMRouter) ValidateResources(req sproto.ValidateResourcesRequest) (
 
 // DeleteJob routes a DeleteJob request to the specified resource manager.
 func (m *MultiRMRouter) DeleteJob(req sproto.DeleteJob) (sproto.DeleteJobResponse, error) {
-	m.syslog.WithError(fmt.Errorf("DeleteJob is not implemented for agent, kubernetes, or multi-rm"))
+	m.syslog.WithError(errors.New("DeleteJob is not implemented for agent, kubernetes, or multi-rm"))
 	return sproto.EmptyDeleteJobResponse(), nil
 }
 
 // NotifyContainerRunning routes a NotifyContainerRunning request to a specified resource manager/pool.
 func (m *MultiRMRouter) NotifyContainerRunning(req sproto.NotifyContainerRunning) error {
 	// MultiRM is currently only implemented for Kubernetes, which doesn't support this.
-	m.syslog.WithError(fmt.Errorf("NotifyContainerRunning is not implemented for agent, kubernetes, or multi-rm"))
+	m.syslog.WithError(errors.New("NotifyContainerRunning is not implemented for agent, kubernetes, or multi-rm"))
 	return rmerrors.ErrNotSupported
 }
 
@@ -134,7 +135,7 @@ func (m *MultiRMRouter) SetGroupPriority(req sproto.SetGroupPriority) error {
 // ExternalPreemptionPending routes an ExternalPreemptionPending request to the specified resource manager.
 func (m *MultiRMRouter) ExternalPreemptionPending(sproto.PendingPreemption) error {
 	// MultiRM is currently only implemented for Kubernetes, which doesn't support this.
-	m.syslog.WithError(fmt.Errorf("ExternalPreemptionPending is not implemented for agent, kubernetes, or multi-rm"))
+	m.syslog.WithError(errors.New("ExternalPreemptionPending is not implemented for agent, kubernetes, or multi-rm"))
 	return rmerrors.ErrNotSupported
 }
 

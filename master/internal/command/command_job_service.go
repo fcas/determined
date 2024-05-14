@@ -1,6 +1,7 @@
 package command
 
 import (
+	"errors"
 	"fmt"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -45,7 +46,7 @@ func (c *Command) SetJobPriority(priority int) error {
 	defer c.mu.Unlock()
 
 	if priority < 1 || priority > 99 {
-		return fmt.Errorf("priority must be between 1 and 99")
+		return errors.New("priority must be between 1 and 99")
 	}
 	err := c.setNTSCPriority(priority, true)
 	if err != nil {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 
 	a "github.com/determined-ai/determined/master/internal/api"
@@ -803,7 +804,7 @@ func TestDeleteRunsOverfillInput(t *testing.T) {
 		ProjectId: projectID,
 		Filter:    ptrs.Ptr("filter"),
 	}
-	expectedError := fmt.Errorf("if filter is provided run id list must be empty")
+	expectedError := errors.New("if filter is provided run id list must be empty")
 	_, err := api.DeleteRuns(ctx, req)
 	require.Equal(t, expectedError, err)
 }
@@ -1019,7 +1020,7 @@ func TestArchiveUnarchiveOverfilledInput(t *testing.T) {
 	api, curUser, ctx := setupAPITest(t, nil)
 	projectID, _, runID1, runID2, _ := setUpMultiTrialExperiments(ctx, t, api, curUser)
 
-	expectedError := fmt.Errorf("if filter is provided run id list must be empty")
+	expectedError := errors.New("if filter is provided run id list must be empty")
 	// Archive runs
 	runIDs := []int32{runID1, runID2}
 	archReq := &apiv1.ArchiveRunsRequest{

@@ -2,7 +2,7 @@ package allgather
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"sync"
 	"time"
 
@@ -12,7 +12,7 @@ import (
 )
 
 // ErrAllGatherTimeoutExceeded indicates that we not halt within the expected deadline.
-var ErrAllGatherTimeoutExceeded = fmt.Errorf(
+var ErrAllGatherTimeoutExceeded = errors.New(
 	"some ranks are taking a long time to connect to master " +
 		"during all gather; when running on kubernetes this may happen " +
 		"because only some of the pods have been scheduled; it is possible " +
@@ -21,12 +21,12 @@ var ErrAllGatherTimeoutExceeded = fmt.Errorf(
 )
 
 // ErrClosed is returned from a closed and incomplete allgather.
-var ErrClosed = fmt.Errorf("left or closed")
+var ErrClosed = errors.New("left or closed")
 
 // ErrReconnected indicates another watcher connected with the same ID. Only
 // one watcher should connect per ID. Anyone attempted to synchronize more things
 // should use more `numPeers` and different IDs.
-var ErrReconnected = fmt.Errorf("another watcher with the same ID connected")
+var ErrReconnected = errors.New("another watcher with the same ID connected")
 
 // DefaultTimeout is the default timeout for all gather.
 var DefaultTimeout = 10 * time.Minute

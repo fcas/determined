@@ -705,7 +705,7 @@ func TestTaskLogsFlow(t *testing.T) {
 
 func RequireMockTaskLog(t *testing.T, db *PgDB, tID model.TaskID, suffix string) *model.TaskLog {
 	mockA := RequireMockAllocation(t, db, tID)
-	agentID := fmt.Sprintf("testing-agent-%s", suffix)
+	agentID := "testing-agent-" + suffix
 	containerID := suffix
 	log := &model.TaskLog{
 		TaskID:       string(tID),

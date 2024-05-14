@@ -299,10 +299,10 @@ func mockSCIMUser(t *testing.T) *model.SCIMUser {
 func mockSCIMUserWithUsername(t *testing.T, username string) *model.SCIMUser {
 	user := &model.SCIMUser{
 		Username:     username,
-		DisplayName:  null.StringFrom(fmt.Sprintf("disp-%s", username)),
-		ExternalID:   fmt.Sprintf("external-id-%s", username),
+		DisplayName:  null.StringFrom("disp-" + username),
+		ExternalID:   "external-id-" + username,
 		Name:         model.SCIMName{GivenName: "John", FamilyName: username},
-		Emails:       []model.SCIMEmail{{Type: "personal", SValue: fmt.Sprintf("value-%s", username), Primary: true}},
+		Emails:       []model.SCIMEmail{{Type: "personal", SValue: "value-" + username, Primary: true}},
 		Active:       true,
 		PasswordHash: null.StringFrom("password"),
 	}

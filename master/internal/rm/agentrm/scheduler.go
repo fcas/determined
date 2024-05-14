@@ -1,8 +1,6 @@
 package agentrm
 
 import (
-	"fmt"
-
 	"github.com/determined-ai/determined/master/internal/config"
 	"github.com/determined-ai/determined/master/internal/sproto"
 	"github.com/determined-ai/determined/master/pkg/model"
@@ -29,6 +27,6 @@ func MakeScheduler(conf *config.SchedulerConfig) Scheduler {
 	case config.RoundRobinScheduling:
 		return NewRoundRobinScheduler()
 	default:
-		panic(fmt.Sprintf("invalid scheduler: %s", conf.GetType()))
+		panic("invalid scheduler: " + conf.GetType())
 	}
 }

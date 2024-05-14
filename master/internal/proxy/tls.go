@@ -394,5 +394,5 @@ func VerifyMasterSigned(state tls.ConnectionState) error {
 			}
 		}
 	}
-	return fmt.Errorf("cert is not signed by master")
+	return errors.New("cert is not signed by master")
 }

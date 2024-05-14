@@ -2,7 +2,7 @@ package experiment
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
 	"github.com/uptrace/bun"
 
@@ -35,7 +35,7 @@ func (a *ExperimentAuthZBasic) CanDeleteExperiment(
 ) error {
 	curUserIsOwner := e.OwnerID == nil || *e.OwnerID == curUser.ID
 	if !curUser.Admin && !curUserIsOwner {
-		return fmt.Errorf("non admin users may not delete other user's experiments")
+		return errors.New("non admin users may not delete other user's experiments")
 	}
 	return nil
 }

@@ -1,7 +1,7 @@
 package tasklogger_test
 
 import (
-	"fmt"
+	"errors"
 	"slices"
 	"sync"
 	"testing"
@@ -70,7 +70,7 @@ func TestTaskLoggerFailures(t *testing.T) {
 	})
 
 	// On error, logs should be dropped.
-	w.setNextFlushErr(fmt.Errorf("test"))
+	w.setNextFlushErr(errors.New("test"))
 	tasklogger.Insert(fakeLog)
 	waitForCondition(t, time.Second, func() bool {
 		return w.getNextFlushErr() == nil

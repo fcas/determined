@@ -1,7 +1,6 @@
 package agentrm
 
 import (
-	"fmt"
 	"sort"
 
 	"github.com/pkg/errors"
@@ -292,7 +291,7 @@ func sortTasksByPriorityAndPositionAndTimestamp(
 
 		priority := groups[req.JobID].Priority
 		if priority == nil {
-			panic(fmt.Sprintf("priority not set for task %s", req.Name))
+			panic("priority not set for task " + req.Name)
 		}
 
 		if taskList.IsScheduled(req.AllocationID) {

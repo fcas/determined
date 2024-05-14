@@ -3,6 +3,7 @@ package webhooks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"regexp"
@@ -117,7 +118,7 @@ func (l *WebhookManager) scanLogs(ctx context.Context, logs []*model.TaskLog) er
 
 	for _, log := range logs {
 		if log.AgentID == nil {
-			return fmt.Errorf("AgentID must be non nil to trigger webhooks in logs")
+			return errors.New("AgentID must be non nil to trigger webhooks in logs")
 		}
 
 		for _, cacheItem := range l.regexToTriggers {
@@ -383,7 +384,7 @@ func generateLogPatternSlackPayload(
 		if baseURL := conf.GetMasterConfig().Webhooks.BaseURL; baseURL != "" {
 			msg += fmt.Sprintf("<%s%s | View full logs here>", baseURL, path)
 		} else {
-			msg += fmt.Sprintf("View full logs at %s", path)
+			msg += "View full logs at " + path
 		}
 	} else {
 		msg = fmt.Sprintf(

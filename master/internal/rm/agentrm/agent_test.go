@@ -4,7 +4,6 @@
 package agentrm
 
 import (
-	"fmt"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
@@ -50,7 +49,7 @@ func TestAgentFastFailAfterFirstConnect2(t *testing.T) {
 	server := httptest.NewServer(e.Server.Handler)
 
 	var dialer websocket.Dialer
-	conn, _, err := dialer.Dial(fmt.Sprintf("ws://%s", strings.TrimPrefix(server.URL, "http://")), nil)
+	conn, _, err := dialer.Dial("ws://"+strings.TrimPrefix(server.URL, "http://"), nil)
 	require.NoError(t, err)
 	_, err = ws.Wrap[*aproto.MasterMessage, aproto.AgentMessage]("test", conn)
 	require.NoError(t, err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 
 	"github.com/uptrace/bun"
 
@@ -31,7 +32,7 @@ import (
 func (a *apiServer) GetProjectByID(
 	ctx context.Context, id int32, curUser model.User,
 ) (*projectv1.Project, error) {
-	notFoundErr := api.NotFoundErrs("project", fmt.Sprint(id), true)
+	notFoundErr := api.NotFoundErrs("project", strconv.Itoa(int(id)), true)
 	p := &projectv1.Project{}
 	if err := a.m.db.QueryProto("get_project", p, id); errors.Is(err, db.ErrNotFound) {
 		return nil, notFoundErr
@@ -317,7 +318,7 @@ func (a *apiServer) getProjectColumnsByID(
 					columnType = projectv1.ColumnType_COLUMN_TYPE_UNSPECIFIED
 				}
 				columns = append(columns, &projectv1.ProjectColumn{
-					Column:   fmt.Sprintf("hp.%s", key),
+					Column:   "hp." + key,
 					Location: projectv1.LocationType_LOCATION_TYPE_HYPERPARAMETERS,
 					Type:     columnType,
 				})

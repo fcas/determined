@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
@@ -51,7 +52,7 @@ func (a *TemplateAPIServer) GetTemplates(
 	if req.WorkspaceIds != nil {
 		q.Where("workspace_id IN (?)", bun.In(req.WorkspaceIds))
 	}
-	q.Order(fmt.Sprintf("name %s", grpcutil.OrderBySQL[req.OrderBy])) // Only name is supported.
+	q.Order("name " + grpcutil.OrderBySQL[req.OrderBy]) // Only name is supported.
 	q, pagination, err := bunutils.Paginate(ctx, q, int(req.Offset), int(req.Limit))
 	if err != nil {
 		return nil, fmt.Errorf("failed to paginate query: %w", err)
@@ -341,7 +342,7 @@ func canCreateTemplateWorkspace(ctx context.Context, user *model.User, workspace
 	case err != nil:
 		return fmt.Errorf("failed to check workspace %d: %w", workspaceID, err)
 	case !exists:
-		return api.NotFoundErrs("workspace", fmt.Sprint(workspaceID), true)
+		return api.NotFoundErrs("workspace", strconv.Itoa(int(workspaceID)), true)
 	}
 
 	permErr, err := AuthZProvider.Get().CanCreateTemplate(

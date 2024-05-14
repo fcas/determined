@@ -98,7 +98,7 @@ func newExperiment(
 	taskSpec *tasks.TaskSpec,
 ) (*internalExperiment, []command.LaunchWarning, error) {
 	if len(modelDef) > 0 && expModel.ID != 0 {
-		return nil, nil, fmt.Errorf("experiments restoring should not provide a model def")
+		return nil, nil, errors.New("experiments restoring should not provide a model def")
 	}
 
 	resources := activeConfig.Resources()
@@ -890,7 +890,7 @@ func trialTaskID(eID int, rID model.RequestID) model.TaskID {
 	return model.TaskID(fmt.Sprintf("%d.%s", eID, rID))
 }
 
-var errIsNotTrialTaskID = fmt.Errorf("taskID is not a trial task ID")
+var errIsNotTrialTaskID = errors.New("taskID is not a trial task ID")
 
 func experimentIDFromTrialTaskID(taskID model.TaskID) (int, error) {
 	var experimentID int

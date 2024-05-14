@@ -642,7 +642,7 @@ func (p *pods) reattachPod(
 
 func (p *pods) refreshPodStates(allocationID model.AllocationID) error {
 	if allocationID == "" {
-		return fmt.Errorf("invalid call: allocationID missing")
+		return errors.New("invalid call: allocationID missing")
 	}
 
 	pods, err := p.listPodsInAllNamespaces(context.TODO(), metaV1.ListOptions{
@@ -973,7 +973,7 @@ func setClusterID(s string) {
 }
 
 func clusterIDNodeLabel() string {
-	return fmt.Sprintf("determined.ai/cluster-id-%s", clusterID)
+	return "determined.ai/cluster-id-" + clusterID
 }
 
 const (
@@ -995,7 +995,7 @@ func (p *pods) enableNode(
 	_, err := p.clientSet.CoreV1().Nodes().
 		Patch(context.TODO(), nodeName, types.StrategicMergePatchType, patch, metaV1.PatchOptions{})
 	if k8error.IsForbidden(err) {
-		return nil, fmt.Errorf("the Determined master Kubernetes service account " +
+		return nil, errors.New("the Determined master Kubernetes service account " +
 			"is missing permissions to patch nodes. " +
 			"Enabling or disabling nodes requires this permission, " +
 			"however Determined will otherwise still function correctly without " +
@@ -1043,7 +1043,7 @@ func (p *pods) disableNode(
 	_, err = p.clientSet.CoreV1().Nodes().
 		Patch(context.TODO(), nodeName, types.StrategicMergePatchType, patch, metaV1.PatchOptions{})
 	if k8error.IsForbidden(err) {
-		return nil, fmt.Errorf("the Determined master Kubernetes service account " +
+		return nil, errors.New("the Determined master Kubernetes service account " +
 			"is missing permissions to patch nodes. " +
 			"Enabling or disabling nodes requires this permission, " +
 			"however Determined will otherwise still function correctly without " +
@@ -1082,7 +1082,7 @@ func (p *pods) disableNode(
 func (p *pods) releaseAllocationsOnDisabledNode(nodeName string) error {
 	listOptions := metaV1.ListOptions{
 		LabelSelector: determinedLabel,
-		FieldSelector: fmt.Sprintf("spec.nodeName=%s", nodeName),
+		FieldSelector: "spec.nodeName=" + nodeName,
 	}
 	pods, err := p.listPodsInAllNamespaces(context.TODO(), listOptions)
 	if err != nil {
@@ -1263,7 +1263,7 @@ func (p *pods) cleanUpPodHandler(podHandler *pod) error {
 
 	// launch this work async, since we hold the lock and it does API calls.
 	p.wg.Go(func(ctx context.Context) {
-		name := fmt.Sprintf("%s-priorityclass", podInfo.containerID)
+		name := podInfo.containerID + "-priorityclass"
 		err := p.clientSet.
 			SchedulingV1().
 			PriorityClasses().

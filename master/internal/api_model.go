@@ -133,7 +133,7 @@ func (a *apiServer) GetModels(
 			sortColMap[req.SortBy], orderByMap[req.OrderBy], orderByMap[req.OrderBy],
 		)
 	default:
-		orderExpr = fmt.Sprintf("id %s", orderByMap[req.OrderBy])
+		orderExpr = "id " + orderByMap[req.OrderBy]
 	}
 
 	curUser, _, err := grpcutil.GetUser(ctx)

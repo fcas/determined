@@ -19,6 +19,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 	"google.golang.org/protobuf/types/known/structpb"
 	"gopkg.in/yaml.v3" // Can't use ghodss/yaml since NaNs error.
@@ -452,20 +453,20 @@ func TestEpochMetricGroups(t *testing.T) {
 		{float64(1.0), nil}, // Floats okay due to json numeric.
 		{float64(1.5), nil},
 		{nil, nil},
-		{math.Inf(1), fmt.Errorf("cannot add metric with non numeric 'epoch' value got Infinity")},
-		{math.Inf(-1), fmt.Errorf("cannot add metric with non numeric 'epoch' value got -Infinity")},
-		{math.NaN(), fmt.Errorf("cannot add metric with non numeric 'epoch' value got NaN")},
+		{math.Inf(1), errors.New("cannot add metric with non numeric 'epoch' value got Infinity")},
+		{math.Inf(-1), errors.New("cannot add metric with non numeric 'epoch' value got -Infinity")},
+		{math.NaN(), errors.New("cannot add metric with non numeric 'epoch' value got NaN")},
 		{int(1), nil},
-		{"Infinity", fmt.Errorf("cannot add metric with non numeric 'epoch' value got Infinity")},
-		{"-Infinity", fmt.Errorf("cannot add metric with non numeric 'epoch' value got -Infinity")},
-		{"NaN", fmt.Errorf("cannot add metric with non numeric 'epoch' value got NaN")},
-		{"x", fmt.Errorf("cannot add metric with non numeric 'epoch' value got x")},
-		{true, fmt.Errorf("cannot add metric with non numeric 'epoch' value got true")},
-		{false, fmt.Errorf("cannot add metric with non numeric 'epoch' value got false")},
-		{[]any{1}, fmt.Errorf("cannot add metric with non numeric 'epoch' value got [1]")},
+		{"Infinity", errors.New("cannot add metric with non numeric 'epoch' value got Infinity")},
+		{"-Infinity", errors.New("cannot add metric with non numeric 'epoch' value got -Infinity")},
+		{"NaN", errors.New("cannot add metric with non numeric 'epoch' value got NaN")},
+		{"x", errors.New("cannot add metric with non numeric 'epoch' value got x")},
+		{true, errors.New("cannot add metric with non numeric 'epoch' value got true")},
+		{false, errors.New("cannot add metric with non numeric 'epoch' value got false")},
+		{[]any{1}, errors.New("cannot add metric with non numeric 'epoch' value got [1]")},
 		{
 			map[string]any{"a": 1.0},
-			fmt.Errorf(`cannot add metric with non numeric 'epoch' value got map[a:1]`),
+			errors.New(`cannot add metric with non numeric 'epoch' value got map[a:1]`),
 		},
 	}
 	for _, c := range cases {

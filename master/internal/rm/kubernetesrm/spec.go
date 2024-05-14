@@ -106,7 +106,7 @@ func (p *pod) configureEnvVars(
 	envVarsMap["DET_MASTER"] = fmt.Sprintf("%s://%s:%d", masterScheme, p.masterIP, p.masterPort)
 	envVarsMap["DET_MASTER_HOST"] = p.masterIP
 	envVarsMap["DET_MASTER_ADDR"] = p.masterIP
-	envVarsMap["DET_MASTER_PORT"] = fmt.Sprintf("%d", p.masterPort)
+	envVarsMap["DET_MASTER_PORT"] = strconv.Itoa(int(p.masterPort))
 	envVarsMap["DET_SLOT_IDS"] = fmt.Sprintf("[%s]", strings.Join(slotIds, ","))
 	if p.masterTLSConfig.CertificateName != "" {
 		envVarsMap["DET_MASTER_CERT_NAME"] = p.masterTLSConfig.CertificateName
@@ -213,7 +213,7 @@ func (p *pod) modifyPodSpec(newPod *k8sV1.Pod, scheduler string) {
 	if newPod.Spec.PriorityClassName == "" &&
 		p.submissionInfo.taskSpec.ResourcesConfig.Priority() != nil {
 		priority := int32(*p.submissionInfo.taskSpec.ResourcesConfig.Priority())
-		name := fmt.Sprintf("%s-priorityclass", p.submissionInfo.taskSpec.ContainerID)
+		name := p.submissionInfo.taskSpec.ContainerID + "-priorityclass"
 
 		err := p.createPriorityClass(name, priority)
 
@@ -580,7 +580,7 @@ func configureInitContainer(
 		Name:    "determined-init-container",
 		Command: []string{path.Join(initContainerWorkDir, etc.K8InitContainerEntryScriptResource)},
 		Args: []string{
-			fmt.Sprintf("%d", numArchives), initContainerTarSrcPath, initContainerTarDstPath,
+			strconv.Itoa(numArchives), initContainerTarSrcPath, initContainerTarDstPath,
 		},
 		Image:           image,
 		ImagePullPolicy: imagePullPolicy,

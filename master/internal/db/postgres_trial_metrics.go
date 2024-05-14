@@ -343,7 +343,7 @@ func shallowUnionMetrics(oldBody, newBody *metricsBody) (*metricsBody, error) {
 
 	// disallow batch metrics from being overwritten.
 	if oldBody.BatchMetrics != nil && newBody.BatchMetrics != nil {
-		return nil, fmt.Errorf("overwriting batch metrics is not supported")
+		return nil, errors.New("overwriting batch metrics is not supported")
 	}
 
 	oldAvgMetrics := oldBody.AvgMetrics

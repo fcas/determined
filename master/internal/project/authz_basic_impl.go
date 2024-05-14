@@ -2,6 +2,7 @@ package project
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/uptrace/bun"
@@ -54,7 +55,7 @@ func shouldBeAdminOrOwnWorkspaceOrProject(
 		return err
 	}
 	if !exists {
-		return fmt.Errorf("non admin users need to own the project or workspace")
+		return errors.New("non admin users need to own the project or workspace")
 	}
 	return nil
 }
@@ -98,7 +99,7 @@ func (a *ProjectAuthZBasic) CanMoveProject(
 	from, to *workspacev1.Workspace,
 ) error {
 	if !curUser.Admin && curUser.ID != model.UserID(project.UserId) {
-		return fmt.Errorf("non admin users can't move projects that someone else owns")
+		return errors.New("non admin users can't move projects that someone else owns")
 	}
 	return nil
 }
@@ -108,7 +109,7 @@ func (a *ProjectAuthZBasic) CanMoveProjectExperiments(
 	ctx context.Context, curUser model.User, exp *model.Experiment, from, to *projectv1.Project,
 ) error {
 	if !curUser.Admin && exp.OwnerID != nil && curUser.ID != *exp.OwnerID {
-		return fmt.Errorf("non admin users can't move others' experiments")
+		return errors.New("non admin users can't move others' experiments")
 	}
 	return nil
 }

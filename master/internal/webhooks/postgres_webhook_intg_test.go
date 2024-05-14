@@ -289,7 +289,7 @@ func testGenerateTaskLogPayloadTest(
 			if baseURLIsSet {
 				msg += fmt.Sprintf("<http://determined.ai%s | View full logs here>", path)
 			} else {
-				msg += fmt.Sprintf("View full logs at %s", path)
+				msg += "View full logs at " + path
 			}
 		} else {
 			msg = fmt.Sprintf(

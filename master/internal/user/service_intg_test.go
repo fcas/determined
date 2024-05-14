@@ -89,7 +89,7 @@ func TestAuthzUserList(t *testing.T) {
 	svc, authzUser, ctx := setup(t)
 
 	// Error passes through.
-	expectedErr := fmt.Errorf("filterUserListError")
+	expectedErr := errors.New("filterUserListError")
 	authzUser.On("FilterUserList", mock.Anything, model.User{}, mock.Anything).
 		Return(nil, expectedErr).Once()
 	_, err := svc.getUsers(ctx)
@@ -148,7 +148,7 @@ func TestAuthzPatchUser(t *testing.T) {
 			strings.NewReader(testCase.body)))
 		expectedErr := errors.Wrap(forbiddenError, testCase.expectedCall+"Error")
 		authzUser.On(testCase.expectedCall, testCase.args...).
-			Return(fmt.Errorf(testCase.expectedCall + "Error")).Once()
+			Return(errors.New(testCase.expectedCall + "Error")).Once()
 		authzUser.On("CanGetUser", mock.Anything, model.User{}, mock.Anything).
 			Return(nil).Once()
 
@@ -161,8 +161,8 @@ func TestAuthzPatchUser(t *testing.T) {
 		ctx.SetRequest(httptest.NewRequest(http.MethodPatch, "/",
 			strings.NewReader(testCase.body)))
 		authzUser.On(testCase.expectedCall, testCase.args...).
-			Return(fmt.Errorf(testCase.expectedCall + "Error")).Once()
-		cantGetUserError := fmt.Errorf("cantGetUserError")
+			Return(errors.New(testCase.expectedCall + "Error")).Once()
+		cantGetUserError := errors.New("cantGetUserError")
 		authzUser.On("CanGetUser", mock.Anything, model.User{}, mock.Anything).
 			Return(cantGetUserError).Once()
 
@@ -173,7 +173,7 @@ func TestAuthzPatchUser(t *testing.T) {
 		ctx.SetRequest(httptest.NewRequest(http.MethodPatch, "/",
 			strings.NewReader(testCase.body)))
 		authzUser.On(testCase.expectedCall, testCase.args...).
-			Return(fmt.Errorf(testCase.expectedCall + "Error")).Once()
+			Return(errors.New(testCase.expectedCall + "Error")).Once()
 		authzUser.On("CanGetUser", mock.Anything, model.User{}, mock.Anything).
 			Return(authz2.PermissionDeniedError{}).Once()
 
@@ -198,7 +198,7 @@ func TestAuthzPatchUsername(t *testing.T) {
 	expectedErr := errors.Wrap(forbiddenError, "canSetUsersUsernameError")
 	ctx.SetRequest(httptest.NewRequest("", "/", strings.NewReader(`{"username":"x"}`)))
 	authzUser.On("CanSetUsersUsername", mock.Anything, model.User{}, mock.Anything).
-		Return(fmt.Errorf("canSetUsersUsernameError")).Once()
+		Return(errors.New("canSetUsersUsernameError")).Once()
 	authzUser.On("CanGetUser", mock.Anything, model.User{}, mock.Anything).Return(nil).Once()
 
 	_, err := svc.patchUsername(ctx)
@@ -207,8 +207,8 @@ func TestAuthzPatchUsername(t *testing.T) {
 	// If we get an error from canGetUser we return that error.
 	ctx.SetRequest(httptest.NewRequest("", "/", strings.NewReader(`{"username":"x"}`)))
 	authzUser.On("CanSetUsersUsername", mock.Anything, model.User{}, mock.Anything).
-		Return(fmt.Errorf("canSetUsersUsernameError")).Once()
-	cantGetUserError := fmt.Errorf("cantGetUserError")
+		Return(errors.New("canSetUsersUsernameError")).Once()
+	cantGetUserError := errors.New("cantGetUserError")
 	authzUser.On("CanGetUser", mock.Anything, model.User{}, mock.Anything).
 		Return(cantGetUserError).Once()
 
@@ -218,7 +218,7 @@ func TestAuthzPatchUsername(t *testing.T) {
 	// If we can't view the user we get the same error as the user not existing.
 	ctx.SetRequest(httptest.NewRequest("", "/", strings.NewReader(`{"username":"x"}`)))
 	authzUser.On("CanSetUsersUsername", mock.Anything, model.User{}, mock.Anything).
-		Return(fmt.Errorf("canSetUsersUsernameError")).Once()
+		Return(errors.New("canSetUsersUsernameError")).Once()
 	authzUser.On("CanGetUser", mock.Anything, model.User{}, mock.Anything).
 		Return(authz2.PermissionDeniedError{}).Once()
 
@@ -247,7 +247,7 @@ func TestAuthzPostUser(t *testing.T) {
 	}
 	expectedErr := errors.Wrap(forbiddenError, "canCreateUserError")
 	authzUser.On("CanCreateUser", mock.Anything, model.User{}, model.User{Username: "x"}, agentGroup).
-		Return(fmt.Errorf("canCreateUserError")).Once()
+		Return(errors.New("canCreateUserError")).Once()
 
 	_, err := svc.postUser(ctx)
 	require.Equal(t, expectedErr.Error(), err.Error())
@@ -282,7 +282,7 @@ func TestAuthzGetUserImage(t *testing.T) {
 	ctx.SetParamValues("admin")
 	expectedErr := errors.Wrap(forbiddenError, "canGetUsersImageError")
 	authzUser.On("CanGetUsersImage", mock.Anything, model.User{}, mock.Anything).
-		Return(fmt.Errorf("canGetUsersImageError")).Once()
+		Return(errors.New("canGetUsersImageError")).Once()
 	authzUser.On("CanGetUser", mock.Anything, model.User{}, mock.Anything).Return(nil).Once()
 
 	_, err := svc.getUserImage(ctx)
@@ -290,8 +290,8 @@ func TestAuthzGetUserImage(t *testing.T) {
 
 	// If we get an error from canGetUser we return that error.
 	authzUser.On("CanGetUsersImage", mock.Anything, model.User{}, mock.Anything).
-		Return(fmt.Errorf("canGetUsersImageError")).Once()
-	cantGetUserError := fmt.Errorf("cantGetUserError")
+		Return(errors.New("canGetUsersImageError")).Once()
+	cantGetUserError := errors.New("cantGetUserError")
 	authzUser.On("CanGetUser", mock.Anything, model.User{}, mock.Anything).
 		Return(cantGetUserError).Once()
 
@@ -300,7 +300,7 @@ func TestAuthzGetUserImage(t *testing.T) {
 
 	// If we can't view the user return the same error as the user not existing.
 	authzUser.On("CanGetUsersImage", mock.Anything, model.User{}, mock.Anything).
-		Return(fmt.Errorf("canGetUsersImageError"))
+		Return(errors.New("canGetUsersImageError"))
 	authzUser.On("CanGetUser", mock.Anything, model.User{},
 		mock.Anything).Return(authz2.PermissionDeniedError{}).Once()
 

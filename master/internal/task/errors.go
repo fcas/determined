@@ -13,7 +13,7 @@ type TimeoutExceededError struct {
 }
 
 func (e TimeoutExceededError) Error() string {
-	return fmt.Sprintf("timeout exceeded: %s", e.Message)
+	return "timeout exceeded: " + e.Message
 }
 
 // NoAllocationError is returned an operation is tried without a requested allocation.
@@ -22,7 +22,7 @@ type NoAllocationError struct {
 }
 
 func (e NoAllocationError) Error() string {
-	return fmt.Sprintf("%s not valid without requested allocation", e.Action)
+	return e.Action + " not valid without requested allocation"
 }
 
 // AllocationUnfulfilledError is returned an operation is tried without an active allocation.
@@ -31,7 +31,7 @@ type AllocationUnfulfilledError struct {
 }
 
 func (e AllocationUnfulfilledError) Error() string {
-	return fmt.Sprintf("%s not valid without active allocation", e.Action)
+	return e.Action + " not valid without active allocation"
 }
 
 // StaleResourcesReceivedError is returned the scheduler gives an allocation resources between
@@ -48,7 +48,7 @@ type StaleContainerError struct {
 }
 
 func (e StaleContainerError) Error() string {
-	return fmt.Sprintf("stale container %s", e.ID)
+	return "stale container " + e.ID.String()
 }
 
 // StaleResourcesError is returned when an operation was attempted by a stale resources.
@@ -66,7 +66,7 @@ type BehaviorDisabledError struct {
 }
 
 func (e BehaviorDisabledError) Error() string {
-	return fmt.Sprintf("%s not enabled for this allocation", e.Behavior)
+	return e.Behavior + " not enabled for this allocation"
 }
 
 // BehaviorUnsupportedError is returned an operation is tried without the behavior being supported.
@@ -75,7 +75,7 @@ type BehaviorUnsupportedError struct {
 }
 
 func (e BehaviorUnsupportedError) Error() string {
-	return fmt.Sprintf("%s not supported for this allocation or resource manager", e.Behavior)
+	return e.Behavior + " not supported for this allocation or resource manager"
 }
 
 // AlreadyCancelledError is returned to the allocation when it tries to take an action but has an

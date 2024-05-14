@@ -2,7 +2,6 @@ package apitest
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	"google.golang.org/grpc/metadata"
@@ -24,6 +23,6 @@ func WithCredentials(ctx context.Context) context.Context {
 
 	return metadata.NewIncomingContext(
 		ctx,
-		metadata.Pairs("x-user-token", fmt.Sprintf("Bearer %s", token)),
+		metadata.Pairs("x-user-token", "Bearer "+token),
 	)
 }

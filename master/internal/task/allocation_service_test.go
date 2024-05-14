@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slices"
@@ -53,7 +54,7 @@ func TestInvalidResourcesRequest(t *testing.T) {
 	defer requireKilled(t, db, id, q, exitFuture)
 
 	q.Put(&sproto.InvalidResourcesRequestError{
-		Cause: fmt.Errorf("eternal gke quota error"),
+		Cause: errors.New("eternal gke quota error"),
 	})
 	requireTerminated(t, id, exitFuture)
 }
@@ -494,7 +495,7 @@ func TestStartError(t *testing.T) {
 	pgDB := requireDeps(t)
 
 	var rm mocks.ResourceManager
-	expectedErr := fmt.Errorf("rm crashed")
+	expectedErr := errors.New("rm crashed")
 	rm.On("Allocate", mock.Anything, mock.Anything).Return(nil, expectedErr)
 
 	taskModel := db.RequireMockTask(t, pgDB, nil)

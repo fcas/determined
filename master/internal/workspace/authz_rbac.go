@@ -2,7 +2,7 @@ package workspace
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -163,7 +163,7 @@ func (r *WorkspaceAuthZRBAC) CanGetWorkspaceID(
 		{
 			PermissionTypes: []rbacv1.PermissionType{workspacePermission},
 			SubjectType:     "workspace",
-			SubjectIDs:      []string{fmt.Sprint(workspaceID)},
+			SubjectIDs:      []string{strconv.Itoa(int(workspaceID))},
 		},
 	}
 	defer func() {
@@ -462,7 +462,7 @@ func addWorkspaceInfo(
 		{
 			PermissionTypes: permissions,
 			SubjectType:     "workspace",
-			SubjectIDs:      []string{fmt.Sprint(workspace.Id)},
+			SubjectIDs:      []string{strconv.Itoa(int(workspace.Id))},
 		},
 	}
 }

@@ -8,11 +8,13 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
@@ -455,7 +457,7 @@ func TestNonNumericEpochMetric(t *testing.T) {
 			},
 		},
 	})
-	require.Equal(t, fmt.Errorf("cannot add metric with non numeric 'epoch' value got x"), err)
+	require.Equal(t, errors.New("cannot add metric with non numeric 'epoch' value got x"), err)
 }
 
 func TestTrialsNonNumericMetrics(t *testing.T) {
@@ -820,10 +822,10 @@ func TestTrialAuthZ(t *testing.T) {
 		authZExp.On("CanGetExperiment", mock.Anything, mockUserArg, mock.Anything).
 			Return(authz2.PermissionDeniedError{}).Once()
 		require.ErrorIs(t, curCase.IDToReqCall(trial.ID),
-			apiPkg.NotFoundErrs("trial", fmt.Sprint(trial.ID), true))
+			apiPkg.NotFoundErrs("trial", strconv.Itoa(trial.ID), true))
 
 		// Experiment view error returns error unmodified.
-		expectedErr := fmt.Errorf("canGetTrialError")
+		expectedErr := errors.New("canGetTrialError")
 		authZExp.On("CanGetExperiment", mock.Anything, mockUserArg, mock.Anything).
 			Return(expectedErr).Once()
 		require.ErrorIs(t, curCase.IDToReqCall(trial.ID), expectedErr)
@@ -833,7 +835,7 @@ func TestTrialAuthZ(t *testing.T) {
 		authZExp.On("CanGetExperiment", mock.Anything, mockUserArg, mock.Anything).
 			Return(nil).Once()
 		authZExp.On(curCase.DenyFuncName, mock.Anything, mockUserArg, mock.Anything).
-			Return(fmt.Errorf(curCase.DenyFuncName + "Error")).Once()
+			Return(errors.New(curCase.DenyFuncName + "Error")).Once()
 		require.ErrorIs(t, curCase.IDToReqCall(trial.ID), expectedErr)
 	}
 }

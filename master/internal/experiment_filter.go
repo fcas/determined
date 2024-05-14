@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 
 	"github.com/determined-ai/determined/proto/pkg/projectv1"
@@ -175,7 +176,7 @@ func runHpToSQL(c string, filterColumnType *string, filterValue *interface{},
 	var o operator
 	var queryValue interface{}
 	if filterValue == nil && op != nil && *op != empty && *op != notEmpty {
-		return nil, fmt.Errorf("hyperparameter field defined without value and without a valid operator")
+		return nil, errors.New("hyperparameter field defined without value and without a valid operator")
 	}
 	o = *op
 	if o != empty && o != notEmpty {
@@ -244,7 +245,7 @@ func hpToSQL(c string, filterColumnType *string, filterValue *interface{},
 	var o operator
 	var queryValue interface{}
 	if filterValue == nil && op != nil && *op != empty && *op != notEmpty {
-		return nil, fmt.Errorf("hyperparameter field defined without value and without a valid operator")
+		return nil, errors.New("hyperparameter field defined without value and without a valid operator")
 	}
 	o = *op
 	if o != empty && o != notEmpty {
@@ -460,7 +461,7 @@ func (e experimentFilter) toSQL(q *bun.SelectQuery,
 	switch e.Kind {
 	case field:
 		if e.Operator == nil {
-			return nil, fmt.Errorf("field specified with value but no operator")
+			return nil, errors.New("field specified with value but no operator")
 		}
 		if e.Value == nil && *e.Operator != notEmpty && *e.Operator != empty {
 			return q.Where("true"), nil //nolint:goconst
@@ -526,16 +527,16 @@ func (e experimentFilter) toSQL(q *bun.SelectQuery,
 			switch *e.Operator {
 			case contains:
 				queryArgs = append(queryArgs, fmt.Sprintf("%%%s%%", *e.Value))
-				queryString = fmt.Sprintf("%s LIKE ?", col)
+				queryString = col + " LIKE ?"
 			case doesNotContain:
 				queryArgs = append(queryArgs, fmt.Sprintf("%%%s%%", *e.Value))
-				queryString = fmt.Sprintf("%s NOT LIKE ?", col)
+				queryString = col + " NOT LIKE ?"
 			case empty, notEmpty:
 				queryArgs = append(queryArgs, bun.Safe(oSQL))
-				queryString = fmt.Sprintf("%s ?", col)
+				queryString = col + " ?"
 			default:
 				queryArgs = append(queryArgs, bun.Safe(oSQL), *e.Value)
-				queryString = fmt.Sprintf("%s ? ?", col)
+				queryString = col + " ? ?"
 			}
 			if c != nil && *c == or {
 				q.WhereOr(queryString, queryArgs...)
@@ -551,7 +552,7 @@ func (e experimentFilter) toSQL(q *bun.SelectQuery,
 		var co string
 		var err error
 		if e.Conjunction == nil {
-			return nil, fmt.Errorf("group specified with no conjunction")
+			return nil, errors.New("group specified with no conjunction")
 		}
 		if len(e.Children) == 0 {
 			return q.Where("true"), nil //nolint:goconst

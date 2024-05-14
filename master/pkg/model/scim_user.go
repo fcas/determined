@@ -164,7 +164,7 @@ const clientSidePasswordSalt = "GubPEmmotfiK9TMD6Zdw" // #nosec G101
 // unrecognizable sha512 hash from the frontend.
 func replicateClientSideSaltAndHash(password string) string {
 	sum := sha512.Sum512([]byte(clientSidePasswordSalt + password))
-	return fmt.Sprintf("%x", sum)
+	return fmt.Sprintf("%x", sum) // nolint: perfsprint
 }
 
 // SCIMUsers is a list of users in SCIM.

@@ -809,7 +809,7 @@ func (t *TrialLog) Resolve() {
 
 	var level string
 	if t.Level != nil {
-		level = fmt.Sprintf("%s: ", *t.Level)
+		level = *t.Level + ": "
 	}
 
 	t.Message = fmt.Sprintf("[%s] [%s] %s|| %s %s",

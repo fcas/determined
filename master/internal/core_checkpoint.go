@@ -165,7 +165,7 @@ func (m *Master) getCheckpointImpl(
 	for _, v := range []io.Closer{downloader, dw} {
 		if err := v.Close(); err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError,
-				fmt.Sprintf("failed to complete checkpoint download: %s", err.Error()))
+				"failed to complete checkpoint download: "+err.Error())
 		}
 	}
 
@@ -225,7 +225,7 @@ func (m *Master) getCheckpoint(c echo.Context) error {
 			case codes.PermissionDenied:
 				return echo.NewHTTPError(http.StatusForbidden, s.Message())
 			default:
-				return fmt.Errorf(s.Message())
+				return errors.New(s.Message())
 			}
 		}
 	}

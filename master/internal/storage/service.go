@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/davecgh/go-spew/spew"
@@ -164,7 +165,7 @@ func Backend(
 	conf := childRow.toExpconf()
 	if conf == nil {
 		return expconf.CheckpointStorageConfig{},
-			fmt.Errorf("childRow toExpconf is nil, this is unexpected")
+			errors.New("childRow toExpconf is nil, this is unexpected")
 	}
 	return *conf, nil
 }

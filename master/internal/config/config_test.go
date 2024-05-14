@@ -114,7 +114,7 @@ integrations:
 					Provider: &provconfig.Config{
 						AgentDockerRuntime:     "runc",
 						AgentDockerNetwork:     "default",
-						AgentDockerImage:       fmt.Sprintf("determinedai/determined-agent:%s", version.Version),
+						AgentDockerImage:       "determinedai/determined-agent:" + version.Version,
 						AgentReconnectAttempts: aproto.AgentReconnectAttempts,
 						AgentReconnectBackoff:  aproto.AgentReconnectBackoffValue,
 						MaxIdleAgentPeriod:     model.Duration(30 * time.Second),
@@ -182,7 +182,7 @@ resource_pools:
 					Provider: &provconfig.Config{
 						AgentDockerRuntime:     "runc",
 						AgentDockerNetwork:     "default",
-						AgentDockerImage:       fmt.Sprintf("determinedai/determined-agent:%s", version.Version),
+						AgentDockerImage:       "determinedai/determined-agent:" + version.Version,
 						AgentReconnectAttempts: aproto.AgentReconnectAttempts,
 						AgentReconnectBackoff:  aproto.AgentReconnectBackoffValue,
 						MaxIdleAgentPeriod:     model.Duration(10 * time.Second),
@@ -198,7 +198,7 @@ resource_pools:
 					Provider: &provconfig.Config{
 						AgentDockerRuntime:     "runc",
 						AgentDockerNetwork:     "default",
-						AgentDockerImage:       fmt.Sprintf("determinedai/determined-agent:%s", version.Version),
+						AgentDockerImage:       "determinedai/determined-agent:" + version.Version,
 						AgentReconnectAttempts: aproto.AgentReconnectAttempts,
 						AgentReconnectBackoff:  aproto.AgentReconnectBackoffValue,
 						MaxIdleAgentPeriod:     model.Duration(30 * time.Second),

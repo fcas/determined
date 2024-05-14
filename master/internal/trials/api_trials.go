@@ -57,7 +57,7 @@ func (a *TrialsAPIServer) StartTrial(
 				return err
 			}
 			if obj.RunID != 0 {
-				return fmt.Errorf("trial has already been started")
+				return errors.New("trial has already been started")
 			}
 		}
 

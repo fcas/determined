@@ -497,7 +497,7 @@ func (t *TaskLog) Message() string {
 
 	// e.g., " INFO"
 	if t.Level != nil {
-		parts = append(parts, fmt.Sprintf("%s:", *t.Level))
+		parts = append(parts, *t.Level+":")
 	}
 
 	parts = append(parts, t.Log)

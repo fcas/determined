@@ -23,6 +23,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
@@ -407,7 +408,7 @@ func TestAuthZCheckpointsEcho(t *testing.T) {
 		api.m.getCheckpoint(ctx))
 
 	// need to make the model auth fail too for actual to be the expected
-	expectedErr := fmt.Errorf("canGetExperimentError")
+	expectedErr := errors.New("canGetExperimentError")
 	authZExp.On("CanGetExperiment", mock.Anything, curUser, mock.Anything).
 		Return(expectedErr).Once()
 	authZModel.On("CanGetModel", mock.Anything, mock.Anything,
@@ -419,7 +420,7 @@ func TestAuthZCheckpointsEcho(t *testing.T) {
 	authZModel.On("CanGetModel", mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything).Return(authz2.PermissionDeniedError{}).Once()
 	authZExp.On("CanGetExperimentArtifacts", mock.Anything, curUser, mock.Anything).
-		Return(fmt.Errorf("canGetArtifactsError")).Once()
+		Return(errors.New("canGetArtifactsError")).Once()
 	require.Equal(t, expectedErr, api.m.getCheckpoint(ctx))
 }
 

@@ -3,7 +3,6 @@ package proxy
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httputil"
@@ -133,7 +132,7 @@ func (p *Proxy) NewProxyHandler(serviceID string) echo.HandlerFunc {
 
 		if service == nil {
 			return echo.NewHTTPError(http.StatusNotFound,
-				fmt.Sprintf("service not found: %s", serviceName))
+				"service not found: "+serviceName)
 		}
 
 		if !service.AllowUnauthenticated {

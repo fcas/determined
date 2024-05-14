@@ -3,7 +3,6 @@ package tasks
 import (
 	"archive/tar"
 	"encoding/json"
-	"fmt"
 	"strconv"
 
 	"github.com/determined-ai/determined/master/pkg/archive"
@@ -107,7 +106,7 @@ func (s GenericCommandSpec) ToTaskSpec() TaskSpec {
 		wrapArchive(s.AdditionalFiles, rootDir),
 	}
 
-	res.Description = fmt.Sprintf("cmd-%s", s.CommandID)
+	res.Description = "cmd-" + s.CommandID
 
 	res.Entrypoint = s.Config.Entrypoint
 

@@ -5,7 +5,6 @@ package stream
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -108,7 +107,7 @@ func basicStartupTest(t *testing.T, testCase startupTestCase, socket *mockSocket
 	var data []string
 
 	// constructed expected sync messages based on startup message.
-	baseSyncMsg := fmt.Sprintf("key: sync_msg, sync_id: %s", testCase.startupMsg.SyncID)
+	baseSyncMsg := "key: sync_msg, sync_id: " + testCase.startupMsg.SyncID
 	expectedSyncs := []string{
 		baseSyncMsg + ", complete: false",
 		baseSyncMsg + ", complete: true",

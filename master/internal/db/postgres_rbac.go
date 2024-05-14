@@ -3,8 +3,8 @@ package db
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
+	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 
 	"github.com/determined-ai/determined/master/internal/authz"
@@ -155,7 +155,7 @@ func ExperimentIDsToWorkspaceIDs(ctx context.Context, experimentIDs []int32) (
 	for _, row := range rows {
 		workspaceID, ok := row["workspace_id"].(int64)
 		if !ok {
-			return nil, fmt.Errorf("workspaceID is not an int64")
+			return nil, errors.New("workspaceID is not an int64")
 		}
 		workspaceSet[int(workspaceID)] = true
 	}
@@ -193,7 +193,7 @@ func TrialIDsToWorkspaceIDs(ctx context.Context, trialIDs []int32) (
 	for _, row := range rows {
 		workspaceID, ok := row["workspace_id"].(int64)
 		if !ok {
-			return nil, fmt.Errorf("workspaceID is not an int64")
+			return nil, errors.New("workspaceID is not an int64")
 		}
 		workspaceSet[int(workspaceID)] = true
 	}

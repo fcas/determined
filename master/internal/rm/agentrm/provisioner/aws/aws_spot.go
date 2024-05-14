@@ -2,7 +2,6 @@ package aws
 
 import (
 	"encoding/base64"
-	"fmt"
 	"strings"
 	"time"
 
@@ -602,13 +601,13 @@ func (c *awsCluster) listCanceledButInstanceRunningSpotRequests(
 		DryRun: aws.Bool(dryRun),
 		Filters: []*ec2.Filter{
 			{
-				Name: aws.String(fmt.Sprintf("tag:%s", c.config.TagKey)),
+				Name: aws.String("tag:" + c.config.TagKey),
 				Values: []*string{
 					aws.String(c.config.TagValue),
 				},
 			},
 			{
-				Name:   aws.String(fmt.Sprintf("tag:%s", "determined-resource-pool")),
+				Name:   aws.String("tag:" + "determined-resource-pool"),
 				Values: []*string{aws.String(c.resourcePool)},
 			},
 			{
@@ -651,13 +650,13 @@ func (c *awsCluster) listActiveSpotInstanceRequests(
 		DryRun: aws.Bool(dryRun),
 		Filters: []*ec2.Filter{
 			{
-				Name: aws.String(fmt.Sprintf("tag:%s", c.config.TagKey)),
+				Name: aws.String("tag:" + c.config.TagKey),
 				Values: []*string{
 					aws.String(c.config.TagValue),
 				},
 			},
 			{
-				Name:   aws.String(fmt.Sprintf("tag:%s", "determined-resource-pool")),
+				Name:   aws.String("tag:" + "determined-resource-pool"),
 				Values: []*string{aws.String(c.resourcePool)},
 			},
 			{
@@ -711,13 +710,13 @@ func (c *awsCluster) listSpotRequestsByID(
 		DryRun: aws.Bool(dryRun),
 		Filters: []*ec2.Filter{
 			{
-				Name: aws.String(fmt.Sprintf("tag:%s", c.config.TagKey)),
+				Name: aws.String("tag:" + c.config.TagKey),
 				Values: []*string{
 					aws.String(c.config.TagValue),
 				},
 			},
 			{
-				Name:   aws.String(fmt.Sprintf("tag:%s", "determined-resource-pool")),
+				Name:   aws.String("tag:" + "determined-resource-pool"),
 				Values: []*string{aws.String(c.resourcePool)},
 			},
 			{

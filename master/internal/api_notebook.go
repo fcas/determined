@@ -196,7 +196,7 @@ func (a *apiServer) isNTSCPermittedToLaunch(
 	}
 
 	w := &workspacev1.Workspace{}
-	notFoundErr := api.NotFoundErrs("workspace", fmt.Sprint(workspaceID), true)
+	notFoundErr := api.NotFoundErrs("workspace", strconv.Itoa(int(workspaceID)), true)
 	if err := a.m.db.QueryProto(
 		"get_workspace", w, workspaceID, user.ID,
 	); errors.Is(err, db.ErrNotFound) {

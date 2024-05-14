@@ -283,7 +283,7 @@ func (a *agentState) checkAgentStartedDevicesMatch(
 				)
 			}
 		}
-		return fmt.Errorf("devices has changed") // This should not happen!
+		return errors.New("devices has changed") // This should not happen!
 	}
 
 	return nil

@@ -5,7 +5,6 @@ package internal
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
@@ -60,7 +59,7 @@ func setupNSCAuthZ() *mocks.NSCAuthZ {
 
 func TestTasksCountAuthZ(t *testing.T) {
 	api, authz, curUser, ctx := setupNTSCAuthzTest(t)
-	authz.On("CanGetActiveTasksCount", mock.Anything, curUser).Return(fmt.Errorf("deny"))
+	authz.On("CanGetActiveTasksCount", mock.Anything, curUser).Return(errors.New("deny"))
 	_, err := api.GetActiveTasksCount(ctx, &apiv1.GetActiveTasksCountRequest{})
 	require.Equal(t, status.Error(codes.PermissionDenied, "deny"), err)
 }

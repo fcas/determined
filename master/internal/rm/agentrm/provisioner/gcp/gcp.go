@@ -135,7 +135,7 @@ func (c *gcpCluster) SlotsPerInstance() int {
 }
 
 func (c *gcpCluster) idFromInstance(inst *compute.Instance) string {
-	return fmt.Sprintf("%v", inst.Name)
+	return inst.Name
 }
 
 func (c *gcpCluster) idFromOperation(op *compute.Operation) string {
@@ -144,7 +144,7 @@ func (c *gcpCluster) idFromOperation(op *compute.Operation) string {
 }
 
 func (c *gcpCluster) agentNameFromInstance(inst *compute.Instance) string {
-	return fmt.Sprintf("%v", inst.Name)
+	return inst.Name
 }
 
 // See https://cloud.google.com/compute/docs/instances/instance-life-cycle.

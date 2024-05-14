@@ -92,7 +92,7 @@ func renderJSONPointer(ptr string, instance JSON) string {
 			if !ok {
 				return ptr
 			}
-			out += fmt.Sprintf(".%s", s)
+			out += "." + s
 
 		default:
 			return ptr

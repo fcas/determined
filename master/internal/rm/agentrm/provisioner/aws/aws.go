@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/pem"
-	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -281,11 +280,11 @@ func (c *awsCluster) describeInstances(dryRun bool) ([]*ec2.Instance, error) {
 		DryRun: aws.Bool(dryRun),
 		Filters: []*ec2.Filter{
 			{
-				Name:   aws.String(fmt.Sprintf("tag:%s", c.config.TagKey)),
+				Name:   aws.String("tag:" + c.config.TagKey),
 				Values: []*string{aws.String(c.config.TagValue)},
 			},
 			{
-				Name:   aws.String(fmt.Sprintf("tag:%s", "determined-resource-pool")),
+				Name:   aws.String("tag:" + "determined-resource-pool"),
 				Values: []*string{aws.String(c.resourcePool)},
 			},
 			{

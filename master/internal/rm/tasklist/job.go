@@ -1,6 +1,7 @@
 package tasklist
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -148,7 +149,7 @@ func computeNewJobPos(
 	qPositions JobSortState,
 ) (decimal.Decimal, error) {
 	if anchor1 == jobID || anchor2 == jobID {
-		return invalidJobQPos, fmt.Errorf("cannot move job relative to itself")
+		return invalidJobQPos, errors.New("cannot move job relative to itself")
 	}
 
 	qPos1, ok := qPositions[anchor1]

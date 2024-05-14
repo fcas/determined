@@ -1047,7 +1047,7 @@ func (m *Master) checkIfRMDefaultsAreUnbound(rmConfig *config.ResourceManagerCon
 		}
 		return nil
 	}
-	return fmt.Errorf("no Resource Manager found")
+	return errors.New("no Resource Manager found")
 }
 
 func (m *Master) postTaskLogs(c echo.Context) (interface{}, error) {
@@ -1081,7 +1081,7 @@ func buildRM(
 			license.RequireLicense("dispatcher resource manager")
 			return dispatcherrm.New(db, echo, config, opts, cert)
 		default:
-			return nil, fmt.Errorf("no expected resource manager config is defined")
+			return nil, errors.New("no expected resource manager config is defined")
 		}
 	}
 
@@ -1108,7 +1108,7 @@ func buildRM(
 			}
 			rms[c.Name()] = k8sRM
 		default:
-			return nil, fmt.Errorf("no expected resource manager config is defined")
+			return nil, errors.New("no expected resource manager config is defined")
 		}
 	}
 
@@ -1506,7 +1506,7 @@ func (m *Master) Run(ctx context.Context, gRPCLogInitDone chan struct{}) error {
 		id := fmt.Sprintf("%s %s", c.Request().Method, c.Request().URL.Path)
 		log.Debugf("unmatched request: %s", id)
 		return echo.NewHTTPError(http.StatusNotFound,
-			fmt.Sprintf("api not found: %s", id))
+			"api not found: "+id)
 	})
 
 	user.RegisterAPIHandler(m.echo, userService)

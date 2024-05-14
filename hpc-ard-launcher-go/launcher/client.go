@@ -274,7 +274,7 @@ func (c *APIClient) prepareRequest(
 		headerParams["Content-Type"] = w.FormDataContentType()
 
 		// Set Content-Length
-		headerParams["Content-Length"] = fmt.Sprintf("%d", body.Len())
+		headerParams["Content-Length"] = strconv.Itoa(body.Len())
 		w.Close()
 	}
 
@@ -285,7 +285,7 @@ func (c *APIClient) prepareRequest(
 		body = &bytes.Buffer{}
 		body.WriteString(formParams.Encode())
 		// Set Content-Length
-		headerParams["Content-Length"] = fmt.Sprintf("%d", body.Len())
+		headerParams["Content-Length"] = strconv.Itoa(body.Len())
 	}
 
 	// Setup path and query parameters

@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+
+	"github.com/pkg/errors"
 )
 
 // DefaultRMName is the default resource manager name when a user does not provide one.
@@ -86,7 +88,7 @@ func (r *ResourceConfig) ResolveResource() error {
 			c.ResourceManager.KubernetesRM == nil &&
 			c.ResourceManager.DispatcherRM == nil {
 			// This error should be impossible to go off.
-			return fmt.Errorf("please specify an resource manager type")
+			return errors.New("please specify an resource manager type")
 		}
 	}
 
@@ -117,7 +119,7 @@ func (r ResourceConfig) Validate() []error {
 		// All non slurm resource managers must have a resource pool.
 		if len(r.ResourcePools) == 0 &&
 			(r.ResourceManager.AgentRM != nil || r.ResourceManager.KubernetesRM != nil) {
-			errs = append(errs, fmt.Errorf(
+			errs = append(errs, errors.New(
 				"for additional_resource_managers, you must specify at least one resource pool"))
 		}
 
@@ -146,7 +148,7 @@ func (r ResourceConfig) Validate() []error {
 
 	for _, r := range r.AdditionalResourceManagersInternal {
 		if r.ResourceManager.KubernetesRM == nil {
-			errs = append(errs, fmt.Errorf(
+			errs = append(errs, errors.New(
 				"additional_resource_managers only supports resource managers of type: kubernetes"))
 		}
 	}

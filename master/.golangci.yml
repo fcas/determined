@@ -155,11 +155,9 @@ linters:
     - gocognit # TODO(DET-9958)
     - funlen # TODO(DET-9959)
     - nestif # TODO(DET-9960)
-    - tagalign
     - revive
     - testifylint
     - inamedparam
-    - perfsprint
 
     # Toss up linters.
     - predeclared
@@ -193,6 +191,7 @@ linters:
     - exhaustive # We often use switch statements as if statements.
     - nakedret # Sometimes these are needed, and there's no easy way to replace them.
     - protogetter # Carolina thinks this is overkill.
+    - tagalign # Overkill.
 
     # Linters that are deprecated / replaced / removed.
     - nosnakecase # Replaced by revive(var-naming).

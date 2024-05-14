@@ -1,7 +1,7 @@
 package stream
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/gorilla/websocket"
 )
@@ -21,7 +21,7 @@ type WrappedWebsocket struct {
 func (w *WrappedWebsocket) Write(msg interface{}) error {
 	pm, ok := msg.(*websocket.PreparedMessage)
 	if !ok {
-		return fmt.Errorf("received message that is not a prepared message")
+		return errors.New("received message that is not a prepared message")
 	}
 	err := w.WritePreparedMessage(pm)
 	if err != nil {

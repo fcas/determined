@@ -2,7 +2,8 @@ package user
 
 import (
 	"context"
-	"fmt"
+
+	"github.com/pkg/errors"
 
 	"github.com/determined-ai/determined/master/pkg/model"
 )
@@ -29,7 +30,7 @@ func (a *UserAuthZBasic) CanCreateUser(
 	ctx context.Context, curUser, userToAdd model.User, agentUserGroup *model.AgentUserGroup,
 ) error {
 	if !curUser.Admin {
-		return fmt.Errorf("only admin privileged users can create users")
+		return errors.New("only admin privileged users can create users")
 	}
 	return nil
 }
@@ -40,7 +41,7 @@ func (a *UserAuthZBasic) CanSetUsersPassword(
 	ctx context.Context, curUser, targetUser model.User,
 ) error {
 	if !curUser.Admin && curUser.ID != targetUser.ID {
-		return fmt.Errorf("only admin privileged users can change other user's passwords")
+		return errors.New("only admin privileged users can change other user's passwords")
 	}
 	return nil
 }
@@ -50,7 +51,7 @@ func (a *UserAuthZBasic) CanSetUsersActive(
 	ctx context.Context, curUser, targetUser model.User, toActiveVal bool,
 ) error {
 	if !curUser.Admin {
-		return fmt.Errorf("only admin privileged users can update users")
+		return errors.New("only admin privileged users can update users")
 	}
 	return nil
 }
@@ -60,7 +61,7 @@ func (a *UserAuthZBasic) CanSetUsersAdmin(
 	ctx context.Context, curUser, targetUser model.User, toAdminVal bool,
 ) error {
 	if !curUser.Admin {
-		return fmt.Errorf("only admin privileged users can update users")
+		return errors.New("only admin privileged users can update users")
 	}
 	return nil
 }
@@ -68,7 +69,7 @@ func (a *UserAuthZBasic) CanSetUsersAdmin(
 // CanSetUsersRemote returns an error if the user is not an admin.
 func (a *UserAuthZBasic) CanSetUsersRemote(ctx context.Context, curUser model.User) error {
 	if !curUser.Admin {
-		return fmt.Errorf("only admin privileged users can update other users")
+		return errors.New("only admin privileged users can update other users")
 	}
 	return nil
 }
@@ -78,7 +79,7 @@ func (a *UserAuthZBasic) CanSetUsersAgentUserGroup(
 	ctx context.Context, curUser, targetUser model.User, agentUserGroup model.AgentUserGroup,
 ) error {
 	if !curUser.Admin {
-		return fmt.Errorf("only admin privileged users can update users")
+		return errors.New("only admin privileged users can update users")
 	}
 	return nil
 }
@@ -88,7 +89,7 @@ func (a *UserAuthZBasic) CanSetUsersUsername(
 	ctx context.Context, curUser, targetUser model.User,
 ) error {
 	if !curUser.Admin && curUser.ID != targetUser.ID {
-		return fmt.Errorf("only admin privileged users can update other users")
+		return errors.New("only admin privileged users can update other users")
 	}
 	return nil
 }
@@ -99,7 +100,7 @@ func (a *UserAuthZBasic) CanSetUsersDisplayName(
 	ctx context.Context, curUser, targetUser model.User,
 ) error {
 	if !curUser.Admin && curUser.ID != targetUser.ID {
-		return fmt.Errorf("only admin privileged users can set another user's display name")
+		return errors.New("only admin privileged users can set another user's display name")
 	}
 	return nil
 }

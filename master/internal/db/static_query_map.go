@@ -1,7 +1,6 @@
 package db
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/determined-ai/determined/master/pkg/etc"
@@ -23,7 +22,7 @@ func (q *StaticQueryMap) GetOrLoad(queryName string) string {
 
 	query, ok := q.queries[queryName]
 	if !ok {
-		query = string(etc.MustStaticFile(fmt.Sprintf("%s.sql", queryName)))
+		query = string(etc.MustStaticFile(queryName + ".sql"))
 		q.queries[queryName] = query
 	}
 	return query

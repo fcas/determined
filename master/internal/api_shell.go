@@ -55,7 +55,7 @@ func (a *apiServer) GetShells(
 		return nil, err
 	}
 
-	workspaceNotFoundErr := api.NotFoundErrs("workspace", fmt.Sprint(req.WorkspaceId), true)
+	workspaceNotFoundErr := api.NotFoundErrs("workspace", strconv.Itoa(int(req.WorkspaceId)), true)
 
 	if req.WorkspaceId != 0 {
 		// check if the workspace exists.

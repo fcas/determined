@@ -20,7 +20,7 @@ type PermissionDeniedError struct {
 // Error returns an error string.
 func (p PermissionDeniedError) Error() string {
 	if len(p.RequiredPermissions) == 0 {
-		return strings.TrimSpace(fmt.Sprintf("%s access denied", p.Prefix))
+		return strings.TrimSpace(p.Prefix + " access denied")
 	}
 
 	permissions := make([]string, len(p.RequiredPermissions))

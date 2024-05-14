@@ -2,7 +2,7 @@ package webhooks
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
 	"github.com/determined-ai/determined/master/pkg/model"
 )
@@ -15,7 +15,7 @@ func (a *WebhookAuthZBasic) CanEditWebhooks(
 	ctx context.Context, curUser *model.User,
 ) (serverError error) {
 	if !curUser.Admin {
-		return fmt.Errorf("non admin users can't edit webhooks")
+		return errors.New("non admin users can't edit webhooks")
 	}
 	return nil
 }

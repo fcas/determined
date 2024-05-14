@@ -2,6 +2,7 @@ package logpattern
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 
@@ -65,7 +66,7 @@ func (l *LogPatternPolicies) monitor(ctx context.Context,
 
 		for _, log := range logs {
 			if log.AgentID == nil {
-				return fmt.Errorf("agentID must be non nil to monitor logs")
+				return errors.New("agentID must be non nil to monitor logs")
 			}
 
 			// One of the trial logs prints expconf which has the regex pattern.
@@ -91,7 +92,7 @@ func (l *LogPatternPolicies) monitor(ctx context.Context,
 					}
 
 				default:
-					return fmt.Errorf("unrecognized log pattern policy type")
+					return errors.New("unrecognized log pattern policy type")
 				}
 			}
 		}

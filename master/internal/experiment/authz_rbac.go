@@ -3,6 +3,7 @@ package experiment
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uptrace/bun"
@@ -55,7 +56,7 @@ func addExpInfo(
 		{
 			PermissionTypes: []rbacv1.PermissionType{permission},
 			SubjectType:     "experiment",
-			SubjectIDs:      []string{fmt.Sprint(e.ID)},
+			SubjectIDs:      []string{strconv.Itoa(e.ID)},
 		},
 	}
 }

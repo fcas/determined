@@ -6,10 +6,10 @@ package internal
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
@@ -297,7 +297,7 @@ func TestTaskAuthZ(t *testing.T) {
 		require.ErrorIs(t, curCase.IDToReqCall(taskID), apiPkg.NotFoundErrs("task", taskID, true))
 
 		// Experiment view error is returned unmodified.
-		expectedErr := fmt.Errorf("canGetExperimentError")
+		expectedErr := errors.New("canGetExperimentError")
 		authZExp.On("CanGetExperiment", mock.Anything, mockUserArg, mock.Anything).
 			Return(expectedErr).Once()
 		require.ErrorIs(t, curCase.IDToReqCall(taskID), expectedErr)
@@ -307,7 +307,7 @@ func TestTaskAuthZ(t *testing.T) {
 		authZExp.On("CanGetExperiment", mock.Anything, curUser, mock.Anything).
 			Return(nil).Once()
 		authZExp.On(curCase.DenyFuncName, mock.Anything, mockUserArg, mock.Anything).
-			Return(fmt.Errorf(curCase.DenyFuncName + "Error")).Once()
+			Return(errors.New(curCase.DenyFuncName + "Error")).Once()
 		require.ErrorIs(t, curCase.IDToReqCall(taskID), expectedErr)
 	}
 }

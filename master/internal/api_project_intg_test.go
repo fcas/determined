@@ -5,13 +5,14 @@ package internal
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 	"testing"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
@@ -98,10 +99,10 @@ func TestAuthZCanCreateProject(t *testing.T) {
 		WorkspaceId: int32(workspaceID),
 	})
 	require.Equal(t,
-		apiPkg.NotFoundErrs("workspace", fmt.Sprint(workspaceID), true).Error(), err.Error())
+		apiPkg.NotFoundErrs("workspace", strconv.Itoa(workspaceID), true).Error(), err.Error())
 
 	// Workspace error returns error unmodified.
-	expectedErr := fmt.Errorf("canGetWorkspaceErr")
+	expectedErr := errors.New("canGetWorkspaceErr")
 	workspaceAuthZ.On("CanGetWorkspace", mock.Anything, mock.Anything, mock.Anything).
 		Return(expectedErr).Once()
 	_, err = api.PostProject(ctx, &apiv1.PostProjectRequest{
@@ -115,7 +116,7 @@ func TestAuthZCanCreateProject(t *testing.T) {
 	workspaceAuthZ.On("CanGetWorkspace", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
 	projectAuthZ.On("CanCreateProject", mock.Anything, mock.Anything, mock.Anything).
-		Return(fmt.Errorf("canGetWorkspaceDeny")).Once()
+		Return(errors.New("canGetWorkspaceDeny")).Once()
 	_, err = api.PostProject(ctx, &apiv1.PostProjectRequest{
 		Name:        uuid.New().String(),
 		WorkspaceId: int32(workspaceID),
@@ -136,7 +137,7 @@ func TestAuthZGetProject(t *testing.T) {
 	require.Equal(t, apiPkg.NotFoundErrs("project", "1", true).Error(), err.Error())
 
 	// An error returned by CanGetProject is returned unmodified.
-	expectedErr := fmt.Errorf("canGetProjectErr")
+	expectedErr := errors.New("canGetProjectErr")
 	projectAuthZ.On("CanGetProject", mock.Anything, mock.Anything, mock.Anything).
 		Return(expectedErr).Once()
 	_, err = api.GetProject(ctx, &apiv1.GetProjectRequest{Id: 1})
@@ -175,7 +176,7 @@ func TestAuthZCanMoveProject(t *testing.T) {
 		Return(authz2.PermissionDeniedError{}).Once()
 	_, err = api.MoveProject(ctx, req)
 	require.Equal(t,
-		apiPkg.NotFoundErrs("project", fmt.Sprint(projectID), true).Error(), err.Error())
+		apiPkg.NotFoundErrs("project", strconv.Itoa(int(projectID)), true).Error(), err.Error())
 
 	// Can't view from workspace.
 	projectAuthZ.On("CanGetProject", mock.Anything, mock.Anything, mock.Anything).
@@ -184,7 +185,7 @@ func TestAuthZCanMoveProject(t *testing.T) {
 		Return(authz2.PermissionDeniedError{}).Once()
 	_, err = api.MoveProject(ctx, req)
 	require.Equal(t, apiPkg.NotFoundErrs("workspace",
-		fmt.Sprint(int(fromResp.Workspace.Id)), true).Error(), err.Error())
+		strconv.Itoa(int(fromResp.Workspace.Id)), true).Error(), err.Error())
 
 	// Can't move project.
 	expectedErr := status.Error(codes.PermissionDenied, "canMoveProjectDeny")
@@ -193,7 +194,7 @@ func TestAuthZCanMoveProject(t *testing.T) {
 	workspaceAuthZ.On("CanGetWorkspace", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Twice()
 	projectAuthZ.On("CanMoveProject", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything).Return(fmt.Errorf("canMoveProjectDeny")).Once()
+		mock.Anything).Return(errors.New("canMoveProjectDeny")).Once()
 	_, err = api.MoveProject(ctx, req)
 	require.Equal(t, expectedErr.Error(), err.Error())
 }
@@ -219,7 +220,7 @@ func TestAuthZCanMoveProjectExperiments(t *testing.T) {
 		Return(authz2.PermissionDeniedError{}).Once()
 	_, err := api.MoveExperiment(ctx, req)
 	require.Equal(t,
-		apiPkg.NotFoundErrs("project", fmt.Sprint(srcProjectID), true).Error(), err.Error())
+		apiPkg.NotFoundErrs("project", strconv.Itoa(srcProjectID), true).Error(), err.Error())
 
 	// Can't view destination project
 	authZExp.On("CanGetExperiment", mock.Anything, mock.Anything, mock.Anything).
@@ -230,7 +231,7 @@ func TestAuthZCanMoveProjectExperiments(t *testing.T) {
 		Return(authz2.PermissionDeniedError{}).Once()
 	_, err = api.MoveExperiment(ctx, req)
 	require.Equal(t,
-		apiPkg.NotFoundErrs("project", fmt.Sprint(destProjectID), true).Error(), err.Error())
+		apiPkg.NotFoundErrs("project", strconv.Itoa(destProjectID), true).Error(), err.Error())
 
 	// Can't create experiment in destination project.
 	expectedErr := status.Error(codes.PermissionDenied, "canCreateExperimentDeny")
@@ -239,7 +240,7 @@ func TestAuthZCanMoveProjectExperiments(t *testing.T) {
 	projectAuthZ.On("CanGetProject", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Twice()
 	authZExp.On("CanCreateExperiment", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(fmt.Errorf("canCreateExperimentDeny")).Once()
+		Return(errors.New("canCreateExperimentDeny")).Once()
 	_, err = api.MoveExperiment(ctx, req)
 	require.Equal(t, expectedErr.Error(), err.Error())
 
@@ -330,11 +331,11 @@ func TestAuthZRoutesGetProjectThenAction(t *testing.T) {
 		projectAuthZ.On("CanGetProject", mock.Anything, mock.Anything, mock.Anything).
 			Return(authz2.PermissionDeniedError{}).Once()
 		err = curCase.IDToReqCall(projectID)
-		require.Equal(t, apiPkg.NotFoundErrs("project", fmt.Sprint(projectID), true).Error(),
+		require.Equal(t, apiPkg.NotFoundErrs("project", strconv.Itoa(projectID), true).Error(),
 			err.Error())
 
 		// Error checking if project errors during view check.
-		expectedErr := fmt.Errorf("canGetProjectError")
+		expectedErr := errors.New("canGetProjectError")
 		projectAuthZ.On("CanGetProject", mock.Anything, mock.Anything, mock.Anything).
 			Return(expectedErr).Once()
 		err = curCase.IDToReqCall(projectID)
@@ -345,7 +346,7 @@ func TestAuthZRoutesGetProjectThenAction(t *testing.T) {
 		projectAuthZ.On("CanGetProject", mock.Anything, mock.Anything, mock.Anything).
 			Return(nil).Once()
 		projectAuthZ.On(curCase.DenyFuncName, mock.Anything, mock.Anything, mock.Anything).
-			Return(fmt.Errorf(curCase.DenyFuncName + "Deny"))
+			Return(errors.New(curCase.DenyFuncName + "Deny"))
 		err = curCase.IDToReqCall(projectID)
 		require.Equal(t, expectedErr.Error(), err.Error())
 	}

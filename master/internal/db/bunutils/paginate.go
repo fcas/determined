@@ -65,5 +65,5 @@ func ProtoStateDBCaseString(
 	for enum, v := range enumToValue {
 		query += fmt.Sprintf("WHEN '%s' THEN %d ", strings.TrimPrefix(enum, trimFromPrefix), v)
 	}
-	return query + fmt.Sprintf("END AS %s", serializedName)
+	return query + "END AS " + serializedName
 }

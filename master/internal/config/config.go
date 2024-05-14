@@ -273,7 +273,7 @@ func k8sValidateMaxSlots(r *ResourceManagerWithPoolsConfig,
 	// if exactly one resource manager, allow global task default to be used
 	if totalRMs == 1 {
 		if (rmMaxSlots != nil) == (taskMaxSlots != nil) {
-			return taskContainerDefaults, fmt.Errorf("must provide exactly one of " +
+			return taskContainerDefaults, errors.New("must provide exactly one of " +
 				"resource_manager.max_slots_per_pod and " +
 				"task_container_defaults.kubernetes.max_slots_per_pod")
 		}
@@ -287,7 +287,7 @@ func k8sValidateMaxSlots(r *ResourceManagerWithPoolsConfig,
 	} else {
 		// otherwise, must use max slots defined in resource manager config
 		if rmMaxSlots == nil {
-			return taskContainerDefaults, fmt.Errorf("must provide resource_manager.max_slots_per_pod")
+			return taskContainerDefaults, errors.New("must provide resource_manager.max_slots_per_pod")
 		}
 		if taskMaxSlots != nil {
 			log.Warn("ignoring task_container_defaults.kubernetes.max_slots_per_pod - " +
@@ -318,7 +318,7 @@ func (c *Config) Resolve() error {
 	}
 	c.Root = root
 
-	c.DB.Migrations = fmt.Sprintf("file://%s", filepath.Join(c.Root, "static/migrations"))
+	c.DB.Migrations = "file://" + filepath.Join(c.Root, "static/migrations")
 
 	// We must resolve resources before we apply pool defaults.
 	if err := c.ResolveResource(); err != nil {

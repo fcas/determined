@@ -266,7 +266,7 @@ func (a *allocation) HandleRMEvent(msg sproto.ResourcesEvent) (done bool) {
 	case sproto.ResourcesReleasedEvent:
 		return true
 	default:
-		panic(fmt.Errorf("unexpected RM event"))
+		panic(errors.New("unexpected RM event"))
 	}
 	return false
 }
@@ -689,7 +689,7 @@ func (a *allocation) resourcesAllocated(msg *sproto.ResourcesAllocated) error {
 
 		err = db.UpdateAllocationPorts(context.TODO(), a.model)
 		if err != nil {
-			return fmt.Errorf("updating allocation db")
+			return errors.New("updating allocation db")
 		}
 
 		for portName, port := range a.model.Ports {
@@ -804,7 +804,7 @@ func (a *allocation) resourcesStateChanged(msg *sproto.ResourcesStateChanged) {
 		case a.killedWhileRunning:
 			a.sendTaskLog(&model.TaskLog{
 				ContainerID: msg.ContainerIDStr(),
-				Log:         fmt.Sprintf("killed: %s", msg.ResourcesStopped.String()),
+				Log:         "killed: %" + msg.ResourcesStopped.String(),
 			})
 			a.tryExit("resources were killed")
 		case msg.ResourcesStopped.Failure != nil:
@@ -815,13 +815,13 @@ func (a *allocation) resourcesStateChanged(msg *sproto.ResourcesStateChanged) {
 			if a.killedDaemonsGracefully {
 				a.sendTaskLog(&model.TaskLog{
 					ContainerID: msg.ContainerIDStr(),
-					Log:         fmt.Sprintf("daemon killed: %s", msg.ResourcesStopped.String()),
+					Log:         "daemon killed: " + msg.ResourcesStopped.String(),
 				})
 				a.tryExit("remaining resources terminated")
 			} else {
 				a.sendTaskLog(&model.TaskLog{
 					ContainerID: msg.ContainerIDStr(),
-					Log:         fmt.Sprintf("crashed: %s", msg.ResourcesStopped.String()),
+					Log:         "crashed: " + msg.ResourcesStopped.String(),
 					Level:       ptrs.Ptr(model.LogLevelError),
 				})
 				a.crash(*msg.ResourcesStopped.Failure)
@@ -933,19 +933,19 @@ func (a *allocation) tryExitOrTerminate(reason string, forcePreemption bool) {
 func (a *allocation) tryExit(reason string) (exited bool) {
 	switch {
 	case !a.resourcesStarted:
-		a.terminated(fmt.Sprintf("exit before start: %s", reason))
+		a.terminated("exit before start: " + reason)
 		return true
 	case len(a.resources.exited()) == len(a.resources):
-		a.terminated(fmt.Sprintf("all resources exited: %s", reason))
+		a.terminated("all resources exited: " + reason)
 		return true
 	case a.allNonDaemonsExited():
 		a.killedDaemons = true
 		if a.exitedWithoutErr() {
 			a.killedDaemonsGracefully = true
 		}
-		a.kill(fmt.Sprintf("all non-daemons exited: %s", reason))
+		a.kill("all non-daemons exited: " + reason)
 	case len(a.resources.failed()) > 0:
-		a.kill(fmt.Sprintf("some resources failed: %s", reason))
+		a.kill("some resources failed: " + reason)
 	}
 	return false
 }
@@ -1151,11 +1151,11 @@ func (a *allocation) calculateExitStatus(reason string) (
 ) {
 	switch {
 	case a.killedWhileRunning:
-		return fmt.Sprintf("allocation killed after %s", reason), false, logrus.InfoLevel, nil
+		return "allocation killed after " + reason, false, logrus.InfoLevel, nil
 	case a.req.Preemptible && preemptible.Acknowledged(a.req.AllocationID.String()):
-		return fmt.Sprintf("allocation preempted after %s", reason), false, logrus.InfoLevel, nil
+		return "allocation preempted after " + reason, false, logrus.InfoLevel, nil
 	case a.exitErr == nil && len(a.resources.exited()) > 0:
-		return fmt.Sprintf("allocation stopped early after %s", reason), true, logrus.InfoLevel, nil
+		return "allocation stopped early after " + reason, true, logrus.InfoLevel, nil
 	case a.exitErr != nil:
 		switch err := a.exitErr.(type) {
 		case sproto.ResourcesRestoreError:
@@ -1178,7 +1178,7 @@ func (a *allocation) calculateExitStatus(reason string) (
 			return fmt.Sprintf("allocation handler crashed due to error: %s", err), false, logrus.ErrorLevel, err
 		}
 	case len(a.resources) == 0:
-		return fmt.Sprintf("allocation aborted after %s", reason), false, logrus.InfoLevel, nil
+		return "allocation aborted after " + reason, false, logrus.InfoLevel, nil
 	default:
 		// If we ever exit without a reason and we have no exited resources, something has gone wrong.
 		panic("allocation exited early without a valid reason")
@@ -1189,9 +1189,9 @@ func (a *allocation) calculateExitStatus(reason string) (
 func (a *allocation) markResourcesStarted() {
 	a.model.StartTime = ptrs.Ptr(time.Now().UTC().Truncate(time.Millisecond))
 	if a.restored {
-		a.sendTaskLog(&model.TaskLog{Log: fmt.Sprintf("%s was recovered on an agent", a.req.Name)})
+		a.sendTaskLog(&model.TaskLog{Log: a.req.Name + " was recovered on an agent"})
 	} else {
-		a.sendTaskLog(&model.TaskLog{Log: fmt.Sprintf("%s was assigned to an agent", a.req.Name)})
+		a.sendTaskLog(&model.TaskLog{Log: a.req.Name + " was assigned to an agent"})
 	}
 	if err := db.UpdateAllocationStartTime(context.TODO(), a.model); err != nil {
 		a.syslog.

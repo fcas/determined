@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 
 	"github.com/determined-ai/determined/proto/pkg/apiv1"
 	"github.com/determined-ai/determined/proto/pkg/projectv1"
@@ -82,7 +83,7 @@ func echoGetExperimentAndCheckCanDoActions(ctx context.Context, c echo.Context,
 ) (*model.Experiment, model.User, error) {
 	user := c.(*detContext.DetContext).MustGetUser()
 	e, err := db.ExperimentByID(ctx, expID)
-	expNotFound := api.NotFoundErrs("experiment", fmt.Sprint(expID), false)
+	expNotFound := api.NotFoundErrs("experiment", strconv.Itoa(expID), false)
 	if errors.Is(err, db.ErrNotFound) {
 		return nil, model.User{}, expNotFound
 	} else if err != nil {
@@ -227,10 +228,10 @@ func getCreateExperimentsProject(
 	// Place experiment in Uncategorized, unless project set in request params or config.
 	var err error
 	projectID := model.DefaultProjectID
-	errProjectNotFound := api.NotFoundErrs("project", fmt.Sprint(projectID), true)
+	errProjectNotFound := api.NotFoundErrs("project", strconv.Itoa(projectID), true)
 	if req.ProjectId > 1 {
 		projectID = int(req.ProjectId)
-		errProjectNotFound = api.NotFoundErrs("project", fmt.Sprint(projectID), true)
+		errProjectNotFound = api.NotFoundErrs("project", strconv.Itoa(projectID), true)
 	} else {
 		if (config.Workspace() == "") != (config.Project() == "") {
 			return nil,

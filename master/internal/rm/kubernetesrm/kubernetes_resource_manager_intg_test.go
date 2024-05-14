@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -711,7 +712,7 @@ func TestHealthCheck(t *testing.T) {
 
 	t.Run("unhealthy", func(t *testing.T) {
 		mockPodInterface.On("List", mock.Anything, mock.Anything).
-			Return(nil, fmt.Errorf("error")).Once()
+			Return(nil, errors.New("error")).Once()
 		require.Equal(t, []model.ResourceManagerHealth{
 			{
 				Name:   "testname",

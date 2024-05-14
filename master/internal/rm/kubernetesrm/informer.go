@@ -46,7 +46,7 @@ func newPodInformer(
 
 	// Log when pods are first added to the informer (at start-up).
 	syslog := logrus.WithFields(logrus.Fields{
-		"component": fmt.Sprintf("%s-informer", name),
+		"component": name + "-informer",
 		"namespace": namespace,
 	})
 	for i := range pods.Items {

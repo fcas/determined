@@ -131,7 +131,7 @@ func (a *agents) HandleWebsocketConnection(msg webSocketRequest) error {
 	if tlsConn, ok := cmuxConn.Conn.(*tls.Conn); ok {
 		r, ok := config.GetMasterConfig().GetAgentRMConfig()
 		if !ok {
-			return fmt.Errorf("can't read agent config")
+			return errors.New("can't read agent config")
 		}
 		requireAuth := r.ResourceManager.AgentRM.RequireAuthentication
 

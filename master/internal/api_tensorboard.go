@@ -343,9 +343,9 @@ func (a *apiServer) LaunchTensorboard(
 
 			prefix := c.Prefix()
 			if prefix != nil {
-				logBasePath = fmt.Sprintf("s3://%s", filepath.Join(c.Bucket(), *prefix))
+				logBasePath = "s3://" + filepath.Join(c.Bucket(), *prefix)
 			} else {
-				logBasePath = fmt.Sprintf("s3://%s", c.Bucket())
+				logBasePath = "s3://" + c.Bucket()
 			}
 
 		case expconf.AzureConfig:
@@ -354,9 +354,9 @@ func (a *apiServer) LaunchTensorboard(
 		case expconf.GCSConfig:
 			prefix := c.Prefix()
 			if prefix != nil {
-				logBasePath = fmt.Sprintf("gs://%s", filepath.Join(c.Bucket(), *prefix))
+				logBasePath = "gs://" + filepath.Join(c.Bucket(), *prefix)
 			} else {
-				logBasePath = fmt.Sprintf("gs://%s", c.Bucket())
+				logBasePath = "gs://" + c.Bucket()
 			}
 
 		default:

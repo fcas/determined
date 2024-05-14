@@ -157,7 +157,7 @@ func (a *apiServer) getExperiment(
 func (a *apiServer) getExperimentTx(
 	ctx context.Context, idb bun.IDB, curUser model.User, experimentID int,
 ) (*experimentv1.Experiment, error) {
-	expNotFound := api.NotFoundErrs("experiment", fmt.Sprint(experimentID), true)
+	expNotFound := api.NotFoundErrs("experiment", strconv.Itoa(experimentID), true)
 	exp := &experimentv1.Experiment{}
 	expMap := map[string]interface{}{}
 	query := `
@@ -274,7 +274,7 @@ func (a *apiServer) GetSearcherEvents(
 
 	e, ok := experiment.ExperimentRegistry.Load(int(req.ExperimentId))
 	if !ok {
-		return nil, api.NotFoundErrs("experiment", fmt.Sprint(req.ExperimentId), true)
+		return nil, api.NotFoundErrs("experiment", strconv.Itoa(int(req.ExperimentId)), true)
 	}
 	w, err := e.GetSearcherEventsWatcher()
 	if err != nil {
@@ -317,7 +317,7 @@ func (a *apiServer) PostSearcherOperations(
 
 	e, ok := experiment.ExperimentRegistry.Load(int(req.ExperimentId))
 	if !ok {
-		return nil, api.NotFoundErrs("experiment", fmt.Sprint(req.ExperimentId), true)
+		return nil, api.NotFoundErrs("experiment", strconv.Itoa(int(req.ExperimentId)), true)
 	}
 	if err := e.PerformSearcherOperations(req); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to post operations: %v", err)
@@ -650,7 +650,7 @@ func (a *apiServer) GetExperiments(
 			orderColMap[req.SortBy], sortByMap[req.OrderBy], sortByMap[req.OrderBy],
 		)
 	default:
-		orderExpr = fmt.Sprintf("id %s", sortByMap[req.OrderBy])
+		orderExpr = "id " + sortByMap[req.OrderBy]
 	}
 	query = query.OrderExpr(orderExpr)
 
@@ -851,7 +851,7 @@ func (a *apiServer) GetExperimentValidationHistory(
 	var resp apiv1.GetExperimentValidationHistoryResponse
 	switch err := a.m.db.QueryProto("proto_experiment_validation_history", &resp, req.ExperimentId); {
 	case err == db.ErrNotFound:
-		return nil, api.NotFoundErrs("experiment", fmt.Sprint(req.ExperimentId), true)
+		return nil, api.NotFoundErrs("experiment", strconv.Itoa(int(req.ExperimentId)), true)
 	case err != nil:
 		return nil, errors.Wrapf(err,
 			"error fetching validation history for experiment from database: %d", req.ExperimentId)
@@ -961,7 +961,7 @@ func (a *apiServer) ActivateExperiment(
 
 	e, ok := experiment.ExperimentRegistry.Load(int(req.Id))
 	if !ok {
-		return nil, api.NotFoundErrs("experiment", fmt.Sprint(req.Id), true)
+		return nil, api.NotFoundErrs("experiment", strconv.Itoa(int(req.Id)), true)
 	}
 	if err := e.ActivateExperiment(); err != nil {
 		return nil, err
@@ -1239,7 +1239,7 @@ func (a *apiServer) PatchExperiment(
 		if newResources != nil {
 			e, ok := experiment.ExperimentRegistry.Load(int(exp.Id))
 			if !ok {
-				return nil, api.NotFoundErrs("experiment", fmt.Sprint(exp.Id), true)
+				return nil, api.NotFoundErrs("experiment", strconv.Itoa(int(exp.Id)), true)
 			}
 
 			if newResources.MaxSlots != nil {
@@ -1337,7 +1337,7 @@ func (a *apiServer) GetExperimentCheckpoints(
 	resp.Checkpoints = []*checkpointv1.Checkpoint{}
 	switch err = a.m.db.QueryProto("get_checkpoints_for_experiment", &resp.Checkpoints, req.Id); {
 	case err == db.ErrNotFound:
-		return nil, api.NotFoundErrs("checkpoints for experiment", fmt.Sprint(req.Id), true)
+		return nil, api.NotFoundErrs("checkpoints for experiment", strconv.Itoa(int(req.Id)), true)
 	case err != nil:
 		return nil,
 			errors.Wrapf(err, "error fetching checkpoints for experiment %d from database", req.Id)
@@ -1603,7 +1603,7 @@ func (a *apiServer) ContinueExperiment(
 
 		// Check at the end to minimize chance of experiment already being created somehow.
 		if _, ok := experiment.ExperimentRegistry.Load(int(req.Id)); ok {
-			return fmt.Errorf("experiment already exists")
+			return errors.New("experiment already exists")
 		}
 		return nil
 	})

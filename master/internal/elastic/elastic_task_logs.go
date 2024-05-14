@@ -315,7 +315,7 @@ func (e *Elastic) search(query jsonObj, resp interface{}) error {
 
 	err = json.NewDecoder(res.Body).Decode(resp)
 	if err != nil {
-		return fmt.Errorf("failed to decode search api response")
+		return errors.New("failed to decode search api response")
 	}
 
 	return nil

@@ -4,6 +4,7 @@
 package stream
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -93,7 +94,7 @@ func (s *mockSocket) ReadJSON(data interface{}) error {
 	case msg := <-s.outbound:
 		targetMsg, ok := data.(*StartupMsg)
 		if !ok {
-			return fmt.Errorf("target message type is not a pointer to StartupMsg")
+			return errors.New("target message type is not a pointer to StartupMsg")
 		}
 		*targetMsg = *msg
 		return nil

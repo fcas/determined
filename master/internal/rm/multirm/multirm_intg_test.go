@@ -1,8 +1,8 @@
 package multirm
 
 import (
-	"fmt"
 	"os"
+	"strconv"
 	"testing"
 
 	"github.com/google/uuid"
@@ -57,7 +57,7 @@ func TestGetAllocationSummaries(t *testing.T) {
 			for i := 1; i <= tt.managers; i++ {
 				ret := map[model.AllocationID]sproto.AllocationSummary{}
 				for _, alloc := range tt.allocNames {
-					a := alloc + fmt.Sprint(i)
+					a := alloc + strconv.Itoa(i)
 					ret[*model.NewAllocationID(&a)] = sproto.AllocationSummary{}
 				}
 				require.Equal(t, len(ret), len(tt.allocNames))
@@ -79,7 +79,7 @@ func TestGetAllocationSummaries(t *testing.T) {
 			require.Empty(t, allocs[*model.NewAllocationID(&bogus)])
 
 			for _, name := range tt.allocNames {
-				n := fmt.Sprintf(name + "0")
+				n := name + "0"
 				tmpName := name
 
 				require.NotNil(t, allocs[*model.NewAllocationID(&n)])

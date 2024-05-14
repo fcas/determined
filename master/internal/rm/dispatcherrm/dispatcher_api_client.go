@@ -13,6 +13,7 @@ import (
 
 	semver "github.com/Masterminds/semver/v3"
 	"github.com/hashicorp/go-cleanhttp"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.hpe.com/hpe/hpc-ard-launcher-go/launcher"
 
@@ -347,7 +348,7 @@ func (c *launcherAPIClient) loadEnvironmentLog(
 		LoadEnvironmentLog(c.withAuth(context.TODO()), owner, dispatchID, logFileName).
 		Execute() //nolint:bodyclose
 	if err != nil {
-		return data, nil, fmt.Errorf(c.handleLauncherError(
+		return data, nil, errors.New(c.handleLauncherError(
 			resp, "Failed to retrieve HPC Resource details", err))
 	}
 	return data, resp, nil

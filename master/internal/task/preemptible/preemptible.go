@@ -2,6 +2,7 @@ package preemptible
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -16,7 +17,7 @@ import (
 var ErrPreemptionTimeoutExceeded = fmt.Errorf("allocation did not preempt in %s", DefaultTimeout)
 
 // ErrPreemptionDisabled indicates that an alloction is either non-preemptible or not running.
-var ErrPreemptionDisabled = fmt.Errorf("allocation is not preemptible")
+var ErrPreemptionDisabled = errors.New("allocation is not preemptible")
 
 // DefaultTimeout is the delay before the deadline exceeded callback passed to preempt is called.
 var DefaultTimeout = time.Hour

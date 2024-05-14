@@ -1,7 +1,6 @@
 package agentrm
 
 import (
-	"fmt"
 	"slices"
 
 	"github.com/determined-ai/determined/master/internal/sproto"
@@ -72,6 +71,6 @@ func MakeFitFunction(fittingPolicy string) func(
 	case best:
 		return BestFit
 	default:
-		panic(fmt.Sprintf("invalid scheduler fit: %s", fittingPolicy))
+		panic("invalid scheduler fit: " + fittingPolicy)
 	}
 }

@@ -2,7 +2,7 @@ package internal
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -26,7 +26,7 @@ func (e *internalExperiment) ToV1Job() (*jobv1.Job, error) {
 
 	j := jobv1.Job{
 		JobId:          e.JobID.String(),
-		EntityId:       fmt.Sprint(e.ID),
+		EntityId:       strconv.Itoa(e.ID),
 		Type:           jobv1.Type_TYPE_EXPERIMENT,
 		SubmissionTime: timestamppb.New(e.StartTime),
 		Username:       e.Username,

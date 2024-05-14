@@ -196,11 +196,11 @@ func (s *Service) consumeAssertion(c echo.Context) error {
 	case deprecatedCliRelayState:
 		fallthrough
 	case cliRelayState:
-		redirectPath = cliRedirectPath + fmt.Sprintf("?token=%s", url.QueryEscape(token))
+		redirectPath = cliRedirectPath + "?token=" + url.QueryEscape(token)
 	case "":
 		// do nothing to the default redirectPath
 	default:
-		redirectPath += fmt.Sprintf("?relayState=%s", url.QueryEscape(relayState))
+		redirectPath += "?relayState=" + url.QueryEscape(relayState)
 	}
 
 	return c.Redirect(http.StatusSeeOther, redirectPath)

@@ -326,18 +326,18 @@ func (t *TaskSpec) WarnUnsupportedOptions(
 
 	ignored := "is ignored with the HPC launcher"
 	if t.ResourcesConfig.MaxSlots() != nil {
-		warnings = append(warnings, fmt.Sprintf("resources.max_slots %s", ignored))
+		warnings = append(warnings, "resources.max_slots "+ignored)
 	}
 
 	// Dispatcher RM had recorded if user had configured resources.priority before it
 	// modified the resources.prioroty value. Here instead of checking t.ResourcesConfig.Priority(),
 	// we check the flag userConfiguredPriority.
 	if userConfiguredPriority {
-		warnings = append(warnings, fmt.Sprintf("resources.priority %s", ignored))
+		warnings = append(warnings, "resources.priority "+ignored)
 	}
 	if t.ResourcesConfig.Weight() != 1 {
 		// DAI set default weight value to 1 when not specified
-		warnings = append(warnings, fmt.Sprintf("resources.weight %s", ignored))
+		warnings = append(warnings, "resources.weight "+ignored)
 	}
 
 	notSupported := "is not supported with Singularity"
@@ -347,22 +347,22 @@ func (t *TaskSpec) WarnUnsupportedOptions(
 		notSupported = "is not supported with Enroot"
 	}
 	if len(t.ResourcesConfig.Devices()) > 0 {
-		warnings = append(warnings, fmt.Sprintf("resources.devices %s", notSupported))
+		warnings = append(warnings, "resources.devices "+notSupported)
 	}
 	if t.ResourcesConfig.ShmSize() != nil {
-		warnings = append(warnings, fmt.Sprintf("resources.shm_size %s", notSupported))
+		warnings = append(warnings, "resources.shm_size "+notSupported)
 	}
 
 	if t.Environment.RegistryAuth() != nil {
 		if containerRunType == podman {
-			warnings = append(warnings, fmt.Sprintf("environment.registry_auth %s", notSupported))
+			warnings = append(warnings, "environment.registry_auth "+notSupported)
 		} else {
 			if len(t.Environment.RegistryAuth().ServerAddress) > 0 {
 				warnings = append(warnings,
-					fmt.Sprintf("environment.registry_auth.serveraddress %s", notSupported))
+					"environment.registry_auth.serveraddress "+notSupported)
 			}
 			if len(t.Environment.RegistryAuth().Email) > 0 {
-				warnings = append(warnings, fmt.Sprintf("environment.registry_auth.email %s", notSupported))
+				warnings = append(warnings, "environment.registry_auth.email "+notSupported)
 			}
 		}
 	}
@@ -433,7 +433,7 @@ func computeJobProjectResultForLabels(
 
 func formatPbsLabelResult(label string) string {
 	label = strings.Map(mapPbsInvalidChars, label)
-	return fmt.Sprintf("-P %s", addQuotes(label))
+	return "-P " + addQuotes(label)
 }
 
 // mapPbsInvalidChars maps any character not valid for a PBS project name to the '_'.
@@ -445,7 +445,7 @@ func mapPbsInvalidChars(in rune) rune {
 }
 
 func formatSlurmLabelResult(label string) string {
-	return fmt.Sprintf("--wckey=%s", addQuotes(label))
+	return "--wckey=" + addQuotes(label)
 }
 
 func addQuotes(label string) string {
@@ -800,7 +800,7 @@ func getEnvVarsForLauncherManifest(
 	m["DET_MASTER"] = fmt.Sprintf("%s://%s:%d", masterScheme, masterHost, masterPort)
 	m["DET_MASTER_HOST"] = masterHost
 	m["DET_MASTER_IP"] = masterHost
-	m["DET_MASTER_PORT"] = fmt.Sprintf("%d", masterPort)
+	m["DET_MASTER_PORT"] = strconv.Itoa(masterPort)
 	m["DET_CLUSTER_ID"] = taskSpec.ClusterID
 	// On non-zero exit of any component/step of the sbatch job, terminate with an error
 	m["SLURM_KILL_BAD_EXIT"] = "1"

@@ -2,7 +2,6 @@ package tasks
 
 import (
 	"archive/tar"
-	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -97,7 +96,7 @@ func (g GCCkptSpec) ToTaskSpec() TaskSpec {
 		),
 	}
 
-	res.Description = fmt.Sprintf("gc-%d", g.ExperimentID)
+	res.Description = "gc-" + strconv.Itoa(g.ExperimentID)
 
 	// We pass storage-config / delete / globs through a JSON file instead of a JSON string
 	// to avoid reaching any OS limitations on sizes of CLI arguments.
@@ -105,12 +104,12 @@ func (g GCCkptSpec) ToTaskSpec() TaskSpec {
 		filepath.Join("/run/determined/checkpoint_gc", etc.GCCheckpointsEntrypointResource),
 		"--experiment-id",
 		strconv.Itoa(g.ExperimentID),
-		"--storage-config", fmt.Sprintf("/run/determined/%s", storageConfigPath),
+		"--storage-config", "/run/determined/" + storageConfigPath,
 	}
 
 	if len(g.ToDelete) > 0 {
-		res.Entrypoint = append(res.Entrypoint, "--delete", fmt.Sprintf("/run/determined/%s", checkpointsToDeletePath))
-		res.Entrypoint = append(res.Entrypoint, "--globs", fmt.Sprintf("/run/determined/%s", checkpointsGlobsPath))
+		res.Entrypoint = append(res.Entrypoint, "--delete", "/run/determined/"+checkpointsToDeletePath)
+		res.Entrypoint = append(res.Entrypoint, "--globs", "/run/determined/"+checkpointsGlobsPath)
 	}
 
 	if g.DeleteTensorboards {

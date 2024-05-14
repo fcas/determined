@@ -3,7 +3,6 @@ package stream
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"slices"
 	"time"
 
@@ -110,7 +109,7 @@ func processQuery(
 	oldEventsQuery := createFilteredIDQuery()
 	newEventsQuery := createFilteredIDQuery()
 	// get events that happened prior to since that are relevant (appearance)
-	oldEventsQuery.Where(fmt.Sprintf("%s.seq <= ?", entityTableAlias), since)
+	oldEventsQuery.Where(entityTableAlias+".seq <= ?", since)
 	var exist []int64
 	err := oldEventsQuery.Scan(ctx, &exist)
 	if err != nil && errors.Cause(err) != sql.ErrNoRows {
@@ -118,7 +117,7 @@ func processQuery(
 		return "", nil, err
 	}
 	// and events that happened since the last time this streamer checked
-	newEventsQuery.Where(fmt.Sprintf("%s.seq > ?", entityTableAlias), since)
+	newEventsQuery.Where(entityTableAlias+".seq <= ?", since)
 	var newEntities []int64
 	err = newEventsQuery.Scan(ctx, &newEntities)
 	if err != nil && errors.Cause(err) != sql.ErrNoRows {

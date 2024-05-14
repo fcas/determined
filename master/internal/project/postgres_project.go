@@ -3,7 +3,7 @@ package project
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"errors"
 
 	"github.com/determined-ai/determined/master/internal/db"
 	"github.com/determined-ai/determined/master/internal/workspace"
@@ -16,7 +16,7 @@ func ProjectByName(ctx context.Context, workspaceName string, projectName string
 		return 1, err
 	}
 	if workspace.Archived {
-		return 1, fmt.Errorf("workspace is archived and cannot add new experiments")
+		return 1, errors.New("workspace is archived and cannot add new experiments")
 	}
 
 	var pID int
@@ -35,7 +35,7 @@ func ProjectByName(ctx context.Context, workspaceName string, projectName string
 		return 1, err
 	}
 	if archived {
-		return 1, fmt.Errorf("project is archived and cannot add new experiments")
+		return 1, errors.New("project is archived and cannot add new experiments")
 	}
 	return pID, nil
 }

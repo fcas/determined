@@ -6,6 +6,7 @@ import (
 	"math"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -544,7 +545,7 @@ func (a *apiServer) KillTrial(
 
 	e, ok := experiment.ExperimentRegistry.Load(eID)
 	if !ok {
-		return nil, api.NotFoundErrs("experiment", fmt.Sprint(eID), true)
+		return nil, api.NotFoundErrs("experiment", strconv.Itoa(eID), true)
 	}
 	if err = e.PatchTrialState(s); err != nil {
 		log.WithError(err).Error("error killing trial")
@@ -598,7 +599,7 @@ func (a *apiServer) GetExperimentTrials(
 			orderColMap[req.SortBy], sortByMap[req.OrderBy], sortByMap[req.OrderBy],
 		)
 	default:
-		orderExpr = fmt.Sprintf("id %s", sortByMap[req.OrderBy])
+		orderExpr = "id " + sortByMap[req.OrderBy]
 	}
 
 	resp = &apiv1.GetExperimentTrialsResponse{}
@@ -778,7 +779,7 @@ func (a *apiServer) multiTrialSample(trialID int32, metricNames []string,
 	}
 
 	if len(metricNames) > 0 && len(metricIds) > 0 {
-		return nil, fmt.Errorf(`error fetching time series of metrics cannot specify
+		return nil, errors.New(`error fetching time series of metrics cannot specify
 		both metric ids and metric names`)
 	}
 
@@ -1279,7 +1280,7 @@ func (a *apiServer) GetCurrentTrialSearcherOperation(
 
 	e, ok := experiment.ExperimentRegistry.Load(eID)
 	if !ok {
-		return nil, api.NotFoundErrs("experiment", fmt.Sprint(eID), true)
+		return nil, api.NotFoundErrs("experiment", strconv.Itoa(eID), true)
 	}
 	resp, err := e.TrialGetSearcherState(rID)
 	if err != nil {
@@ -1310,7 +1311,7 @@ func (a *apiServer) CompleteTrialSearcherValidation(
 
 	e, ok := experiment.ExperimentRegistry.Load(eID)
 	if !ok {
-		return nil, api.NotFoundErrs("experiment", fmt.Sprint(eID), true)
+		return nil, api.NotFoundErrs("experiment", strconv.Itoa(eID), true)
 	}
 
 	msg := experiment.TrialCompleteOperation{
@@ -1338,7 +1339,7 @@ func (a *apiServer) ReportTrialSearcherEarlyExit(
 
 	e, ok := experiment.ExperimentRegistry.Load(eID)
 	if !ok {
-		return nil, api.NotFoundErrs("experiment", fmt.Sprint(eID), true)
+		return nil, api.NotFoundErrs("experiment", strconv.Itoa(eID), true)
 	}
 
 	msg := experiment.UserInitiatedEarlyTrialExit{
@@ -1365,7 +1366,7 @@ func (a *apiServer) ReportTrialProgress(
 
 	e, ok := experiment.ExperimentRegistry.Load(eID)
 	if !ok {
-		return nil, api.NotFoundErrs("experiment", fmt.Sprint(eID), true)
+		return nil, api.NotFoundErrs("experiment", strconv.Itoa(eID), true)
 	}
 
 	msg := experiment.TrialReportProgress{
@@ -1441,7 +1442,7 @@ func (a *apiServer) ReportCheckpoint(
 		return nil, fmt.Errorf("looking up task to decide if trial: %w", err)
 	}
 	if task.TaskType != model.TaskTypeTrial {
-		return nil, fmt.Errorf("can only report checkpoints on trial's tasks")
+		return nil, errors.New("can only report checkpoints on trial's tasks")
 	}
 	trial, err := db.TrialByTaskID(ctx, task.TaskID)
 	if err != nil {

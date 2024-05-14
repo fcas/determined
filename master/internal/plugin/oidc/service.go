@@ -77,7 +77,7 @@ func New(db *db.PgDB, config config.OIDCConfig, pachEnabled bool) (*Service, err
 		secret = os.Getenv(envVarName)
 	}
 	if secret == "" {
-		return nil, fmt.Errorf("client secret has not been set")
+		return nil, errors.New("client secret has not been set")
 	}
 
 	scope := []string{oidc.ScopeOpenID, "profile", "email", "groups"}
@@ -168,11 +168,11 @@ func (s *Service) callback(c echo.Context) error {
 	case deprecatedCliRelayState:
 		fallthrough
 	case cliRelayState:
-		redirectPath = cliRedirectPath + fmt.Sprintf("?token=%s", url.QueryEscape(token))
+		redirectPath = cliRedirectPath + "?token=" + url.QueryEscape(token)
 	case "":
 		// do nothing to the default redirectPath
 	default:
-		redirectPath += fmt.Sprintf("?relayState=%s", url.QueryEscape(relayState))
+		redirectPath += "?relayState=" + url.QueryEscape(relayState)
 	}
 
 	return c.Redirect(http.StatusSeeOther, redirectPath)
@@ -185,7 +185,7 @@ func (s *Service) getOauthToken(c echo.Context) (*oauth2.Token, error) {
 		return nil, fmt.Errorf("could not retrieve state cookie: %w", err)
 	}
 	if c.QueryParam("state") != state.Value {
-		return nil, fmt.Errorf("oidc state did not match")
+		return nil, errors.New("oidc state did not match")
 	}
 
 	var tok *oauth2.Token
@@ -220,24 +220,24 @@ func (s *Service) toIDTokenClaim(userInfo *oidc.UserInfo) (*IDTokenClaims, error
 	if cs[s.config.AuthenticationClaim] != nil {
 		authValue, ok := cs[s.config.AuthenticationClaim].(string)
 		if !ok {
-			return nil, fmt.Errorf("user info authenticationClaim value was not a string")
+			return nil, errors.New("user info authenticationClaim value was not a string")
 		}
 		c.AuthenticationClaim = authValue
 	} else {
-		return nil, fmt.Errorf("user info authenticationClaim missing")
+		return nil, errors.New("user info authenticationClaim missing")
 	}
 
 	if cs[s.config.DisplayNameAttributeName] != nil {
 		displayName, ok := cs[s.config.DisplayNameAttributeName].(string)
 		if !ok {
-			return nil, fmt.Errorf("user info displayName value was not a string")
+			return nil, errors.New("user info displayName value was not a string")
 		}
 		c.DisplayName = displayName
 	}
 	if cs[s.config.GroupsAttributeName] != nil {
 		gs, ok := cs[s.config.GroupsAttributeName].([]interface{})
 		if !ok {
-			return nil, fmt.Errorf("user info groups value was not a slice")
+			return nil, errors.New("user info groups value was not a slice")
 		}
 
 		groups := make([]string, len(gs))

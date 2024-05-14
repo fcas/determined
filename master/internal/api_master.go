@@ -2,7 +2,6 @@ package internal
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	structpb "github.com/golang/protobuf/ptypes/struct"
@@ -122,7 +121,7 @@ func (a *apiServer) PatchMasterConfig(
 		case "log.color":
 			logger.SetLogrus(a.m.config.Log)
 		default:
-			panic(fmt.Sprintf("unsupported or invalid field: %s", path))
+			panic("unsupported or invalid field: " + path)
 		}
 	}
 	return &apiv1.PatchMasterConfigResponse{}, err

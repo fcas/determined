@@ -2,7 +2,7 @@ package errgroupx
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,7 +14,7 @@ func TestErrgroupxCancelByReturnError(t *testing.T) {
 
 	finished := make(chan bool, 1)
 	g.Go(func(ctx context.Context) error {
-		return fmt.Errorf("non nil error")
+		return errors.New("non nil error")
 	})
 	g.Go(func(ctx context.Context) error {
 		<-ctx.Done()

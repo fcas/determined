@@ -1,6 +1,7 @@
 package errors
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -9,7 +10,7 @@ import (
 )
 
 func TestErrorTimeoutRetry(t *testing.T) {
-	testErr := fmt.Errorf("test error")
+	testErr := errors.New("test error")
 	errInfo := NewStickyError(30*time.Second, 3)
 	assert.Equal(t, errInfo.Error(), nil)
 

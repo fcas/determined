@@ -319,7 +319,7 @@ type InvalidResourcesRequestError struct {
 }
 
 func (e InvalidResourcesRequestError) Error() string {
-	return fmt.Sprintf("invalid resources request: %s", e.Cause.Error())
+	return "invalid resources request: " + e.Cause.Error()
 }
 
 // IsUnrecoverableSystemError checks if the error is absolutely unrecoverable.
