@@ -17,13 +17,13 @@ import {
 //   isActive: boolean;
 //   password: string;
 // }
-interface UserArgs { // DNJ TODO - do we keep?
+interface UserArgs {
+  // DNJ TODO - do we keep?
   username?: string;
   displayName?: string;
   admin?: boolean;
   password?: string;
 }
-
 
 export class UserFixture {
   readonly userManagementPage: UserManagement;
@@ -98,8 +98,8 @@ export class UserFixture {
     await expect(this.userManagementPage.createUserModal.header.title.pwLocator).toContainText(
       'Add User',
     );
-    
-    await this.fillUserForm({username: safeUsername, admin, displayName, password}); 
+
+    await this.fillUserForm({ admin, displayName, password, username: safeUsername });
     // Hashing a password after form submit might take a little extra time, so this can be a slower operation
     await expect(this.userManagementPage.toast.pwLocator).toBeVisible({ timeout: 10_000 });
     await expect(this.userManagementPage.toast.message.pwLocator).toContainText(
@@ -110,15 +110,15 @@ export class UserFixture {
     const row = await this.userManagementPage.getRowByUsernameSearch(safeUsername);
     const id = parseInt(await row.getId());
     const user: V1PostUserRequest = {
+      isHashed: false,
+      password,
       user: {
+        active: true,
+        admin: !!admin,
         displayName,
         id,
-        active: true,
         username: safeUsername,
-        admin: !!admin,
       },
-      password,
-      isHashed: false
     };
     return user;
   }
@@ -134,9 +134,9 @@ export class UserFixture {
    */
   async editUser(user: V1PostUserRequest, edit: UserArgs = {}): Promise<V1PostUserRequest> {
     if (user.user === undefined) {
-      throw new Error("Trying to edit user that is Undefined.");
+      throw new Error('Trying to edit user that is Undefined.');
     }
-    const editedUser = {...user}
+    const editedUser = { ...user };
     const row = await this.userManagementPage.getRowByUsernameSearch(user.user.username);
     await (await row.actions.open()).edit.pwLocator.click();
     await expect(this.userManagementPage.createUserModal.pwLocator).toBeVisible();
@@ -168,14 +168,14 @@ export class UserFixture {
     await this.userManagementPage.toast.close.pwLocator.click();
     await expect(this.userManagementPage.toast.pwLocator).toHaveCount(0);
     if (editedUser.user === undefined) {
-      throw new Error("Result from edit user is Undefined.");
+      throw new Error('Result from edit user is Undefined.');
     }
-    editedUser.password=edit.password;
-    if (edit.admin !== undefined){
-      editedUser.user.admin=edit.admin; 
+    editedUser.password = edit.password;
+    if (edit.admin !== undefined) {
+      editedUser.user.admin = edit.admin;
     }
-    if (edit.displayName !== undefined){
-      editedUser.user.displayName=edit.displayName; 
+    if (edit.displayName !== undefined) {
+      editedUser.user.displayName = edit.displayName;
     }
     // users.set(String(user.id), editedUser); DNJ TODO
     return editedUser;
@@ -218,7 +218,7 @@ export class UserFixture {
     await this.userManagementPage.changeUserStatusModal.status.deactivate.pwLocator.click();
     await this.userManagementPage.changeUserStatusModal.footer.submit.pwLocator.click();
     // for (const id of ids) { DNJ TODO
-    //   const user = users.get(id); 
+    //   const user = users.get(id);
     //   if (user === undefined) {
     //     throw new Error(
     //       `Expected user with id ${id} present on the table to have been created during this session`,
@@ -240,12 +240,12 @@ export class UserFixture {
     }
     await expect(async () => {
       if (user.user === undefined) {
-        throw new Error("Trying to change status on user that is Undefined.");
+        throw new Error('Trying to change status on user that is Undefined.');
       }
       // user table can flake if running in parrallel
-      const actions = await (
-        await this.userManagementPage.getRowByUsernameSearch(user.user.username)
-      ).actions.open();
+      const actions = (await this.userManagementPage.getRowByUsernameSearch(user.user.username))
+        .actions;
+      await actions.open();
       if (
         (await actions.state.pwLocator.textContent()) !== (activate ? 'Activate' : 'Deactivate')
       ) {
@@ -257,7 +257,7 @@ export class UserFixture {
       );
       await this.userManagementPage.toast.close.pwLocator.click();
     }).toPass({ timeout: 35_000 });
-    const editedUser = _.merge(user, { user: { active: true }});
+    const editedUser = _.merge(user, { user: { active: activate } });
     // users.set(String(user.id), editedUser); DNJ TODO
     return editedUser;
   }
@@ -265,9 +265,10 @@ export class UserFixture {
   /**
    * Deactivates all test users created during this session.
    */
-  async deactivateAllTestUsers(users: Map<number, V1PostUserRequest>): Promise < void> {
-  for await (const user of users.values()) { // DNJ TODO
-  await this.changeStatusUser(user, false);
-}
+  async deactivateAllTestUsers(users: Map<number, V1PostUserRequest>): Promise<void> {
+    for await (const user of users.values()) {
+      // DNJ TODO
+      await this.changeStatusUser(user, false);
+    }
   }
 }

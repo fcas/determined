@@ -48,7 +48,6 @@ export class ApiUserFixture extends ApiAuthFixture {
           )} Response: ${respBody}`,
         );
       });
-    console.log(`Successful create user response: ${userResp}`);
     return _.merge(req, userResp);
   }
 }

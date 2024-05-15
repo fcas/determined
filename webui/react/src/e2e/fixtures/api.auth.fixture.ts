@@ -40,7 +40,7 @@ export class ApiAuthFixture {
   }
 
   protected async getBearerToken(): Promise<string> {
-    const cookies = (await this.apiContext?.storageState())?.cookies!;
+    const cookies = (await this.apiContext?.storageState())?.cookies ?? [];
     const authToken = cookies.find((cookie) => {
       return cookie.name === 'auth';
     })?.value;

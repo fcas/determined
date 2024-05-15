@@ -2,6 +2,7 @@ import { AuthFixture } from 'e2e/fixtures/auth.fixture';
 import { test } from 'e2e/fixtures/global-fixtures';
 import { UserFixture } from 'e2e/fixtures/user.fixture';
 import { UserManagement } from 'e2e/models/pages/Admin/UserManagement';
+import { SignIn } from 'e2e/models/pages/SignIn';
 import { repeatWithFallback } from 'e2e/utils/polling';
 import { V1PostUserRequest } from 'services/api-ts-sdk/api';
 
@@ -11,6 +12,12 @@ import { expect } from '@playwright/test';
 test.describe.configure({ mode: 'serial' });
 
 test.describe('User Management', () => {
+  // One list of users per test session. This is to encourage a final teardown
+  // instance of the user fixture to deactivate all users created by the different
+  // instances of the fixture used in each test scenario.
+  // Note: This is can't collide when running tests in parallel because playwright
+  // workers can't share variables.
+  const users = new Map<number, V1PostUserRequest>();
   test.beforeEach(async ({ authedPage }) => {
     const userManagementPage = new UserManagement(authedPage);
     await userManagementPage.goto();
@@ -40,12 +47,6 @@ test.describe('User Management', () => {
   });
 
   test.describe('With New User Teardown', () => {
-    // One list of users per test session. This is to encourage a final teardown
-    // instance of the user fixture to deactivate all users created by the different
-    // instances of the fixture used in each test scenario.
-    // Note: This is can't collide when running tests in parallel because playwright
-    // workers can't share variables.
-    const users = new Map<number, V1PostUserRequest>();
     test.afterAll(async ({ browser }) => {
       const pageSetupTeardown = await browser.newPage();
       const authFixtureSetupTeardown = new AuthFixture(pageSetupTeardown);
@@ -66,13 +67,13 @@ test.describe('User Management', () => {
         // DNJ TODO - before All has issues here with the fixture, what is the right fix? - should probably do this one user through the UI
         await test.step('Create User', async () => {
           testUser = await user.createUser();
-          if (testUser.user == undefined){
-            throw new Error("Test user is undefined after being created without error.");
+          if (testUser.user === undefined) {
+            throw new Error('Test user is undefined after being created without error.');
           }
-          if (testUser.user.id == undefined){
-            throw new Error("Test user id is undefined after being created without error.");
+          if (testUser.user.id === undefined) {
+            throw new Error('Test user id is undefined after being created without error.');
           }
-          users.set(testUser.user.id ,testUser)
+          users.set(testUser.user.id, testUser);
         });
       });
 
@@ -80,88 +81,96 @@ test.describe('User Management', () => {
         await user.validateUser(testUser);
       });
 
-        test('New user acess', async ({ page, auth }) => {
-          const userManagementPage = new UserManagement(page);
-          await auth.logout();
-          await auth.login({username: testUser.user?.username, password: testUser.password});
-          await userManagementPage.nav.sidebar.headerDropdown.open();
-          await userManagementPage.nav.sidebar.headerDropdown.settings.pwLocator.waitFor({ state: 'visible' });
-          await userManagementPage.nav.sidebar.headerDropdown.admin.pwLocator.waitFor({
-            state: 'hidden',
-          });
+      test('New user acess', async ({ page, auth }) => {
+        const userManagementPage = new UserManagement(page);
+        await auth.logout();
+        await auth.login({ password: testUser.password, username: testUser.user?.username });
+        await userManagementPage.nav.sidebar.headerDropdown.open();
+        await userManagementPage.nav.sidebar.headerDropdown.settings.pwLocator.waitFor({
+          state: 'visible',
         });
+        await userManagementPage.nav.sidebar.headerDropdown.admin.pwLocator.waitFor({
+          state: 'hidden',
+        });
+      });
 
-        test('Edit user', async ({ user }) => {
-          await test.step('Edit once', async () => {    
-            if (testUser.user === undefined){
-              throw new Error("Trying to edit an undefined user.")
-            }       
-            testUser = await user.editUser(testUser, {displayName: testUser.user.username + '_edited'});
-            await user.validateUser(testUser);
+      test('Edit user', async ({ user }) => {
+        await test.step('Edit once', async () => {
+          if (testUser.user === undefined) {
+            throw new Error('Trying to edit an undefined user.');
+          }
+          testUser = await user.editUser(testUser, {
+            displayName: testUser.user.username + '_edited',
           });
-          await test.step('Edit again', async () => {
-            testUser = await user.editUser(testUser, {displayName: '', admin: true});
-            await user.validateUser(testUser);
-          });
+          await user.validateUser(testUser);
         });
+        await test.step('Edit again', async () => {
+          testUser = await user.editUser(testUser, { admin: true, displayName: '' });
+          await user.validateUser(testUser);
+        });
+      });
     });
 
-    // test.describe('With Test User we Deactivate', () => {
-    //   let testUser: User;
+    test.describe('With Test User we Deactivate', () => {
+      let testUser: V1PostUserRequest;
 
-    //   test.beforeAll(async ({ browser }) => {
-    //     const pageSetupTeardown = await browser.newPage();
-    //     const authFixtureSetupTeardown = new AuthFixture(pageSetupTeardown);
-    //     const userFixtureSetupTeardown = new UserFixture(pageSetupTeardown);
-    //     const userManagementPageSetupTeardown = new UserManagement(pageSetupTeardown);
-    //     await authFixtureSetupTeardown.login();
-    //     await test.step('Create User', async () => {
-    //       await userManagementPageSetupTeardown.goto();
-    //       testUser = await userFixtureSetupTeardown.createUser();
-    //     });
-    //     await authFixtureSetupTeardown.logout();
-    //     await pageSetupTeardown.close();
-    //   });
+      test.beforeAll(async ({ browser }) => {
+        const pageSetupTeardown = await browser.newPage();
+        const authFixtureSetupTeardown = new AuthFixture(pageSetupTeardown);
+        const userFixtureSetupTeardown = new UserFixture(pageSetupTeardown);
+        const userManagementPageSetupTeardown = new UserManagement(pageSetupTeardown);
+        await authFixtureSetupTeardown.login();
+        await test.step('Create User', async () => {
+          await userManagementPageSetupTeardown.goto();
+          testUser = await userFixtureSetupTeardown.createUser();
+          if (testUser.user?.id === undefined) {
+            throw new Error('User created successfully but has not data.');
+          }
+          users.set(testUser.user.id, testUser);
+        });
+        await authFixtureSetupTeardown.logout();
+        await pageSetupTeardown.close();
+      });
 
-    //   test('Deactivate and Reactivate', async ({ page, user, auth }) => {
-    //     // test does does three and a half logins, so we need to increase the timeout
-    //     test.setTimeout(120_000);
-    //     const userManagementPage = new UserManagement(page);
-    //     const signInPage = new SignIn(page);
-    //     await test.step('Deactivate', async () => {
-    //       testUser = await user.changeStatusUser(testUser, false);
-    //       await user.validateUser(testUser);
-    //     });
-    //     await test.step('Attempt Sign In', async () => {
-    //       await auth.logout();
-    //       await auth.login({
-    //         password: testUser.password,
-    //         username: testUser.username,
-    //         waitForURL: /login/,
-    //       });
-    //       expect(await signInPage.detAuth.errors.message.pwLocator.textContent()).toContain(
-    //         'Login failed',
-    //       );
-    //       expect(await signInPage.detAuth.errors.description.pwLocator.textContent()).toContain(
-    //         'user is not active',
-    //       );
-    //     });
-    //     await test.step('Reactivate', async () => {
-    //       await userManagementPage.goto({ verify: false });
-    //       // TODO the verify false on the line above isn't working as expected
-    //       // if we don't expect this url, the automation runs too fast and login
-    //       // thinks we've already logged in, skipping the login automation.
-    //       // We might need to find a way to be more explicit about the page state.
-    //       await expect(page).toHaveURL(/login/);
-    //       await auth.login({ waitForURL: userManagementPage.url });
-    //       testUser = await user.changeStatusUser(testUser, true);
-    //     });
-    //     await test.step('Successful Sign In', async () => {
-    //       await auth.logout();
-    //       await auth.login(testUser);
-    //     });
-    //   });
-    // });
+      test('Deactivate and Reactivate', async ({ page, user, auth }) => {
+        // test does does three and a half logins, so we need to increase the timeout
+        test.setTimeout(120_000);
+        const userManagementPage = new UserManagement(page);
+        const signInPage = new SignIn(page);
+        await test.step('Deactivate', async () => {
+          testUser = await user.changeStatusUser(testUser, false);
+          await user.validateUser(testUser);
+        });
+        await test.step('Attempt Sign In', async () => {
+          await auth.logout();
+          await auth.login({
+            password: testUser.password,
+            username: testUser.user?.username,
+            waitForURL: /login/,
+          });
+          expect(await signInPage.detAuth.errors.message.pwLocator.textContent()).toContain(
+            'Login failed',
+          );
+          expect(await signInPage.detAuth.errors.description.pwLocator.textContent()).toContain(
+            'user is not active',
+          );
+        });
+        await test.step('Reactivate', async () => {
+          await userManagementPage.goto({ verify: false });
+          // TODO the verify false on the line above isn't working as expected
+          // if we don't expect this url, the automation runs too fast and login
+          // thinks we've already logged in, skipping the login automation.
+          // We might need to find a way to be more explicit about the page state.
+          await expect(page).toHaveURL(/login/);
+          await auth.login({ waitForURL: userManagementPage.url });
+          testUser = await user.changeStatusUser(testUser, true);
+        });
+        await test.step('Successful Sign In', async () => {
+          await auth.logout();
+          await auth.login({ password: testUser.password, username: testUser.user?.username });
+        });
+      });
+    });
 
     // test.describe('With 10 Users', () => {
     //   const usernamePrefix = 'test-user-pagination';

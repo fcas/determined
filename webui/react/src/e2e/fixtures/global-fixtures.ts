@@ -10,8 +10,10 @@ type CustomFixtures = {
   dev: DevFixture;
   auth: AuthFixture;
   apiAuth: ApiAuthFixture;
+  backgroundApiAuth: ApiAuthFixture;
   user: UserFixture;
   apiUser: ApiUserFixture;
+  backgroundApiUser: ApiUserFixture;
   authedPage: Page;
 };
 
@@ -35,9 +37,23 @@ export const test = base.extend<CustomFixtures>({
     await use(auth);
   },
 
-  // get a page already logged in
-authedPage: async ({ apiAuth }, use) => {
+  // get the existing page but with auth cookie already logged in
+  authedPage: async ({ apiAuth }, use) => {
     await use(apiAuth.page);
+  },
+
+  // does not require the pre-existing Playwright page and so can be called in beforeAll
+  backgroundApiAuth: async ({ playwright, browser, baseURL }, use) => {
+    const apiAuth = new ApiAuthFixture(playwright.request, browser, baseURL);
+    const dev = new DevFixture(apiAuth.page);
+    await dev.setServerAddress();
+    await apiAuth.login();
+    await use(apiAuth);
+  },
+
+  backgroundApiUser: async ({ backgroundApiAuth }, use) => {
+    const backgroundApiUser = new ApiUserFixture(backgroundApiAuth);
+    await use(backgroundApiUser);
   },
 
   dev: async ({ page }, use) => {
