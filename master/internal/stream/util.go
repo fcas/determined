@@ -117,7 +117,7 @@ func processQuery(
 		return "", nil, err
 	}
 	// and events that happened since the last time this streamer checked
-	newEventsQuery.Where(entityTableAlias+".seq <= ?", since)
+	newEventsQuery.Where(entityTableAlias+".seq > ?", since)
 	var newEntities []int64
 	err = newEventsQuery.Scan(ctx, &newEntities)
 	if err != nil && errors.Cause(err) != sql.ErrNoRows {

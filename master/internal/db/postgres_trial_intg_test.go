@@ -478,23 +478,25 @@ func TestEpochMetricGroups(t *testing.T) {
 			require.NoError(t, err)
 			step := int32(1)
 			if reportTraining {
-				require.Equal(t, c.err, db.AddTrainingMetrics(ctx, &trialv1.TrialMetrics{
+				err := db.AddTrainingMetrics(ctx, &trialv1.TrialMetrics{
 					TrialId:        int32(trial),
 					TrialRunId:     0,
 					StepsCompleted: &step,
 					Metrics: &commonv1.Metrics{
 						AvgMetrics: metrics,
 					},
-				}), "epochValue=%+v", c.epochValue)
+				})
+				require.Equal(t, err.Error(), c.err.Error(), "epochValue=%+v", c.epochValue)
 			} else {
-				require.Equal(t, c.err, db.AddValidationMetrics(ctx, &trialv1.TrialMetrics{
+				err := db.AddValidationMetrics(ctx, &trialv1.TrialMetrics{
 					TrialId:        int32(trial),
 					TrialRunId:     0,
 					StepsCompleted: &step,
 					Metrics: &commonv1.Metrics{
 						AvgMetrics: metrics,
 					},
-				}), "epochValue=%+v", c.epochValue)
+				})
+				require.Equal(t, err.Error(), c.err.Error(), "epochValue=%+v", c.epochValue)
 			}
 		}
 	}

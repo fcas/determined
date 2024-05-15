@@ -806,7 +806,7 @@ func TestDeleteRunsOverfillInput(t *testing.T) {
 	}
 	expectedError := errors.New("if filter is provided run id list must be empty")
 	_, err := api.DeleteRuns(ctx, req)
-	require.Equal(t, expectedError, err)
+	require.Equal(t, expectedError.Error(), err.Error())
 }
 
 func TestDeleteRunsNoInput(t *testing.T) {
@@ -1029,7 +1029,7 @@ func TestArchiveUnarchiveOverfilledInput(t *testing.T) {
 		Filter:    ptrs.Ptr("nonempty"),
 	}
 	_, err := api.ArchiveRuns(ctx, archReq)
-	require.Equal(t, expectedError, err)
+	require.Equal(t, expectedError.Error(), err.Error())
 
 	// Unarchive runs
 	unarchReq := &apiv1.UnarchiveRunsRequest{
@@ -1038,7 +1038,7 @@ func TestArchiveUnarchiveOverfilledInput(t *testing.T) {
 		Filter:    ptrs.Ptr("nonempty"),
 	}
 	_, err = api.UnarchiveRuns(ctx, unarchReq)
-	require.Equal(t, expectedError, err)
+	require.Equal(t, expectedError.Error(), err.Error())
 }
 
 func TestArchiveUnarchiveNoInput(t *testing.T) {
