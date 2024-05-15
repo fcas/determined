@@ -1,4 +1,7 @@
-import { test as base, Page } from '@playwright/test';
+import {
+  test as base,
+  Page,
+} from '@playwright/test';
 
 import { ApiAuthFixture } from './api.auth.fixture';
 import { ApiUserFixture } from './api.user.fixture';
@@ -42,15 +45,21 @@ export const test = base.extend<CustomFixtures>({
     await use(apiAuth.page);
   },
 
-  // does not require the pre-existing Playwright page and so can be called in beforeAll
+  /** 
+   * Does not require the pre-existing Playwright page and does not login so this can be called in beforeAll. 
+   * Generally use another api fixture instead if you want to call an api. If you just want a logged-in page, 
+   * use apiAuth in beforeEach().
+   */
   backgroundApiAuth: async ({ playwright, browser, baseURL }, use) => {
-    const apiAuth = new ApiAuthFixture(playwright.request, browser, baseURL);
-    const dev = new DevFixture(apiAuth.page);
-    await dev.setServerAddress();
-    await apiAuth.login();
-    await use(apiAuth);
+    const backgroundApiAuth = new ApiAuthFixture(playwright.request, browser, baseURL);
+    await use(backgroundApiAuth);
   },
-
+  /**
+   * Allows calling the user api without a page so that it can run in beforeAll(). You will need to get a bearer 
+   * token by calling backgroundApiUser.apiAuth.login(). This will also provision a page in the background which 
+   * will be disposed of logout(). Before using the page,you need to call dev.setServerAddress() manually and 
+   * then login() again, since setServerAddress logs out as a side effect. 
+   */ 
   backgroundApiUser: async ({ backgroundApiAuth }, use) => {
     const backgroundApiUser = new ApiUserFixture(backgroundApiAuth);
     await use(backgroundApiUser);

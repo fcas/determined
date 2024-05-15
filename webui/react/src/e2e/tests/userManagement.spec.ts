@@ -114,22 +114,16 @@ test.describe('User Management', () => {
     test.describe('With Test User we Deactivate', () => {
       let testUser: V1PostUserRequest;
 
-      test.beforeAll(async ({ browser }) => {
-        const pageSetupTeardown = await browser.newPage();
-        const authFixtureSetupTeardown = new AuthFixture(pageSetupTeardown);
-        const userFixtureSetupTeardown = new UserFixture(pageSetupTeardown);
-        const userManagementPageSetupTeardown = new UserManagement(pageSetupTeardown);
-        await authFixtureSetupTeardown.login();
+      test.beforeAll(async ({ backgroundApiUser }) => {
+        await backgroundApiUser.apiAuth.login();
         await test.step('Create User', async () => {
-          await userManagementPageSetupTeardown.goto();
-          testUser = await userFixtureSetupTeardown.createUser();
-          if (testUser.user?.id === undefined) {
-            throw new Error('User created successfully but has not data.');
+          testUser = await backgroundApiUser.createUser(backgroundApiUser.newRandom());
+          if (testUser.user === undefined || testUser.user?.id === undefined) {
+            throw new Error('User created successfully but has no data.');
           }
           users.set(testUser.user.id, testUser);
         });
-        await authFixtureSetupTeardown.logout();
-        await pageSetupTeardown.close();
+        await backgroundApiUser.apiAuth.logout();
       });
 
       test('Deactivate and Reactivate', async ({ page, user, auth }) => {

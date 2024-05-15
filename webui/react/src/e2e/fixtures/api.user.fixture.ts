@@ -1,16 +1,17 @@
-import streamConsumers from 'stream/consumers';
-
-import _ from 'lodash';
-
 import { safeName } from 'e2e/utils/naming';
-import { UsersApi, V1PostUserRequest } from 'services/api-ts-sdk/api';
+import _ from 'lodash';
+import {
+  UsersApi,
+  V1PostUserRequest,
+} from 'services/api-ts-sdk/api';
+import streamConsumers from 'stream/consumers';
 
 import { ApiAuthFixture } from './api.auth.fixture';
 
-export class ApiUserFixture extends ApiAuthFixture {
+export class ApiUserFixture {
+  readonly apiAuth: ApiAuthFixture
   constructor(apiAuth: ApiAuthFixture) {
-    super(apiAuth.request, apiAuth.browser, apiAuth.baseURL, apiAuth.page);
-    this.apiContext = apiAuth.apiContext;
+    this.apiAuth=apiAuth;
   }
 
   newRandom(): V1PostUserRequest {
@@ -35,7 +36,7 @@ export class ApiUserFixture extends ApiAuthFixture {
    */
   async createUser(req: V1PostUserRequest): Promise<V1PostUserRequest> {
     const userResp = await new UsersApi(
-      { apiKey: await this.getBearerToken() },
+      { apiKey: await this.apiAuth.getBearerToken() },
       'http://localhost:3001', //this.baseURL, - DNJ TODO extra slash handling is unfortunate
       fetch,
     )

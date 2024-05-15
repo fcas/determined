@@ -1,4 +1,10 @@
-import { APIRequest, APIRequestContext, Browser, BrowserContext, Page } from '@playwright/test';
+import {
+  APIRequest,
+  APIRequestContext,
+  Browser,
+  BrowserContext,
+  Page,
+} from '@playwright/test';
 
 export class ApiAuthFixture {
   apiContext: APIRequestContext | undefined;
@@ -39,7 +45,7 @@ export class ApiAuthFixture {
     this._page = existingPage;
   }
 
-  protected async getBearerToken(): Promise<string> {
+  async getBearerToken(): Promise<string> {
     const cookies = (await this.apiContext?.storageState())?.cookies ?? [];
     const authToken = cookies.find((cookie) => {
       return cookie.name === 'auth';
