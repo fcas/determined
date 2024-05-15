@@ -61,7 +61,7 @@ func TestTrial(t *testing.T) {
 
 	dbTrial, err := internaldb.TrialByID(context.TODO(), tr.id)
 	require.NoError(t, err)
-	require.Equal(t, dbTrial.State, model.StoppingCompletedState)
+	require.Equal(t, model.StoppingCompletedState, dbTrial.State)
 
 	// Terminating stage.
 	tr.AllocationExitedCallback(&task.AllocationExited{})
@@ -74,7 +74,7 @@ func TestTrial(t *testing.T) {
 
 	dbTrial, err = internaldb.TrialByID(context.TODO(), tr.id)
 	require.NoError(t, err)
-	require.Equal(t, dbTrial.State, model.CompletedState)
+	require.Equal(t, model.CompletedState, dbTrial.State)
 }
 
 func TestTrialRestarts(t *testing.T) {
@@ -101,7 +101,7 @@ func TestTrialRestarts(t *testing.T) {
 		if i == tr.config.MaxRestarts() {
 			dbTrial, err := internaldb.TrialByID(context.TODO(), tr.id)
 			require.NoError(t, err)
-			require.Equal(t, dbTrial.State, model.ErrorState)
+			require.Equal(t, model.ErrorState, dbTrial.State)
 		} else {
 			// For the next go-around, when we update trial run ID.
 			runID, _, err := pgDB.TrialRunIDAndRestarts(tr.id)

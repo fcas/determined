@@ -412,11 +412,11 @@ func TestStreamTrainingMetrics(t *testing.T) {
 		// No trial IDs.
 		_, err := curCase.requestFunc([]int32{})
 		require.Error(t, err)
-		require.Equal(t, status.Code(err), codes.InvalidArgument)
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 		// Trial IDs not found.
 		_, err = curCase.requestFunc([]int32{-1})
-		require.Equal(t, status.Code(err), codes.NotFound)
+		require.Equal(t, codes.NotFound, status.Code(err))
 
 		// One trial.
 		resp, err := curCase.requestFunc([]int32{int32(trials[0].ID)})
@@ -1434,7 +1434,7 @@ func TestPutTrialRetainLogs(t *testing.T) {
 
 	orgLogRetentionDays, err := getLogRetentionDays(ctx, trialIDs)
 	require.NoError(t, err)
-	require.Equal(t, orgLogRetentionDays, []int32{-1, -1, -1, -1, -1})
+	require.Equal(t, []int32{-1, -1, -1, -1, -1}, orgLogRetentionDays)
 
 	newLogRetentionDays := []int32{10, 10, 10, 10, 10}
 	for i, v := range trialIDs {

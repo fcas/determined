@@ -165,8 +165,8 @@ func TestMetricNames(t *testing.T) {
 
 	actualNames, err := db.MetricNames(ctx, []int{-1})
 	require.NoError(t, err)
-	require.Len(t, actualNames[model.TrainingMetricGroup], 0)
-	require.Len(t, actualNames[model.ValidationMetricGroup], 0)
+	require.Empty(t, actualNames[model.TrainingMetricGroup])
+	require.Empty(t, actualNames[model.ValidationMetricGroup])
 
 	user := RequireMockUser(t, db)
 
@@ -283,14 +283,14 @@ func TestTerminateExperimentInRestart(t *testing.T) {
 
 	actualExp, err := ExperimentByID(ctx, exp.ID)
 	require.NoError(t, err)
-	require.Equal(t, actualExp.State, model.ErrorState)
+	require.Equal(t, model.ErrorState, actualExp.State)
 	require.NotNil(t, actualExp.EndTime)
 	require.Nil(t, actualExp.Progress)
 
 	for _, trialID := range []int{trial0.ID, trial1.ID} {
 		actualTrial, err := TrialByID(ctx, trialID)
 		require.NoError(t, err)
-		require.Equal(t, actualTrial.State, model.ErrorState)
+		require.Equal(t, model.ErrorState, actualTrial.State)
 		require.NotNil(t, actualTrial.EndTime)
 	}
 }
@@ -305,13 +305,13 @@ func TestExperimentsTrialAndTaskIDs(t *testing.T) {
 
 	tIDs, taskIDs, err := ExperimentsTrialAndTaskIDs(ctx, Bun(), nil)
 	require.NoError(t, err)
-	require.Len(t, tIDs, 0)
-	require.Len(t, taskIDs, 0)
+	require.Empty(t, tIDs)
+	require.Empty(t, taskIDs)
 
 	tIDs, taskIDs, err = ExperimentsTrialAndTaskIDs(ctx, Bun(), []int{-1})
 	require.NoError(t, err)
-	require.Len(t, tIDs, 0)
-	require.Len(t, taskIDs, 0)
+	require.Empty(t, tIDs)
+	require.Empty(t, taskIDs)
 
 	e0 := RequireMockExperiment(t, db, user)
 	e0Trial0, e0Task0 := RequireMockTrial(t, db, e0)
@@ -407,11 +407,11 @@ func TestProjectHyperparameters(t *testing.T) {
 
 	require.NoError(t,
 		RemoveProjectHyperparameters(ctx, nil, []int32{int32(exp0.ID), int32(exp1.ID)}))
-	require.Len(t, RequireGetProjectHParams(t, db, projectID), 0)
+	require.Empty(t, RequireGetProjectHParams(t, db, projectID))
 
 	require.NoError(t,
 		RemoveProjectHyperparameters(ctx, nil, []int32{int32(exp0.ID), int32(exp1.ID)}))
-	require.Len(t, RequireGetProjectHParams(t, db, projectID), 0)
+	require.Empty(t, RequireGetProjectHParams(t, db, projectID))
 
 	require.NoError(t,
 		AddProjectHyperparameters(ctx, nil, int32(projectID), []int32{int32(exp0.ID)}))
@@ -449,7 +449,7 @@ func TestActiveLogPatternPolicies(t *testing.T) {
 
 	policies, err := ActiveLogPolicies(ctx, exp.ID)
 	require.NoError(t, err)
-	require.Len(t, policies, 0)
+	require.Empty(t, policies)
 
 	activeConfig, err := db.ActiveExperimentConfig(exp.ID)
 	require.NoError(t, err)
@@ -541,13 +541,13 @@ func TestMetricBatchesMilestones(t *testing.T) {
 	batches, _, err := MetricBatches(exp.ID, "a", startTime, model.MetricGroup("inference"))
 	require.NoError(t, err)
 	require.Len(t, batches, 1)
-	require.Equal(t, batches[0], int32(1))
+	require.Equal(t, int32(1), batches[0])
 
 	batches, _, err = MetricBatches(exp.ID, "b", startTime, model.MetricGroup("inference"))
 	require.NoError(t, err)
 	require.Len(t, batches, 2, "should have 2 batches", batches, trial1, trial2)
-	require.Equal(t, batches[0], int32(1))
-	require.Equal(t, batches[1], int32(2))
+	require.Equal(t, int32(1), batches[0])
+	require.Equal(t, int32(2), batches[1])
 }
 
 func TestTopTrialsByMetric(t *testing.T) {
@@ -561,7 +561,7 @@ func TestTopTrialsByMetric(t *testing.T) {
 
 	res, err := TopTrialsByMetric(ctx, -1, 1, "metric", true)
 	require.NoError(t, err)
-	require.Len(t, res, 0)
+	require.Empty(t, res)
 
 	exp := RequireMockExperiment(t, db, user)
 	trial1 := RequireMockTrialID(t, db, exp)
@@ -1008,7 +1008,7 @@ func TestExperimentTotalStepTime(t *testing.T) {
 		require.NoError(t, CompleteAllocation(ctx, alloc))
 		timeInSeconds, err := ExperimentTotalStepTime(ctx, exp.ID)
 		require.NoError(t, err)
-		require.InEpsilon(t, timeInSeconds, 3600.0, 0.01)
+		require.InEpsilon(t, 3600.0, timeInSeconds, 0.01)
 	})
 
 	t.Run("experiment with multiple trials/tasks", func(t *testing.T) {
@@ -1036,7 +1036,7 @@ func TestExperimentTotalStepTime(t *testing.T) {
 
 		timeInSeconds, err := ExperimentTotalStepTime(ctx, exp.ID)
 		require.NoError(t, err)
-		require.InEpsilon(t, timeInSeconds, 3661.0, 0.01)
+		require.InEpsilon(t, 3661.0, timeInSeconds, 0.01)
 	})
 }
 

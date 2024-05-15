@@ -132,6 +132,9 @@ linters-settings:
       - "http.Client" # Use cleanhttp instead.
       - "http.Transport" # Use cleanhttp instead.
       - 'defer .*\.Lock\(\)'
+  testifylint:
+    disable:
+      - go-require
 
 linters:
   enable-all: true

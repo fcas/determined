@@ -44,9 +44,9 @@ func TestMockSocket(t *testing.T) {
 	actualMsg := StartupMsg{}
 	err := socket.ReadJSON(&actualMsg)
 	require.NoError(t, err)
-	require.Equal(t, actualMsg.Known, expectedMsg.Known)
-	require.Equal(t, actualMsg.Subscribe, expectedMsg.Subscribe)
-	require.Equal(t, actualMsg.SyncID, expectedMsg.SyncID)
+	require.Equal(t, expectedMsg.Known, actualMsg.Known)
+	require.Equal(t, expectedMsg.Subscribe, actualMsg.Subscribe)
+	require.Equal(t, expectedMsg.SyncID, actualMsg.SyncID)
 	require.Zero(t, len(socket.outbound))
 
 	// test write

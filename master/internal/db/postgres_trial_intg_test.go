@@ -908,7 +908,7 @@ func TestProtoGetTrial(t *testing.T) {
 		1,
 	)
 	require.NoError(t, err, "failed to query trial")
-	require.InEpsilon(t, trResp.WallClockTime, float64(3), 0.01, "wall clock time is wrong")
+	require.InEpsilon(t, float64(3), trResp.WallClockTime, 0.01, "wall clock time is wrong")
 }
 
 // Covers an issue where checkpoint_view returned multiple records per checkpoint

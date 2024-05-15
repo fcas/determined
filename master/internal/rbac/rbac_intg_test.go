@@ -813,7 +813,7 @@ func testOnWorkspace(ctx context.Context, t *testing.T, pgDB db.DB) {
 	require.NoError(t, err)
 	require.Len(t, users, 1)
 	require.Equal(t, user0.ID, users[0].ID)
-	require.Len(t, membership, 0) // Personal groups don't show.
+	require.Empty(t, membership) // Personal groups don't show.
 
 	// Add groups and group assignments.
 	group0, _, err := usergroup.AddGroupWithMembers(ctx, model.Group{Name: uuid.New().String()},

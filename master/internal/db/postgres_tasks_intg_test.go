@@ -213,7 +213,7 @@ func TestNonExperimentTasksContextDirectory(t *testing.T) {
 
 	dir, err := NonExperimentTasksContextDirectory(ctx, tID)
 	require.NoError(t, err)
-	require.Len(t, dir, 0)
+	require.Empty(t, dir)
 
 	// Non nil context directory.
 	tID = model.NewTaskID()
@@ -661,7 +661,7 @@ func TestTaskLogsFlow(t *testing.T) {
 		Values:    []string{"testing-agent-1"},
 	}})
 	require.NoError(t, err)
-	require.Equal(t, count, 0)
+	require.Zero(t, count)
 
 	// Try adding the rest of the Task logs, and count 2 for t1In.TaskID, and 1 for t2In.TaskID
 	err = db.AddTaskLogs([]*model.TaskLog{taskLog2, taskLog3})
@@ -669,11 +669,11 @@ func TestTaskLogsFlow(t *testing.T) {
 
 	count, err = db.TaskLogsCount(t1In.TaskID, []api.Filter{})
 	require.NoError(t, err)
-	require.Equal(t, count, 2)
+	require.Equal(t, 2, count)
 
 	count, err = db.TaskLogsCount(t2In.TaskID, []api.Filter{})
 	require.NoError(t, err)
-	require.Equal(t, count, 1)
+	require.Equal(t, 1, count)
 
 	// Test TaskLogsFields.
 	resp, err := db.TaskLogsFields(t1In.TaskID)

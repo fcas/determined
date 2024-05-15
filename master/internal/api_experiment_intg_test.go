@@ -429,7 +429,7 @@ func TestMoveExperiments(t *testing.T) {
 		errorIDList := make([]int32, 0)
 		for _, v := range result.Results {
 			if v.Error == "" {
-				require.Equal(t, v.Error, "")
+				require.Empty(t, v.Error)
 				successIDList = append(successIDList, v.Id)
 			} else {
 				require.Equal(
@@ -1160,14 +1160,14 @@ func TestSearchExperiments(t *testing.T) {
 	require.NoError(t, err)
 	bestExpected, err := json.Marshal(valMetrics[0])
 	require.NoError(t, err)
-	require.Equal(t, string(bestActual), string(bestExpected))
+	require.Equal(t, string(bestExpected), string(bestActual))
 
 	require.Equal(t, int32(9), resp.Experiments[2].BestTrial.LatestValidation.TotalBatches)
 	latestActual, err := json.Marshal(resp.Experiments[2].BestTrial.LatestValidation.Metrics)
 	require.NoError(t, err)
 	latestExpected, err := json.Marshal(valMetrics[len(valMetrics)-1])
 	require.NoError(t, err)
-	require.Equal(t, string(latestActual), string(latestExpected))
+	require.Equal(t, string(latestExpected), string(latestActual))
 
 	require.Equal(t, int32(5), resp.Experiments[2].BestTrial.Restarts)
 }

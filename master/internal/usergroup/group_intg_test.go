@@ -289,14 +289,14 @@ func TestUserGroups(t *testing.T) {
 		users, name, err := UpdateGroupAndMembers(ctx, testGroup.ID, "newName",
 			[]model.UserID{updateTestUser1.ID}, []model.UserID{})
 		require.NoError(t, err, "failed to update group")
-		require.Equal(t, name, "newName", "group name not updated properly")
+		require.Equal(t, "newName", name, "group name not updated properly")
 		index := usersContain(users, updateTestUser1.ID)
 		require.NotEqual(t, -1, index, "group users not updated properly")
 
 		users, name, err = UpdateGroupAndMembers(ctx, testGroup.ID, "anotherNewName",
 			[]model.UserID{updateTestUser2.ID}, []model.UserID{updateTestUser1.ID})
 		require.NoError(t, err, "failed to update group")
-		require.Equal(t, name, "anotherNewName", "group name not updated properly")
+		require.Equal(t, "anotherNewName", name, "group name not updated properly")
 		index = usersContain(users, updateTestUser1.ID)
 		require.Equal(t, -1, index, "group users not removed properly")
 		index = usersContain(users, updateTestUser2.ID)
@@ -306,18 +306,18 @@ func TestUserGroups(t *testing.T) {
 		require.Error(t, err, "succeeded when update should have failed")
 		group, err := GroupByIDTx(ctx, nil, testGroup.ID)
 		require.NoError(t, err, "getting groups by ID failed")
-		require.Equal(t, group.Name, "anotherNewName", "group name should not be updated")
+		require.Equal(t, "anotherNewName", group.Name, "group name should not be updated")
 
 		_, _, err = UpdateGroupAndMembers(ctx, testGroup.ID, "testGroup", []model.UserID{-500}, nil)
 		require.Error(t, err, "succeeded when update should have failed")
 		group, err = GroupByIDTx(ctx, nil, testGroup.ID)
 		require.NoError(t, err, "getting groups by ID failed")
-		require.Equal(t, group.Name, "anotherNewName", "group name should not be updated")
+		require.Equal(t, "anotherNewName", group.Name, "group name should not be updated")
 
 		users, name, err = UpdateGroupAndMembers(ctx, testGroup.ID, "testGroup", nil,
 			[]model.UserID{updateTestUser2.ID, -500})
 		require.NoError(t, err, "failed to update group")
-		require.Equal(t, name, "testGroup", "group name not updated properly")
+		require.Equal(t, "testGroup", name, "group name not updated properly")
 		require.Empty(t, users, "group users not updated properly")
 		index = usersContain(users, updateTestUser1.ID)
 		require.Equal(t, -1, index, "group users not removed properly")

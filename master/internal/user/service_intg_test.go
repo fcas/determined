@@ -93,7 +93,7 @@ func TestAuthzUserList(t *testing.T) {
 	authzUser.On("FilterUserList", mock.Anything, model.User{}, mock.Anything).
 		Return(nil, expectedErr).Once()
 	_, err := svc.getUsers(ctx)
-	require.Equal(t, err, expectedErr)
+	require.Equal(t, expectedErr, err)
 
 	// Nil error returns whatever FilterUserList returns.
 	users := []model.FullUser{

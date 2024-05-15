@@ -166,7 +166,7 @@ func TestDeleteExpiredTaskLogs(t *testing.T) {
 	for _, taskID := range taskIDs {
 		logCount, err := api.m.db.TaskLogsCount(taskID, nil)
 		require.NoError(t, err)
-		require.Equal(t, logCount, 2)
+		require.Equal(t, 2, logCount)
 	}
 
 	// Move time database time 30 days in the future.
@@ -336,7 +336,7 @@ func TestScheduleRetentionNoConfig(t *testing.T) {
 	for _, taskID := range taskIDs {
 		logCount, err := api.m.db.TaskLogsCount(taskID, nil)
 		require.NoError(t, err)
-		require.Equal(t, logCount, 2)
+		require.Equal(t, 2, logCount)
 	}
 
 	// Advance time to midnight.
@@ -433,7 +433,7 @@ func TestScheduleRetention100days(t *testing.T) {
 	for _, taskID := range taskIDs {
 		logCount, err := api.m.db.TaskLogsCount(taskID, nil)
 		require.NoError(t, err)
-		require.Equal(t, logCount, 2)
+		require.Equal(t, 2, logCount)
 	}
 
 	// Advance time to midnight.
@@ -537,7 +537,7 @@ func TestScheduleRetentionNeverExpire(t *testing.T) {
 	for _, taskID := range taskIDs {
 		logCount, err := api.m.db.TaskLogsCount(taskID, nil)
 		require.NoError(t, err)
-		require.Equal(t, logCount, 2)
+		require.Equal(t, 2, logCount)
 	}
 
 	// Advance time to midnight.

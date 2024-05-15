@@ -349,7 +349,7 @@ func TestMoveRunsIds(t *testing.T) {
 	// Experiment in new project
 	exp, err := api.getExperiment(ctx, curUser, run1.ExperimentID)
 	require.NoError(t, err)
-	require.Equal(t, destprojectID, exp.ProjectId)
+	require.Equal(t, exp.ProjectId, destprojectID)
 }
 
 func setUpMultiTrialExperiments(ctx context.Context, t *testing.T, api *apiServer, curUser model.User,

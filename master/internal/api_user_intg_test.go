@@ -398,7 +398,7 @@ func TestLoginRemote(t *testing.T) {
 			Where("username = ?", username).
 			Scan(ctx, &expectedUser)
 		require.NoError(t, err)
-		require.Equal(t, model.NoPasswordLogin, expectedUser.PasswordHash)
+		require.Equal(t, expectedUser.PasswordHash, model.NoPasswordLogin)
 
 		// Changing back to unremote unsets password to blank.
 		_, err = api.PatchUser(ctx, &apiv1.PatchUserRequest{
@@ -910,7 +910,7 @@ func TestPostUserActivity(t *testing.T) {
 
 	activityCount, err := getActivityEntry(ctx, curUser.ID, 1)
 	require.NoError(t, err)
-	require.Equal(t, activityCount, 1, ctx)
+	require.Equal(t, 1, activityCount, ctx)
 
 	_, err = api.PostUserActivity(ctx, &apiv1.PostUserActivityRequest{
 		ActivityType: userv1.ActivityType_ACTIVITY_TYPE_GET,
@@ -922,7 +922,7 @@ func TestPostUserActivity(t *testing.T) {
 
 	activityCount, err = getActivityEntry(ctx, curUser.ID, 1)
 	require.NoError(t, err)
-	require.Equal(t, activityCount, 1, ctx)
+	require.Equal(t, 1, activityCount, ctx)
 }
 
 func getActivityEntry(ctx context.Context, userID model.UserID, entityID int32) (int, error) {
