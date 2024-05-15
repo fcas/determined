@@ -13,9 +13,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
-	"gotest.tools/assert"
 
 	"github.com/determined-ai/determined/master/pkg/etc"
 	"github.com/determined-ai/determined/master/pkg/model"
@@ -124,7 +124,7 @@ func TestCheckpointMetadata(t *testing.T) {
 				require.NoError(t, conv.Error())
 				require.Equal(t, expected.State, conv.ToCheckpointState(actual.State))
 				if tt.hasValidation {
-					require.Equal(t, metricValue, *actual.Training.SearcherMetric)
+					require.InEpsilon(t, metricValue, *actual.Training.SearcherMetric, 0.01)
 					require.NotNil(t, actual.Training.ValidationMetrics.AvgMetrics)
 				} else {
 					require.Nil(t, actual.Training.SearcherMetric)
@@ -370,7 +370,7 @@ func TestExperimentBestSearcherValidation(t *testing.T) {
 
 	val, err := ExperimentBestSearcherValidation(ctx, exp.ID)
 	require.NoError(t, err)
-	require.Equal(t, float32(-5.0), val)
+	require.InEpsilon(t, float32(-5.0), val, 0.01)
 
 	_, err = Bun().NewUpdate().Table("experiments").
 		Set("config = jsonb_set(config, '{searcher,smaller_is_better}', 'false'::jsonb)").
@@ -380,7 +380,7 @@ func TestExperimentBestSearcherValidation(t *testing.T) {
 
 	val, err = ExperimentBestSearcherValidation(ctx, exp.ID)
 	require.NoError(t, err)
-	require.Equal(t, float32(5.0), val)
+	require.InEpsilon(t, float32(5.0), val, 0.01)
 }
 
 func TestProjectHyperparameters(t *testing.T) {
@@ -486,10 +486,10 @@ func TestGetNonTerminalExperimentCount(t *testing.T) {
 
 	c, err := GetNonTerminalExperimentCount(ctx, nil)
 	require.NoError(t, err)
-	require.Equal(t, 0, c)
+	require.Zero(t, c)
 	c, err = GetNonTerminalExperimentCount(ctx, []int32{})
 	require.NoError(t, err)
-	require.Equal(t, 0, c)
+	require.Zero(t, c)
 
 	e0 := RequireMockExperimentParams(t, db, user, MockExperimentParams{
 		State: ptrs.Ptr(model.ActiveState),
@@ -503,7 +503,7 @@ func TestGetNonTerminalExperimentCount(t *testing.T) {
 	}, DefaultProjectID)
 	c, err = GetNonTerminalExperimentCount(ctx, []int32{int32(e1.ID)})
 	require.NoError(t, err)
-	require.Equal(t, 0, c)
+	require.Zero(t, c)
 
 	e2 := RequireMockExperimentParams(t, db, user, MockExperimentParams{
 		State: ptrs.Ptr(model.PausedState),
@@ -798,7 +798,7 @@ func TestDeleteExperiments(t *testing.T) {
 		var ids []int
 		err := Bun().NewSelect().Table(table).Column(column).Scan(context.Background(), &ids)
 		require.NoError(t, err)
-		require.Equalf(t, num, len(ids),
+		require.Len(t, ids, num,
 			"table=%s column=%s removed=%+v num=%d", table, column, removed, num)
 
 		for _, id := range ids {
@@ -915,7 +915,7 @@ func TestProjectExperiments(t *testing.T) {
 	t.Run("valid project with zero experiments", func(t *testing.T) {
 		actualExps, err := ProjectExperiments(context.Background(), projectID)
 		require.NoError(t, err)
-		assert.Equal(t, len(actualExps), 0)
+		assert.Empty(t, actualExps)
 	})
 
 	t.Run("valid project with experiments", func(t *testing.T) {
@@ -935,7 +935,7 @@ func TestProjectExperiments(t *testing.T) {
 	t.Run("invalid project", func(t *testing.T) {
 		actualExps, err := ProjectExperiments(context.Background(), -11)
 		require.NoError(t, err)
-		assert.Equal(t, 0, len(actualExps))
+		assert.Empty(t, len(actualExps))
 	})
 
 	t.Run("archived project", func(t *testing.T) {
@@ -974,7 +974,7 @@ func validateExperimentMatch(t *testing.T, expected []*model.Experiment, actual 
 	}
 
 	// map should be empty
-	require.Equal(t, len(m), 0)
+	require.Empty(t, m)
 }
 
 func TestExperimentTotalStepTime(t *testing.T) {
@@ -986,7 +986,7 @@ func TestExperimentTotalStepTime(t *testing.T) {
 
 	t.Run("invalid experiment, return 0.0, no error", func(t *testing.T) {
 		sec, err := ExperimentTotalStepTime(ctx, -1)
-		require.Equal(t, 0.0, sec)
+		require.Zero(t, sec)
 		require.NoError(t, err)
 	})
 
@@ -995,7 +995,7 @@ func TestExperimentTotalStepTime(t *testing.T) {
 		exp := RequireMockExperiment(t, db, user)
 		timeInSeconds, err := ExperimentTotalStepTime(ctx, exp.ID)
 		require.NoError(t, err)
-		require.Equal(t, 0.0, timeInSeconds)
+		require.Zero(t, timeInSeconds)
 	})
 
 	t.Run("experiment with single trial/task with set endtime", func(t *testing.T) {
@@ -1008,7 +1008,7 @@ func TestExperimentTotalStepTime(t *testing.T) {
 		require.NoError(t, CompleteAllocation(ctx, alloc))
 		timeInSeconds, err := ExperimentTotalStepTime(ctx, exp.ID)
 		require.NoError(t, err)
-		require.Equal(t, 3600.0, timeInSeconds)
+		require.InEpsilon(t, timeInSeconds, 3600.0, 0.01)
 	})
 
 	t.Run("experiment with multiple trials/tasks", func(t *testing.T) {
@@ -1036,7 +1036,7 @@ func TestExperimentTotalStepTime(t *testing.T) {
 
 		timeInSeconds, err := ExperimentTotalStepTime(ctx, exp.ID)
 		require.NoError(t, err)
-		require.Equal(t, 3661.0, timeInSeconds)
+		require.InEpsilon(t, timeInSeconds, 3661.0, 0.01)
 	})
 }
 

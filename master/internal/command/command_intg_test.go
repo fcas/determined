@@ -45,7 +45,7 @@ func TestCommandManagerLifecycle(t *testing.T) {
 	resp2, err := DefaultCmdService.GetCommands(&apiv1.GetCommandsRequest{})
 	require.NotNil(t, resp2)
 	require.NoError(t, err)
-	require.Equal(t, len(resp2.Commands), 2)
+	require.Len(t, resp2.Commands, 2)
 
 	// Kill 1 command.
 	resp3, err := DefaultCmdService.KillNTSC(cmd2.Id, model.TaskTypeCommand)
@@ -80,7 +80,7 @@ func TestNotebookManagerLifecycle(t *testing.T) {
 	resp2, err := DefaultCmdService.GetNotebooks(&apiv1.GetNotebooksRequest{})
 	require.NotNil(t, resp2)
 	require.NoError(t, err)
-	require.Equal(t, len(resp2.Notebooks), 2)
+	require.Len(t, resp2.Notebooks, 2)
 
 	// Kill 1 Notebook.
 	resp3, err := DefaultCmdService.KillNTSC(cmd2.Id, model.TaskTypeNotebook)
@@ -115,7 +115,7 @@ func TestShellManagerLifecycle(t *testing.T) {
 	resp2, err := DefaultCmdService.GetShells(&apiv1.GetShellsRequest{})
 	require.NotNil(t, resp2)
 	require.NoError(t, err)
-	require.Equal(t, len(resp2.Shells), 2)
+	require.Len(t, resp2.Shells, 2)
 
 	// Kill 1 Shell.
 	resp3, err := DefaultCmdService.KillNTSC(cmd2.Id, model.TaskTypeShell)
@@ -150,7 +150,7 @@ func TestTensorboardManagerLifecycle(t *testing.T) {
 	resp2, err := DefaultCmdService.GetTensorboards(&apiv1.GetTensorboardsRequest{})
 	require.NotNil(t, resp2)
 	require.NoError(t, err)
-	require.Equal(t, len(resp2.Tensorboards), 2)
+	require.Len(t, resp2.Tensorboards, 2)
 
 	// Kill 1 Tensorboard.
 	resp3, err := DefaultCmdService.KillNTSC(cmd2.Id, model.TaskTypeTensorboard)

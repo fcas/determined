@@ -280,7 +280,7 @@ func TestAllocationState(t *testing.T) {
 			require.NoError(t, db.QueryProto("get_task", tOut, tID), "failed to get task")
 
 			// Ensure our state is the same as allocation.
-			require.Equal(t, len(tOut.Allocations), 1, "failed to get exactly 1 allocation")
+			require.Len(t, tOut.Allocations, 1, "failed to get exactly 1 allocation")
 			aOut := tOut.Allocations[0]
 
 			if slices.Contains([]model.AllocationState{
@@ -685,14 +685,14 @@ func TestTaskLogsFlow(t *testing.T) {
 	// Get 1 task log matching t1In task ID.
 	logs, _, err := db.TaskLogs(t1In.TaskID, 1, []api.Filter{}, apiv1.OrderBy_ORDER_BY_UNSPECIFIED, nil)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(logs))
+	require.Len(t, logs, 1)
 	require.Equal(t, logs[0].TaskID, string(t1In.TaskID))
 	require.Contains(t, []string{"1", "2"}, *logs[0].ContainerID)
 
 	// Get up to 5 tasks matching t2In task ID -- receive only 2.
 	logs, _, err = db.TaskLogs(t1In.TaskID, 5, []api.Filter{}, apiv1.OrderBy_ORDER_BY_UNSPECIFIED, nil)
 	require.NoError(t, err)
-	require.Equal(t, 2, len(logs))
+	require.Len(t, logs, 2)
 
 	// Test DeleteTaskLogs.
 	err = db.DeleteTaskLogs([]model.TaskID{t2In.TaskID})
@@ -700,7 +700,7 @@ func TestTaskLogsFlow(t *testing.T) {
 
 	count, err = db.TaskLogsCount(t2In.TaskID, []api.Filter{})
 	require.NoError(t, err)
-	require.Equal(t, 0, count)
+	require.Zero(t, count)
 }
 
 func RequireMockTaskLog(t *testing.T, db *PgDB, tID model.TaskID, suffix string) *model.TaskLog {

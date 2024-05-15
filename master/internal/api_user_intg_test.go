@@ -631,7 +631,7 @@ func TestPatchUsers(t *testing.T) {
 		UserId: int32(userID),
 	})
 	require.NoError(t, err)
-	require.Equal(t, resp2.User.Active, true)
+	require.True(t, resp2.User.Active)
 }
 
 func TestRenameUserThenReuseName(t *testing.T) {

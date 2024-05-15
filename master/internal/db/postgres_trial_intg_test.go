@@ -908,7 +908,7 @@ func TestProtoGetTrial(t *testing.T) {
 		1,
 	)
 	require.NoError(t, err, "failed to query trial")
-	require.Equal(t, trResp.WallClockTime, float64(3), "wall clock time is wrong")
+	require.InEpsilon(t, trResp.WallClockTime, float64(3), 0.01, "wall clock time is wrong")
 }
 
 // Covers an issue where checkpoint_view returned multiple records per checkpoint
@@ -983,8 +983,8 @@ func TestAddValidationMetricsDupeCheckpoints(t *testing.T) {
 	checkpoints := []*checkpointv1.Checkpoint{}
 	require.NoError(t, db.QueryProto("get_checkpoints_for_experiment", &checkpoints, exp.ID))
 	require.Len(t, checkpoints, 1)
-	require.Equal(t, 10.0, checkpoints[0].Training.TrainingMetrics.AvgMetrics.AsMap()["loss"])
-	require.Equal(t, 50.0, checkpoints[0].Training.ValidationMetrics.AvgMetrics.AsMap()["loss"])
+	require.InEpsilon(t, 10.0, checkpoints[0].Training.TrainingMetrics.AvgMetrics.AsMap()["loss"], 0.01)
+	require.InEpsilon(t, 50.0, checkpoints[0].Training.ValidationMetrics.AvgMetrics.AsMap()["loss"], 0.01)
 
 	// Dummy metrics still happen if no other results at given total_batches.
 	checkpoint2UUID := uuid.New()
@@ -1012,11 +1012,11 @@ func TestAddValidationMetricsDupeCheckpoints(t *testing.T) {
 		return checkpoints[i].Uuid != checkpoint2UUID.String() // Have second checkpoint later.
 	})
 
-	require.Equal(t, 10.0, checkpoints[0].Training.TrainingMetrics.AvgMetrics.AsMap()["loss"])
-	require.Equal(t, 50.0, checkpoints[0].Training.ValidationMetrics.AvgMetrics.AsMap()["loss"])
+	require.InEpsilon(t, 10.0, checkpoints[0].Training.TrainingMetrics.AvgMetrics.AsMap()["loss"], 0.01)
+	require.InEpsilon(t, 50.0, checkpoints[0].Training.ValidationMetrics.AvgMetrics.AsMap()["loss"], 0.01)
 
-	require.Equal(t, nil, checkpoints[1].Training.TrainingMetrics.AvgMetrics.AsMap()["loss"])
-	require.Equal(t, 1.5, checkpoints[1].Training.ValidationMetrics.AvgMetrics.AsMap()["loss"])
+	require.Nil(t, checkpoints[1].Training.TrainingMetrics.AvgMetrics.AsMap()["loss"])
+	require.InEpsilon(t, 1.5, checkpoints[1].Training.ValidationMetrics.AvgMetrics.AsMap()["loss"], 0.01)
 }
 
 func TestBatchesProcessedNRollbacks(t *testing.T) {
@@ -1037,7 +1037,7 @@ func TestBatchesProcessedNRollbacks(t *testing.T) {
 
 	dbTr, err := TrialByID(ctx, tr.ID)
 	require.NoError(t, err)
-	require.Equal(t, 0, dbTr.TotalBatches)
+	require.Zero(t, dbTr.TotalBatches)
 
 	a := &model.Allocation{
 		AllocationID: model.AllocationID(fmt.Sprintf("%s-%d", task.TaskID, 0)),
@@ -1141,7 +1141,7 @@ func TestBatchesProcessedNRollbacks(t *testing.T) {
 	metricGroup := "generic-golabi"
 	returnedMetrics, err := GetMetrics(ctx, tr.ID, 0, 10, &metricGroup)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(returnedMetrics))
+	require.Len(t, returnedMetrics, 1)
 }
 
 func TestUpdateTrialRunnerMetadata(t *testing.T) {
@@ -1186,7 +1186,7 @@ func TestGenericMetricsIO(t *testing.T) {
 
 	dbTr, err := TrialByID(ctx, tr.ID)
 	require.NoError(t, err)
-	require.Equal(t, 0, dbTr.TotalBatches)
+	require.Zero(t, dbTr.TotalBatches)
 
 	a := &model.Allocation{
 		AllocationID: model.AllocationID(fmt.Sprintf("%s-%d", task.TaskID, 0)),
@@ -1252,7 +1252,7 @@ ORDER BY name ASC`, "inference")
 	summaryRows := []*summaryMetrics{}
 	err = Bun().NewRaw(query, tr.ID).Scan(ctx, &summaryRows)
 	require.NoError(t, err)
-	require.Equal(t, 4, len(summaryRows), summaryRows)
+	require.Len(t, summaryRows, 4, summaryRows)
 	require.Equal(t, summaryMetrics{
 		Name:  "aloss",
 		Max:   20,
@@ -1322,7 +1322,7 @@ func TestConcurrentMetricUpdate(t *testing.T) {
 
 		dbTr, err := TrialByID(ctx, tr.ID)
 		require.NoError(t, err)
-		require.Equal(t, 0, dbTr.TotalBatches)
+		require.Zero(t, dbTr.TotalBatches)
 		return &tr
 	}
 

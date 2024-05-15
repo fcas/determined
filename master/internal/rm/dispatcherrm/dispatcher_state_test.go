@@ -8,10 +8,11 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"gotest.tools/assert"
+
 	"github.com/determined-ai/determined/master/internal/db"
 	"github.com/determined-ai/determined/master/pkg/etc"
-
-	"gotest.tools/assert"
 )
 
 func TestDispatcherStatePersistence(t *testing.T) {
@@ -38,7 +39,7 @@ func TestDispatcherStatePersistence(t *testing.T) {
 	assert.Check(t, !state.isAgentEnabled("agent1"))
 	assert.Check(t, state.isAgentEnabled("agentUnknown"))
 
-	assert.ErrorContains(t, state.disableAgent("agent1"), "already disabled")
+	require.ErrorContains(t, state.disableAgent("agent1"), "already disabled")
 	assert.Check(t, !state.isAgentEnabled("agent1"))
 
 	assert.NilError(t, state.enableAgent("agent1"))

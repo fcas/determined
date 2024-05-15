@@ -12,6 +12,7 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/require"
 	launcher "github.hpe.com/hpe/hpc-ard-launcher-go/launcher"
 	"gotest.tools/assert"
 
@@ -749,7 +750,7 @@ func Test_ToDispatcherManifest(t *testing.T) {
 				tt.isPbsScheduler, nil, nil)
 
 			if tt.wantErr {
-				assert.ErrorContains(t, err, tt.errorContains)
+				require.ErrorContains(t, err, tt.errorContains)
 			} else {
 				assert.NilError(t, err)
 				assert.DeepEqual(t, manifest.GetWarehouseMetadata(), *launcher.NewWarehouseMetadata())
@@ -1184,7 +1185,7 @@ func Test_preventRunDeterminedMount(t *testing.T) {
 	}
 	volumes, _, _, err := getDataVolumes(arg)
 	assert.Equal(t, len(volumes), 0)
-	assert.ErrorContains(t, err, "/run/determined/workdir")
+	require.ErrorContains(t, err, "/run/determined/workdir")
 }
 
 func Test_addTmpFs(t *testing.T) {

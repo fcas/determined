@@ -367,5 +367,5 @@ func TestEditorVSEditorRestricted(t *testing.T) {
 		Count(ctx)
 	require.NoError(t, err)
 
-	require.Equal(t, 0, num)
+	require.Zero(t, num)
 }

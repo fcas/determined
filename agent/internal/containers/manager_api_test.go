@@ -376,7 +376,7 @@ func TestManagerReattach(t *testing.T) {
 	t.Log("reattaching all containers")
 	acks, err := m.ReattachContainers(ctx, expectedSurvivors)
 	require.NoError(t, err)
-	require.Equal(t, len(expectedSurvivors), len(acks))
+	require.Len(t, acks, len(expectedSurvivors))
 
 	t.Log("checking the unexpected survivor is culled")
 	found := false

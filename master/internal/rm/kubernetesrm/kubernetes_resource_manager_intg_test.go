@@ -169,7 +169,7 @@ func TestGetAgents(t *testing.T) {
 	for _, test := range agentsTests {
 		t.Run(test.Name, func(t *testing.T) {
 			agentsResp := test.podsService.handleGetAgentsRequest()
-			require.Equal(t, len(test.wantedAgentIDs), len(agentsResp.Agents))
+			require.Len(t, agentsResp.Agents, len(test.wantedAgentIDs))
 			for _, agent := range agentsResp.Agents {
 				_, ok := test.wantedAgentIDs[agent.Id]
 				require.True(t, ok,
@@ -291,7 +291,7 @@ func TestGetAgent(t *testing.T) {
 		t.Run(test.Name, func(t *testing.T) {
 			agentResp := test.podsService.handleGetAgentRequest(test.wantedAgentID)
 			if agentResp == nil {
-				require.True(t, !test.agentExists)
+				require.False(t, test.agentExists)
 				return
 			}
 			require.Equal(t, test.wantedAgentID, agentResp.Agent.Id)
@@ -404,10 +404,10 @@ func TestGetSlots(t *testing.T) {
 		t.Run(test.Name, func(t *testing.T) {
 			slotsResp := test.podsService.handleGetSlotsRequest(test.agentID)
 			if slotsResp == nil {
-				require.True(t, !test.agentExists)
+				require.False(t, test.agentExists)
 				return
 			}
-			require.Equal(t, test.wantedSlotsNum, len(slotsResp.Slots))
+			require.Len(t, slotsResp.Slots, test.wantedSlotsNum)
 
 			// Count number of active slots on the node. (Slots allocated to a pod running
 			// a container).
@@ -681,7 +681,7 @@ func TestGetJobQueueStatsRequest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			res, err := k8sRM.GetJobQueueStatsRequest(&apiv1.GetJobQueueStatsRequest{ResourcePools: tt.filteredRPs})
 			require.NoError(t, err)
-			require.Equal(t, tt.expected, len(res.Results))
+			require.Len(t, res.Results, tt.expected)
 		})
 	}
 }

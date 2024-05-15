@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/require"
 	"gotest.tools/assert"
 
 	. "github.com/determined-ai/determined/master/internal/config/provconfig"
@@ -417,7 +418,7 @@ func TestProvisionerLaunchFailure(t *testing.T) {
 
 	mock.provisioner.UpdateScalingInfo(&sproto.ScalingInfo{DesiredNewInstances: 4})
 	mock.provisioner.Provision()
-	assert.Error(t, provisioner.LaunchError(), "failed to launch", "expected error")
+	require.Error(t, provisioner.LaunchError(), "failed to launch", "expected error")
 }
 
 func TestProvisionerLaunchOneAtATime(t *testing.T) {
@@ -468,5 +469,5 @@ func TestProvisionerLaunchOneAtATimeFail(t *testing.T) {
 	for i := 0; i <= 4; i++ {
 		mock.provisioner.Provision()
 	}
-	assert.Error(t, provisioner.LaunchError(), "failed to launch", "expected error")
+	require.Error(t, provisioner.LaunchError(), "failed to launch", "expected error")
 }

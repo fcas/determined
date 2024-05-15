@@ -66,7 +66,7 @@ func TestSearchRunsArchivedExperiment(t *testing.T) {
 	// Run should not be in result
 	resp, err = api.SearchRuns(ctx, req)
 	require.NoError(t, err)
-	require.Len(t, resp.Runs, 0)
+	require.Empty(t, resp.Runs)
 }
 
 func TestSearchRunsSort(t *testing.T) {
@@ -81,7 +81,7 @@ func TestSearchRunsSort(t *testing.T) {
 	}
 	resp, err := api.SearchRuns(ctx, req)
 	require.NoError(t, err)
-	require.Len(t, resp.Runs, 0)
+	require.Empty(t, resp.Runs)
 
 	hyperparameters := map[string]any{"global_batch_size": 1, "test1": map[string]any{"test2": 1}}
 
@@ -157,7 +157,7 @@ func TestSearchRunsFilter(t *testing.T) {
 	}
 	resp, err := api.SearchRuns(ctx, req)
 	require.NoError(t, err)
-	require.Len(t, resp.Runs, 0)
+	require.Empty(t, resp.Runs)
 
 	hyperparameters := map[string]any{"global_batch_size": 1, "test1": map[string]any{"test2": 1}}
 
@@ -425,7 +425,7 @@ func TestMoveRunsMultiTrialSkip(t *testing.T) {
 
 	resp, err = api.SearchRuns(ctx, req)
 	require.NoError(t, err)
-	require.Len(t, resp.Runs, 0)
+	require.Empty(t, resp.Runs)
 }
 
 func TestMoveRunsMultiTrialNoSkip(t *testing.T) {
@@ -453,7 +453,7 @@ func TestMoveRunsMultiTrialNoSkip(t *testing.T) {
 	}
 	resp, err := api.SearchRuns(ctx, req)
 	require.NoError(t, err)
-	require.Len(t, resp.Runs, 0)
+	require.Empty(t, resp.Runs)
 
 	// runs in new project
 	req = &apiv1.SearchRunsRequest{
@@ -621,7 +621,7 @@ func TestDeleteRunsIds(t *testing.T) {
 
 	searchResp, err := api.SearchRuns(ctx, searchReq)
 	require.NoError(t, err)
-	require.Len(t, searchResp.Runs, 0)
+	require.Empty(t, searchResp.Runs)
 }
 
 func TestDeleteRunsIdsNonExistant(t *testing.T) {
@@ -786,11 +786,11 @@ func TestDeleteRunsLogs(t *testing.T) {
 
 	searchResp, err = api.SearchRuns(ctx, searchReq)
 	require.NoError(t, err)
-	require.Len(t, searchResp.Runs, 0)
+	require.Empty(t, searchResp.Runs)
 	// ensure all logs are deleted
 	total, err := api.m.taskLogBackend.TaskLogsCount(task1.TaskID, []a.Filter{})
 	require.NoError(t, err)
-	require.Equal(t, 0, total)
+	require.Zero(t, total)
 }
 
 func TestDeleteRunsOverfillInput(t *testing.T) {
@@ -818,7 +818,7 @@ func TestDeleteRunsNoInput(t *testing.T) {
 	}
 	resp, err := api.DeleteRuns(ctx, req)
 	require.NoError(t, err)
-	require.Len(t, resp.Results, 0)
+	require.Empty(t, resp.Results)
 }
 
 func TestArchiveUnarchiveIds(t *testing.T) {
@@ -845,7 +845,7 @@ func TestArchiveUnarchiveIds(t *testing.T) {
 
 	searchResp, err := api.SearchRuns(ctx, searchReq)
 	require.NoError(t, err)
-	require.Len(t, searchResp.Runs, 0)
+	require.Empty(t, searchResp.Runs)
 
 	// Unarchive runs
 	unarchReq := &apiv1.UnarchiveRunsRequest{
@@ -955,7 +955,7 @@ func TestArchiveAlreadyArchived(t *testing.T) {
 
 	searchResp, err := api.SearchRuns(ctx, searchReq)
 	require.NoError(t, err)
-	require.Len(t, searchResp.Runs, 0)
+	require.Empty(t, searchResp.Runs)
 
 	// Try to archive again
 	archRes, err = api.ArchiveRuns(ctx, archReq)
@@ -1050,7 +1050,7 @@ func TestArchiveUnarchiveNoInput(t *testing.T) {
 	}
 	archRes, err := api.ArchiveRuns(ctx, archReq)
 	require.NoError(t, err)
-	require.Len(t, archRes.Results, 0)
+	require.Empty(t, archRes.Results)
 
 	// Unarchive runs
 	unarchReq := &apiv1.UnarchiveRunsRequest{
@@ -1059,5 +1059,5 @@ func TestArchiveUnarchiveNoInput(t *testing.T) {
 	}
 	unarchRes, err := api.UnarchiveRuns(ctx, unarchReq)
 	require.NoError(t, err)
-	require.Len(t, unarchRes.Results, 0)
+	require.Empty(t, unarchRes.Results)
 }

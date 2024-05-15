@@ -287,7 +287,7 @@ func TestUpdateUserAndDeleteSession(t *testing.T) {
 
 			_, err = db.Bun().NewSelect().Table("user_sessions").
 				Where("user_id = ?", user.ID).Exec(context.Background())
-			require.ErrorAs(t, errors.New("Receive unexpected error: bun: Model(nil)"), &err)
+			require.ErrorIs(t, errors.New("Receive unexpected error: bun: Model(nil)"), err)
 		})
 	}
 }

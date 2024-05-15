@@ -186,7 +186,7 @@ func TestResourceCreationFailed(t *testing.T) {
 	if !ok {
 		t.Errorf("expected sproto.ContainerLog but received %s", reflect.TypeOf(message))
 	}
-	assert.ErrorContains(t, errors.New(*containerMsg.AuxMessage), correctMsg)
+	require.ErrorContains(t, errors.New(*containerMsg.AuxMessage), correctMsg)
 }
 
 func TestReceivePodStatusUpdateTerminated(t *testing.T) {

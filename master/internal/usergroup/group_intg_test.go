@@ -97,7 +97,7 @@ func TestUserGroups(t *testing.T) {
 		require.NoError(t, err, "failed to search for groups that user belongs to")
 
 		index := groupsContain(groups, testGroup.ID)
-		require.Equal(t, 2, len(groups), "group search returned wrong count")
+		require.Len(t, groups, 2, "group search returned wrong count")
 		require.NotEqual(t, -1, index,
 			"Group user was added to not found when searching by user membership")
 	})
@@ -231,7 +231,7 @@ func TestUserGroups(t *testing.T) {
 		foundGroup := groups[index]
 		require.Equal(t, answerGroups[0].Name, foundGroup.Name,
 			"Expected found group to have the same name as the first answerGroup")
-		require.Equal(t, 1, len(groups), "Expected no more than one group to have been returned")
+		require.Len(t, groups, 1, "Expected no more than one group to have been returned")
 
 		groups, _, count, err = SearchGroups(ctx, "", 0, 1, 2)
 		require.NoError(t, err, "failed to search for groups")
@@ -258,8 +258,8 @@ func TestUserGroups(t *testing.T) {
 
 		groups, _, count, err := SearchGroups(ctx, tempGroupName, 0, 0, 0)
 		require.NoError(t, err, "error searching for groups to verify rollback")
-		require.Equal(t, 0, count, "should be zero matching groups in the DB")
-		require.Equal(t, 0, len(groups), "should be zero matching groups returned")
+		require.Zero(t, count, "should be zero matching groups in the DB")
+		require.Zero(t, len(groups), "should be zero matching groups returned")
 	})
 
 	t.Run("update groups and memberships", func(t *testing.T) {
@@ -318,7 +318,7 @@ func TestUserGroups(t *testing.T) {
 			[]model.UserID{updateTestUser2.ID, -500})
 		require.NoError(t, err, "failed to update group")
 		require.Equal(t, name, "testGroup", "group name not updated properly")
-		require.GreaterOrEqual(t, 0, len(users), "group users not updated properly")
+		require.Empty(t, users, "group users not updated properly")
 		index = usersContain(users, updateTestUser1.ID)
 		require.Equal(t, -1, index, "group users not removed properly")
 		index = usersContain(users, updateTestUser2.ID)

@@ -60,7 +60,7 @@ func TestGetAllocationSummaries(t *testing.T) {
 					a := alloc + strconv.Itoa(i)
 					ret[*model.NewAllocationID(&a)] = sproto.AllocationSummary{}
 				}
-				require.Equal(t, len(ret), len(tt.allocNames))
+				require.Len(t, ret, len(tt.allocNames))
 
 				mockRM := mocks.ResourceManager{}
 				mockRM.On("GetAllocationSummaries").Return(ret, nil)
@@ -72,7 +72,7 @@ func TestGetAllocationSummaries(t *testing.T) {
 
 			allocs, err := m.GetAllocationSummaries()
 			require.NoError(t, err)
-			require.Equal(t, tt.managers*len(tt.allocNames), len(allocs))
+			require.Len(t, allocs, tt.managers*len(tt.allocNames))
 			require.NotNil(t, allocs)
 
 			bogus := "bogus"
@@ -256,7 +256,7 @@ func TestGetResourcePools(t *testing.T) {
 
 			rps, err := m.GetResourcePools()
 			require.NoError(t, err)
-			require.Equal(t, tt.managers*len(tt.rpNames), len(rps.ResourcePools))
+			require.Len(t, rps.ResourcePools, tt.managers*len(tt.rpNames))
 
 			for _, rp := range rps.ResourcePools {
 				require.Contains(t, tt.rpNames, rp.Name)
@@ -387,7 +387,7 @@ func TestGetJobQueueStatsRequest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			res, err := testMultiRM.GetJobQueueStatsRequest(tt.req)
 			require.Equal(t, tt.err, err)
-			require.Equal(t, tt.expectedLen, len(res.Results))
+			require.Len(t, res.Results, tt.expectedLen)
 		})
 	}
 }
@@ -491,7 +491,7 @@ func TestGetAgents(t *testing.T) {
 
 			rps, err := m.GetAgents()
 			require.NoError(t, err)
-			require.Equal(t, tt.managers*len(tt.agentNames), len(rps.Agents))
+			require.Len(t, rps.Agents, tt.managers*len(tt.agentNames))
 
 			for _, rp := range rps.Agents {
 				require.Subset(t, tt.agentNames, rp.ResourcePools)

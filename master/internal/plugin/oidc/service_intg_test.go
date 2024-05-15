@@ -92,7 +92,7 @@ func TestOIDCWorkflow(t *testing.T) {
 			if tt.createDuplicate {
 				require.NoError(t, err)
 			} else {
-				require.Error(t, err, db.ErrNotFound)
+				require.ErrorIs(t, err, db.ErrNotFound)
 				newUser, err := s.provisionUser(ctx, claims.AuthenticationClaim, claims.Groups)
 				require.NoError(t, err)
 				u = newUser

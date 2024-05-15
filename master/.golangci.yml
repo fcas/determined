@@ -46,7 +46,6 @@ linters-settings:
   depguard:
     rules:
       main:
-        #        list-mode: lax
         allow:
           - $gostd
           - cloud.google.com/go/compute/metadata
@@ -156,7 +155,6 @@ linters:
     - funlen # TODO(DET-9959)
     - nestif # TODO(DET-9960)
     - revive
-    #- testifylint
 
     # Toss up linters.
     - predeclared

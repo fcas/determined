@@ -343,9 +343,9 @@ func TestMoveExperiments(t *testing.T) {
 			Filters:              nil,
 		})
 		for _, v := range result.Results {
-			require.Equal(t, v.Error, "")
+			require.Empty(t, v.Error)
 		}
-		require.Equal(t, len(result.Results), 1)
+		require.Len(t, result.Results, 1)
 		require.NoError(t, err)
 	})
 
@@ -359,9 +359,9 @@ func TestMoveExperiments(t *testing.T) {
 			Filters:              nil,
 		})
 		for _, v := range result.Results {
-			require.Equal(t, v.Error, "")
+			require.Empty(t, v.Error)
 		}
-		require.Equal(t, len(result.Results), 2)
+		require.Len(t, result.Results, 2)
 		require.NoError(t, err)
 	})
 	t.Run("Move no experiments with filters (no filter match)", func(t *testing.T) {
@@ -377,7 +377,7 @@ func TestMoveExperiments(t *testing.T) {
 				Archived: &wrappers.BoolValue{Value: true},
 			},
 		})
-		require.Equal(t, len(result.Results), 0)
+		require.Empty(t, result.Results)
 		require.NoError(t, err)
 	})
 
@@ -401,7 +401,7 @@ func TestMoveExperiments(t *testing.T) {
 			DestinationProjectId: int32(projectID),
 			Filters:              nil,
 		})
-		require.Equal(t, len(result.Results), 0)
+		require.Empty(t, result.Results)
 		require.NoError(t, err)
 	})
 
@@ -412,7 +412,7 @@ func TestMoveExperiments(t *testing.T) {
 			DestinationProjectId: int32(projectID),
 			Filters:              nil,
 		})
-		require.Equal(t, len(result.Results), 2)
+		require.Len(t, result.Results, 2)
 		require.NoError(t, err)
 	})
 
@@ -440,10 +440,10 @@ func TestMoveExperiments(t *testing.T) {
 				errorIDList = append(errorIDList, v.Id)
 			}
 		}
-		require.Equal(t, len(successIDList), 1)
-		require.Equal(t, len(errorIDList), 2)
+		require.Len(t, successIDList, 1)
+		require.Len(t, errorIDList, 2)
 		require.Equal(t, successIDList[0], int32(exp.ID))
-		require.Equal(t, len(result.Results), len(expIds))
+		require.Len(t, result.Results, len(expIds))
 		require.NoError(t, err)
 	})
 }
@@ -786,7 +786,7 @@ func TestGetExperimentsShowTrialData(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.Experiments, 2)
 	require.NotNil(t, resp.Experiments[0].BestTrialSearcherMetric)
-	require.Equal(t, 0.0, *resp.Experiments[0].BestTrialSearcherMetric) // 0.0 is the best metric.
+	require.Zero(t, *resp.Experiments[0].BestTrialSearcherMetric) // 0.0 is the best metric.
 	require.Nil(t, resp.Experiments[1].BestTrialSearcherMetric)
 }
 
@@ -1042,7 +1042,7 @@ func getExperimentsTest(ctx context.Context, t *testing.T, api *apiServer, pid i
 	req.ProjectId = pid
 	res, err := api.GetExperiments(ctx, req)
 	require.NoError(t, err)
-	require.Equal(t, len(expected), len(res.Experiments),
+	require.Len(t, res.Experiments, len(expected),
 		fmt.Sprintf("wrong length of result set with request %+v", req))
 
 	for i := range expected {
@@ -1086,7 +1086,7 @@ func TestSearchExperiments(t *testing.T) {
 	}
 	resp, err := api.SearchExperiments(ctx, req)
 	require.NoError(t, err)
-	require.Len(t, resp.Experiments, 0)
+	require.Empty(t, resp.Experiments)
 
 	// No trial doesn't cause errors.
 	exp := createTestExpWithProjectID(t, api, curUser, projectIDInt)

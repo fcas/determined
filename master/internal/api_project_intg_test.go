@@ -370,5 +370,5 @@ func TestGetProjectByActivity(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, err)
-	require.Equal(t, 1, len(resp.Projects))
+	require.Len(t, resp.Projects, 1)
 }

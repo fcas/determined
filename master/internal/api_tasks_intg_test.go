@@ -345,7 +345,7 @@ func TestAddAllocationAcceleratorData(t *testing.T) {
 	resp, err := api.GetTaskAcceleratorData(ctx,
 		&apiv1.GetTaskAcceleratorDataRequest{TaskId: tID.String()})
 	require.NoError(t, err, "failed to get task AccelerationData")
-	require.Equal(t, len(resp.AcceleratorData), 1, "incorrect number of allocation accelerator data returned")
+	require.Len(t, resp.AcceleratorData, 1, "incorrect number of allocation accelerator data returned")
 	require.Equal(t, resp.AcceleratorData[0].AllocationId,
 		aID.String(), "failed to get the correct allocation's accelerator data")
 }
@@ -374,7 +374,7 @@ func TestGetAllocationAcceleratorDataWithNoData(t *testing.T) {
 	resp, err := api.GetTaskAcceleratorData(ctx,
 		&apiv1.GetTaskAcceleratorDataRequest{TaskId: tID.String()})
 	require.NoError(t, err, "failed to get task AccelerationData")
-	require.Equal(t, len(resp.AcceleratorData), 0, "unexpected allocation accelerator data returned")
+	require.Empty(t, resp.AcceleratorData, "unexpected allocation accelerator data returned")
 }
 
 // Checks if GetAllocationAcceleratorData works when a task has more than one allocation
@@ -421,7 +421,7 @@ func TestGetAllocationAcceleratorData(t *testing.T) {
 	resp, err := api.GetTaskAcceleratorData(ctx,
 		&apiv1.GetTaskAcceleratorDataRequest{TaskId: tID.String()})
 	require.NoError(t, err, "failed to get task AccelerationData")
-	require.Equal(t, len(resp.AcceleratorData), 1, "incorrect number of allocation accelerator data returned")
+	require.Len(t, resp.AcceleratorData, 1, "incorrect number of allocation accelerator data returned")
 	require.Equal(t, resp.AcceleratorData[0].AllocationId,
 		aID1.String(), "failed to get the correct allocation's accelerator data")
 }

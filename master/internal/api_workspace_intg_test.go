@@ -235,7 +235,7 @@ func TestWorkspacesIDsByExperimentIDs(t *testing.T) {
 
 	resp, err := workspace.WorkspacesIDsByExperimentIDs(ctx, nil)
 	require.NoError(t, err)
-	require.Len(t, resp, 0)
+	require.Empty(t, resp)
 
 	w0, p0 := createProjectAndWorkspace(ctx, t, api)
 	w1, p1 := createProjectAndWorkspace(ctx, t, api)
@@ -250,7 +250,7 @@ func TestWorkspacesIDsByExperimentIDs(t *testing.T) {
 
 	resp, err = workspace.WorkspacesIDsByExperimentIDs(ctx, []int{e0.ID, e1.ID, -1})
 	require.Error(t, err)
-	require.Len(t, resp, 0)
+	require.Empty(t, resp)
 }
 
 func TestPatchWorkspace(t *testing.T) {

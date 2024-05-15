@@ -698,7 +698,7 @@ func requireTerminated(
 		return exitFuture.Load() != nil
 	}), "allocation did not exit in time")
 	exit := exitFuture.Load()
-	require.True(t, exit.FinalState.State == model.AllocationStateTerminated)
+	require.Equal(t, exit.FinalState.State, model.AllocationStateTerminated)
 	requireDBState(t, id, model.AllocationStateTerminated)
 	return exit
 }

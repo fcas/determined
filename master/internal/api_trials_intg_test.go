@@ -292,11 +292,11 @@ func TestMultiTrialSampleSpecialMetrics(t *testing.T) {
 		"", maxDataPoints, 0, 10, nil, []string{
 			"mygroup.zgroup_b/me.t r%i]\\c_1",
 		})
-	require.Equal(t, 1, len(actualMetrics))
+	require.Len(t, actualMetrics, 1)
 	require.NoError(t, err)
 	mygroup := actualMetrics[0]
-	require.Equal(t, maxDataPoints, len(mygroup.Data))
-	require.Equal(t, 1, len(mygroup.Data[0].Values.AsMap()))
+	require.Len(t, mygroup.Data, maxDataPoints)
+	require.Len(t, mygroup.Data[0].Values.AsMap(), 1)
 }
 
 func TestMultiTrialSampleMetrics(t *testing.T) {
@@ -318,7 +318,7 @@ func TestMultiTrialSampleMetrics(t *testing.T) {
 	actualTrainingMetrics, err := api.multiTrialSample(int32(trial.ID), trainMetricNames,
 		model.TrainingMetricGroup, maxDataPoints, 0, 10, nil, []string{})
 	require.NoError(t, err)
-	require.Equal(t, 1, len(actualTrainingMetrics))
+	require.Len(t, actualTrainingMetrics, 1)
 
 	var validationMetricNames []string
 	for metricName := range expectedValMetrics[0].AvgMetrics.AsMap() {
@@ -328,7 +328,7 @@ func TestMultiTrialSampleMetrics(t *testing.T) {
 	actualValidationTrainingMetrics, err := api.multiTrialSample(int32(trial.ID),
 		validationMetricNames, model.ValidationMetricGroup, maxDataPoints,
 		0, 10, nil, []string{})
-	require.Equal(t, 1, len(actualValidationTrainingMetrics))
+	require.Len(t, actualValidationTrainingMetrics, 1)
 	require.NoError(t, err)
 
 	var genericMetricNames []string
@@ -339,7 +339,7 @@ func TestMultiTrialSampleMetrics(t *testing.T) {
 	actualGenericTrainingMetrics, err := api.multiTrialSample(int32(trial.ID),
 		genericMetricNames, model.MetricGroup("mygroup"), maxDataPoints,
 		0, 10, nil, []string{})
-	require.Equal(t, 1, len(actualGenericTrainingMetrics))
+	require.Len(t, actualGenericTrainingMetrics, 1)
 	require.NoError(t, err)
 
 	require.True(t, isMultiTrialSampleCorrect(expectedTrainMetrics, actualTrainingMetrics[0]))
@@ -347,10 +347,10 @@ func TestMultiTrialSampleMetrics(t *testing.T) {
 
 	actualAllMetrics, err := api.multiTrialSample(int32(trial.ID), []string{},
 		"", maxDataPoints, 0, 10, nil, metricIds)
-	require.Equal(t, 3, len(actualAllMetrics))
+	require.Len(t, actualAllMetrics, 3)
 	require.NoError(t, err)
-	require.Equal(t, maxDataPoints, len(actualAllMetrics[1].Data)) // max datapoints check
-	require.Equal(t, maxDataPoints, len(actualAllMetrics[2].Data)) // max datapoints check
+	require.Len(t, actualAllMetrics[1].Data, maxDataPoints) // max datapoints check
+	require.Len(t, actualAllMetrics[2].Data, maxDataPoints) // max datapoints check
 	require.True(t, isMultiTrialSampleCorrect(expectedTrainMetrics, actualAllMetrics[1]))
 	require.True(t, isMultiTrialSampleCorrect(expectedValMetrics, actualAllMetrics[2]))
 }
@@ -531,7 +531,7 @@ func TestTrialsNonNumericMetrics(t *testing.T) {
 			require.NoError(t, err)
 
 			data := resp.getData()
-			require.Greater(t, len(data), 0)
+			require.NotEmpty(t, data)
 			require.Len(t, data[0].Trials, 1)
 			require.Len(t, data[0].Trials[0].Data, 1)
 			require.Equal(t, map[string]any{
@@ -977,7 +977,7 @@ func TestTrialLogsBackported(t *testing.T) {
 	require.NoError(t, err)
 
 	actual := stream.getData()
-	require.Equal(t, len(expected), len(actual))
+	require.Len(t, actual, len(expected))
 	for i, expected := range expected {
 		require.Equal(t, expected.Log, *actual[i].Log)
 	}
@@ -1028,7 +1028,7 @@ func TestTrialLogs(t *testing.T) {
 	}, stream)
 	require.NoError(t, err)
 
-	require.Equal(t, len(expected), len(stream.data))
+	require.Len(t, stream.data, len(expected))
 	for i, expected := range expected {
 		require.Equal(t, expected, *stream.data[i].Log)
 	}
@@ -1073,7 +1073,7 @@ func TestTrialLogs(t *testing.T) {
 	}
 
 	actual := newStream.getData()
-	require.Equal(t, len(expected), len(actual))
+	require.Len(t, actual, len(expected))
 	for i, expected := range expected {
 		require.Equal(t, expected, *actual[i].Log)
 	}
@@ -1220,7 +1220,7 @@ func TestCompareTrialsSampling(t *testing.T) {
 	require.NoError(t, err)
 
 	sampleBatches1 := compareTrialsResponseToBatches(resp)
-	require.Equal(t, DATAPOINTS, len(sampleBatches1))
+	require.Len(t, sampleBatches1, DATAPOINTS)
 
 	resp, err = api.CompareTrials(ctx, req)
 	require.NoError(t, err)
@@ -1306,7 +1306,7 @@ func TestTrialSourceInfoCheckpoint(t *testing.T) {
 		},
 	)
 	require.NoError(t, getErr)
-	require.Equal(t, len(getCkptResp.Metrics), 2)
+	require.Len(t, getCkptResp.Metrics, 2)
 
 	infTrialExp, err := db.ExperimentByID(ctx, infTrial.ExperimentID)
 	require.NoError(t, err)
@@ -1333,7 +1333,7 @@ func TestTrialSourceInfoCheckpoint(t *testing.T) {
 	)
 	require.NoError(t, getErr)
 	// Only infTrial2 should be visible, but it doesn't have metrics
-	require.Equal(t, 1, len(getCkptResp.Metrics))
+	require.Len(t, getCkptResp.Metrics, 1)
 	require.Equal(t, int32(infTrial2.ID), getCkptResp.Metrics[0].TrialId)
 }
 
@@ -1384,7 +1384,7 @@ func TestTrialSourceInfoModelVersion(t *testing.T) {
 	)
 	require.NoError(t, getMVErr)
 	// One trial is valid and it has one aggregated MetricsReport
-	require.Equal(t, 1, len(getMVResp.Metrics))
+	require.Len(t, getMVResp.Metrics, 1)
 	require.Equal(t, int32(infTrial.ID), getMVResp.Metrics[0].TrialId)
 }
 
