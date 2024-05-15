@@ -12,11 +12,11 @@ import (
 	"sync"
 
 	"github.com/jinzhu/copier"
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/pkg/errors"
-
 	"github.com/determined-ai/determined/master/pkg/config"
+	pkgconfig "github.com/determined-ai/determined/master/pkg/config"
 	"github.com/determined-ai/determined/master/pkg/model"
 	"github.com/determined-ai/determined/master/pkg/schemas/expconf"
 )
@@ -93,7 +93,7 @@ type PachydermConfig struct {
 func DefaultConfig() *Config {
 	return &Config{
 		ConfigFile:            "",
-		Log:                   *DefaultLoggerConfig(),
+		Log:                   *pkgconfig.DefaultLoggerConfig(),
 		DB:                    *DefaultDBConfig(),
 		TaskContainerDefaults: *model.DefaultTaskContainerDefaults(),
 		TensorBoardTimeout:    5 * 60,
@@ -146,7 +146,7 @@ func DefaultConfig() *Config {
 // environment variables and command line arguments.
 type Config struct {
 	ConfigFile            string                            `json:"config_file"`
-	Log                   LoggerConfig                      `json:"log"`
+	Log                   pkgconfig.LoggerConfig            `json:"log"`
 	DB                    DBConfig                          `json:"db"`
 	TensorBoardTimeout    int                               `json:"tensorboard_timeout"`
 	NotebookTimeout       *int                              `json:"notebook_timeout"`
