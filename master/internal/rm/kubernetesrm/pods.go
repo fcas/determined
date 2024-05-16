@@ -357,10 +357,10 @@ func (p *pods) DisableAgent(msg *apiv1.DisableAgentRequest) (*apiv1.DisableAgent
 	return p.disableNode(msg.AgentId, msg.Drain)
 }
 
-func (p *pods) CreateNamespace(autoCreateNamespace bool, namespaceName string) error {
+func (p *pods) VerifyNamespaceExists(namespaceName string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.handleCreateNamespaceRequest(autoCreateNamespace, namespaceName)
+	return p.handleVerifyNamespaceExistsRequest(namespaceName)
 }
 
 func readClientConfig(kubeconfigPath string) (*rest.Config, error) {
@@ -1346,44 +1346,16 @@ func (p *pods) handleGetAgentRequest(agentID string) *apiv1.GetAgentResponse {
 	return &apiv1.GetAgentResponse{Agent: agentSummary.ToProto()}
 }
 
-func (p *pods) handleCreateNamespaceRequest(autoCreateNamespace bool, namespaceName string) error {
-	var k8sDeterminedLabel = map[string]string{determinedLabel: namespaceName}
-
-	if autoCreateNamespace {
-		// If the namespace exists, but has a determined label, keep it. Error out if it doesn't have the label
-		namespaceToCreate := k8sV1.Namespace{
+func (p *pods) handleVerifyNamespaceExistsRequest(namespaceName string) error {
+	_, err := p.clientSet.CoreV1().Namespaces().Get(context.Background(), namespaceName,
+		metaV1.GetOptions{
 			TypeMeta: metaV1.TypeMeta{
 				Kind:       "Namespace",
 				APIVersion: "v1",
 			},
-			ObjectMeta: metaV1.ObjectMeta{
-				Name:   namespaceName,
-				Labels: k8sDeterminedLabel,
-			},
-		}
-
-		_, err := p.clientSet.CoreV1().Namespaces().Create(context.Background(), &namespaceToCreate,
-			metaV1.CreateOptions{},
-		)
-		if err != nil {
-			if !strings.Contains(err.Error(), "already exists") {
-				return fmt.Errorf("error creating namespace %s: %w", namespaceName, err)
-			}
-		}
-
-	} else {
-		// If the namespace doesn't exist, return an error.
-		// Remember that quota should not be specified here (which we verify in workspace.py)
-		_, err := p.clientSet.CoreV1().Namespaces().Get(context.Background(), namespaceName,
-			metaV1.GetOptions{
-				TypeMeta: metaV1.TypeMeta{
-					Kind:       "Namespace",
-					APIVersion: "v1",
-				},
-			})
-		if err != nil {
-			return errors.Wrapf(err, "error finding namespace %s", namespaceName)
-		}
+		})
+	if err != nil {
+		return errors.Wrapf(err, "error finding namespace %s", namespaceName)
 	}
 	return nil
 }

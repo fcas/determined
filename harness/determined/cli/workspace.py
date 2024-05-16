@@ -217,11 +217,6 @@ def create_workspace(args: argparse.Namespace) -> None:
             "must provide --namespace NAMESPACE"
         )
 
-    if args.namespace and not args.cluster_name:
-        raise api.errors.BadRequestException(
-            "must specify --cluster-name CLUSTER_NAME"
-        )
-    
     sess = cli.setup_session(args)
     content = bindings.v1PostWorkspaceRequest(
         name=args.name,

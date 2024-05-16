@@ -668,7 +668,7 @@ func (*DispatcherResourceManager) GetSlots(*apiv1.GetSlotsRequest) (*apiv1.GetSl
 	return nil, rmerrors.ErrNotSupported
 }
 
-func (*DispatcherResourceManager) CreateNamespace(bool, string, string) error {
+func (*DispatcherResourceManager) VerifyNamespaceExists(string, string) error {
 	return rmerrors.ErrNotSupported
 }
 

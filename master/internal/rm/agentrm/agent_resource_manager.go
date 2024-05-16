@@ -577,9 +577,9 @@ func (a *ResourceManager) ValidateResourcePool(name rm.ResourcePoolName) error {
 	return nil
 }
 
-func (a *ResourceManager) CreateNamespace(autoCreateNamespace bool, namespaceName,
-	clusterName string) error {
-	return fmt.Errorf("Cannot create namespace with resource manager type AgentRM.", rmerrors.ErrNotSupported)
+func (a *ResourceManager) VerifyNamespaceExists(namespaceName, clusterName string) error {
+	return fmt.Errorf("Cannot verify namespace existence with resource manager type AgentRM.",
+		rmerrors.ErrNotSupported)
 }
 
 func (a *ResourceManager) createResourcePool(

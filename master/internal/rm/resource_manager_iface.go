@@ -54,7 +54,7 @@ type ResourceManager interface {
 	HealthCheck() []model.ResourceManagerHealth
 
 	// Namespaces and Quotas for workspace slot caps.
-	CreateNamespace(bool, string, string) error
+	VerifyNamespaceExists(string, string) error
 }
 
 // ResourcePoolName holds the name of the resource pool, and describes the input/output
