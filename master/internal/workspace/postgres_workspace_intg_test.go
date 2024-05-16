@@ -14,7 +14,6 @@ import (
 
 	"github.com/determined-ai/determined/master/internal/db"
 	"github.com/determined-ai/determined/master/pkg/etc"
-	"github.com/determined-ai/determined/proto/pkg/workspacev1"
 )
 
 const (
@@ -50,18 +49,13 @@ type Bindings struct {
 
 func TestGetNamespaceFromWorkspace(t *testing.T) {
 	ctx := context.Background()
-	wksp1 := "wksp_1"
-	wkspID1, _ := db.RequireMockWorkspaceID(t, db.SingleDB(), wksp1)
-	wksp2 := "wksp_2"
-	wkspID2, _ := db.RequireMockWorkspaceID(t, db.SingleDB(), wksp2)
-	wksp3 := "wksp_3"
-	wkspID3, _ := db.RequireMockWorkspaceID(t, db.SingleDB(), wksp3)
-	cluster1 := "C1"
-	cluster2 := "C2"
+	wkspID1, wksp1 := db.RequireMockWorkspaceID(t, db.SingleDB(), "")
+	wkspID2, wksp2 := db.RequireMockWorkspaceID(t, db.SingleDB(), "")
+	_, wksp3 := db.RequireMockWorkspaceID(t, db.SingleDB(), "")
 
-	b1 := Bindings{WorkspaceID: wkspID1, ClusterName: cluster1, NamespaceName: "n1"}
-	b2 := Bindings{WorkspaceID: wkspID1, ClusterName: cluster2, NamespaceName: "n2"}
-	b3 := Bindings{WorkspaceID: wkspID2, ClusterName: cluster1, NamespaceName: "n3"}
+	b1 := Bindings{WorkspaceID: wkspID1, ClusterName: "C1", NamespaceName: "n1"}
+	b2 := Bindings{WorkspaceID: wkspID1, ClusterName: "C2", NamespaceName: "n2"}
+	b3 := Bindings{WorkspaceID: wkspID2, ClusterName: "C1", NamespaceName: "n3"}
 
 	bindings := []Bindings{b1, b2, b3}
 
@@ -70,41 +64,36 @@ func TestGetNamespaceFromWorkspace(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		binding       Bindings
 		workspaceName string
-		expectNoError bool
+		clusterName   string
+		namespaceName string
+		wantErr       bool
 	}{
-		{"simple-1", b1, wksp1, true},
-		{"simple-2", b2, wksp1, true},
-		{"simple-3", b3, wksp2, true},
-		{"fail-1", Bindings{WorkspaceID: wkspID2, ClusterName: cluster2, NamespaceName: ""}, wksp2, false},
-		{"fail-2", Bindings{WorkspaceID: wkspID3, ClusterName: cluster1, NamespaceName: ""}, wksp3, false},
+		{"insert-and-check-1", wksp1, "C1", "n1", true},
+		{"insert-and-check-2", wksp1, "C2", "n2", true},
+		{"insert-and-check-3", wksp2, "C1", "n3", true},
+		{"unknown-binding-1", wksp2, "C2", "", false},
+		{"unknown-binding-2", wksp3, "C1", "", false},
+		{"unknown-wksp", "test-unknown-wksp", "C1", "", false},
+		{"unknown-cluster", wksp2, "test-unknown-cluster", "", false},
+		{"unknown-wksp-cluster", "test-unknown-wksp", "test-unknown-cluster", "", false},
 	}
 
 	for _, tt := range tests {
-		ns, err := GetNamespaceFromWorkspace(ctx, tt.workspaceName, tt.binding.ClusterName)
-		if tt.expectNoError {
+		ns, err := GetNamespaceFromWorkspace(ctx, tt.workspaceName, tt.clusterName)
+		if tt.wantErr {
 			require.NoError(t, err)
-			require.Equal(t, ns, tt.binding.NamespaceName)
+			require.Equal(t, ns, tt.namespaceName)
 		} else {
 			require.ErrorContains(t, err, "no rows")
 		}
 	}
-
-	// Clean-up
-	holder := &workspacev1.Workspace{}
-	err = db.SingleDB().QueryProto("delete_workspace", holder, wkspID1)
-	require.NoError(t, err)
-	err = db.SingleDB().QueryProto("delete_workspace", holder, wkspID2)
-	require.NoError(t, err)
-	err = db.SingleDB().QueryProto("delete_workspace", holder, wkspID3)
-	require.NoError(t, err)
 }
 
 func TestGetAllNamespacesForRM(t *testing.T) {
 	ctx := context.Background()
-	wkspID1, _ := db.RequireMockWorkspaceID(t, db.SingleDB(), "wksp1")
-	wkspID2, _ := db.RequireMockWorkspaceID(t, db.SingleDB(), "wksp2")
+	wkspID1, _ := db.RequireMockWorkspaceID(t, db.SingleDB(), "")
+	wkspID2, _ := db.RequireMockWorkspaceID(t, db.SingleDB(), "")
 
 	b1 := Bindings{WorkspaceID: wkspID1, ClusterName: cluster1, NamespaceName: "n1"}
 	b2 := Bindings{WorkspaceID: wkspID1, ClusterName: cluster2, NamespaceName: "n2"}
@@ -115,22 +104,15 @@ func TestGetAllNamespacesForRM(t *testing.T) {
 	_, err := db.Bun().NewInsert().Model(&bindings).Exec(ctx)
 	require.NoError(t, err)
 
-	ns, err := GetAllNamespacesForRM(ctx, cluster1, "")
+	ns, err := GetAllNamespacesForRM(ctx, cluster1)
 	require.NoError(t, err)
-	require.Equal(t, ns, []string{"n1", "n3", "default"})
+	require.Equal(t, ns, []string{"n1", "n3"})
 
-	ns, err = GetAllNamespacesForRM(ctx, cluster2, "test")
+	ns, err = GetAllNamespacesForRM(ctx, cluster2)
 	require.NoError(t, err)
-	require.Equal(t, ns, []string{"n2", "test"})
+	require.Equal(t, ns, []string{"n2"})
 
-	ns, err = GetAllNamespacesForRM(ctx, "cluster3", "test2")
+	ns, err = GetAllNamespacesForRM(ctx, "cluster3")
 	require.NoError(t, err)
-	require.Equal(t, ns, []string{"test2"})
-
-	// Clean-up
-	holder := &workspacev1.Workspace{}
-	err = db.SingleDB().QueryProto("delete_workspace", holder, wkspID1)
-	require.NoError(t, err)
-	err = db.SingleDB().QueryProto("delete_workspace", holder, wkspID2)
-	require.NoError(t, err)
+	require.Equal(t, ns, []string(nil))
 }

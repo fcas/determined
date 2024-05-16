@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"slices"
 
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
@@ -134,7 +133,7 @@ func AllWorkspaces(ctx context.Context) ([]*model.Workspace, error) {
 	return w, nil
 }
 
-// GetNamespaceFromWorkspace returns the namespace for the given workspace and cluster.
+// GetNamespaceFromWorkspace returns the namespace for the given workspace and kubernetes cluster.
 func GetNamespaceFromWorkspace(ctx context.Context, workspaceName string, clusterName string) (string, error) {
 	var ns string
 	err := db.Bun().
@@ -150,9 +149,9 @@ func GetNamespaceFromWorkspace(ctx context.Context, workspaceName string, cluste
 	return ns, nil
 }
 
-// GetAllNamespacesForRM gets all namespaces associated with a particular cluster. defaultNs is an optional
+// GetAllNamespacesForRM gets all namespaces associated with a particular kubernetes cluster. defaultNs is an optional
 // parameter, if there is no defaultNs provided, the "default" namespace will be added to the list instead.
-func GetAllNamespacesForRM(ctx context.Context, rmName string, defaultNs string) ([]string, error) {
+func GetAllNamespacesForRM(ctx context.Context, rmName string) ([]string, error) {
 	var ns []string
 	err := db.Bun().
 		NewSelect().
@@ -162,12 +161,6 @@ func GetAllNamespacesForRM(ctx context.Context, rmName string, defaultNs string)
 		Scan(ctx, &ns)
 	if err != nil {
 		return ns, fmt.Errorf("failed to get all namespaces for %v: %w", rmName, err)
-	}
-	if defaultNs == "" {
-		defaultNs = "default"
-	}
-	if !slices.Contains(ns, defaultNs) {
-		ns = append(ns, defaultNs)
 	}
 	return ns, nil
 }

@@ -355,12 +355,12 @@ on using Determined with Kubernetes, see the :ref:`documentation <determined-on-
 ``namespace``
 -------------
 
-Optional. This field has been deprecated, use ``default_namespace`` instead.
+This field has been deprecated, use ``default_namespace`` instead.
 
 ``default_namespace``
 ---------------------
 
-Optional. Specifies the default namespace where Determined will deploy Pods and ConfigMaps if the
+Optional. Specifies the default namespace where Determined will deploy namespaced resources if the
 workspace is not bound to a specific namespace.
 
 .. _master-config-reference-max-slots-per-pod:

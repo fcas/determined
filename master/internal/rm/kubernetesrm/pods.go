@@ -48,7 +48,10 @@ import (
 )
 
 // ResourceTypeNvidia describes the GPU resource type.
-const ResourceTypeNvidia = "nvidia.com/gpu"
+const (
+	ResourceTypeNvidia = "nvidia.com/gpu"
+	DefaultNamespace   = "default"
+)
 
 const (
 	getAgentsCacheDuration = 15 * time.Second
@@ -155,6 +158,21 @@ type refreshPodStates struct {
 	allocationID model.AllocationID
 }
 
+func (p *pods) GetAllNamespacesForRM() ([]string, error) {
+	ns, err := workspace.GetAllNamespacesForRM(context.Background(), p.clusterName)
+	if err != nil {
+		return ns, err
+	}
+	defaultNs := p.namespace
+	if defaultNs == "" {
+		defaultNs = DefaultNamespace
+	}
+	if !slices.Contains(ns, defaultNs) {
+		ns = append(ns, defaultNs)
+	}
+	return ns, nil
+}
+
 // newPodsService creates a new pod service for launching, querying and interacting with k8s pods.
 func newPodsService(
 	namespace string,
@@ -208,7 +226,12 @@ func newPodsService(
 		kubeconfigPath: kubeconfigPath,
 	}
 
-	if err := p.startClientSet(); err != nil {
+	ns, err := p.GetAllNamespacesForRM()
+	if err != nil {
+		panic(fmt.Errorf("failed to get namespaces for resource manager: %w", err))
+	}
+
+	if err := p.startClientSet(ns); err != nil {
 		panic(err)
 	}
 	if err := p.getMasterIPAndPort(); err != nil {
@@ -220,11 +243,11 @@ func newPodsService(
 
 	p.startResourceRequestQueue()
 
-	if err := p.deleteDoomedKubernetesResources(); err != nil {
+	if err := p.deleteDoomedKubernetesResources(ns); err != nil {
 		panic(err)
 	}
 
-	err := p.startPodInformer()
+	err = p.startPodInformer(ns)
 	if err != nil {
 		panic(err)
 	}
@@ -239,12 +262,12 @@ func newPodsService(
 		panic(err)
 	}
 
-	err = p.startEventListeners()
+	err = p.startEventListeners(ns)
 	if err != nil {
 		panic(err)
 	}
 
-	err = p.startPreemptionListeners()
+	err = p.startPreemptionListeners(ns)
 	if err != nil {
 		panic(err)
 	}
@@ -390,7 +413,7 @@ func readClientConfig(kubeconfigPath string) (*rest.Config, error) {
 	return cl, nil
 }
 
-func (p *pods) startClientSet() error {
+func (p *pods) startClientSet(namespaces []string) error {
 	config, err := readClientConfig(p.kubeconfigPath)
 	if err != nil {
 		return errors.Wrap(err, "error building kubernetes config")
@@ -401,10 +424,6 @@ func (p *pods) startClientSet() error {
 		return errors.Wrap(err, "failed to initialize kubernetes clientSet")
 	}
 
-	namespaces, err := workspace.GetAllNamespacesForRM(context.Background(), p.clusterName, p.namespace)
-	if err != nil {
-		return fmt.Errorf("failed to get namespaces for resource manager: %w", err)
-	}
 	for _, ns := range namespaces {
 		p.podInterfaces[ns] = p.clientSet.CoreV1().Pods(ns)
 		p.configMapInterfaces[ns] = p.clientSet.CoreV1().ConfigMaps(ns)
@@ -462,7 +481,7 @@ func (p *pods) reattachAllocationPods(msg reattachAllocationPods) ([]reattachPod
 	if err != nil {
 		return nil, errors.Wrap(err, "error listing config maps checking if they can be restored")
 	}
-	ns, err := workspace.GetAllNamespacesForRM(context.Background(), p.clusterName, p.namespace)
+	ns, err := p.GetAllNamespacesForRM()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get namespaces for resource manager: %w", err)
 	}
@@ -661,7 +680,7 @@ func (p *pods) refreshPodStates(allocationID model.AllocationID) error {
 	if err != nil {
 		return errors.Wrap(err, "error listing pods checking if they can be restored")
 	}
-	ns, err := workspace.GetAllNamespacesForRM(context.Background(), p.clusterName, p.namespace)
+	ns, err := p.GetAllNamespacesForRM()
 	if err != nil {
 		return fmt.Errorf("failed to get namespaces for resource manager: %w", err)
 	}
@@ -688,7 +707,7 @@ func (p *pods) deleteKubernetesResources(
 	}
 }
 
-func (p *pods) deleteDoomedKubernetesResources() error {
+func (p *pods) deleteDoomedKubernetesResources(namespaces []string) error {
 	var openAllocations []model.Allocation
 	if err := db.Bun().NewSelect().Model(&openAllocations).
 		Where("end_time IS NULL").
@@ -707,12 +726,8 @@ func (p *pods) deleteDoomedKubernetesResources() error {
 	}
 	toKillPods := &k8sV1.PodList{}
 	savedPodNames := make(set.Set[string])
-	ns, err := workspace.GetAllNamespacesForRM(context.Background(), p.clusterName, p.namespace)
-	if err != nil {
-		return fmt.Errorf("failed to get namespaces for resource manager: %w", err)
-	}
 	for _, pod := range pods.Items {
-		if !slices.Contains(ns, pod.Namespace) {
+		if !slices.Contains(namespaces, pod.Namespace) {
 			continue
 		}
 
@@ -749,7 +764,7 @@ func (p *pods) deleteDoomedKubernetesResources() error {
 	}
 	toKillConfigMaps := &k8sV1.ConfigMapList{}
 	for _, cm := range configMaps.Items {
-		if !slices.Contains(ns, cm.Namespace) {
+		if !slices.Contains(namespaces, cm.Namespace) {
 			continue
 		}
 
@@ -766,12 +781,8 @@ func (p *pods) deleteDoomedKubernetesResources() error {
 	return nil
 }
 
-func (p *pods) startPodInformer() error {
-	ns, err := workspace.GetAllNamespacesForRM(context.Background(), p.clusterName, p.namespace)
-	if err != nil {
-		return fmt.Errorf("failed to get namespaces for resource manager: %w", err)
-	}
-	for _, namespace := range ns {
+func (p *pods) startPodInformer(namespaces []string) error {
+	for _, namespace := range namespaces {
 		i, err := newPodInformer(
 			context.TODO(),
 			determinedLabel,
@@ -810,12 +821,8 @@ func (p *pods) startNodeInformer() error {
 	return nil
 }
 
-func (p *pods) startEventListeners() error {
-	ns, err := workspace.GetAllNamespacesForRM(context.Background(), p.clusterName, p.namespace)
-	if err != nil {
-		return fmt.Errorf("failed to get namespaces for resource manager: %w", err)
-	}
-	for _, namespace := range ns {
+func (p *pods) startEventListeners(namespaces []string) error {
+	for _, namespace := range namespaces {
 		l, err := newEventInformer(
 			context.TODO(),
 			p.clientSet.CoreV1().Events(namespace),
@@ -833,12 +840,8 @@ func (p *pods) startEventListeners() error {
 	return nil
 }
 
-func (p *pods) startPreemptionListeners() error {
-	ns, err := workspace.GetAllNamespacesForRM(context.Background(), p.clusterName, p.namespace)
-	if err != nil {
-		return fmt.Errorf("failed to get namespaces for resource manager: %w", err)
-	}
-	for _, namespace := range ns {
+func (p *pods) startPreemptionListeners(namespaces []string) error {
+	for _, namespace := range namespaces {
 		l, err := newPodInformer(
 			context.TODO(),
 			determinedPreemptionLabel,
