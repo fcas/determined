@@ -387,15 +387,14 @@ func (k *ResourceManager) ValidateResources(
 }
 
 // CreateNamespace implements rm.ResourceManager.
-func (k *ResourceManager) CreateNamespace(autoCreateNamespace bool, namespaceName string,
-	clusterName string) error {
+func (k *ResourceManager) VerifyNamespaceExists(namespaceName string, clusterName string) error {
 	configClusterName := rm.ClusterName(k.config.ClusterName)
 	if configClusterName != rm.ClusterName(clusterName) {
 		return nil
 	}
-	err := k.podsService.CreateNamespace(autoCreateNamespace, namespaceName)
+	err := k.podsService.VerifyNamespaceExists(namespaceName)
 	if err != nil {
-		return fmt.Errorf("error creating namespace %s: %w", namespaceName, err)
+		return fmt.Errorf("error verifying namespace existence %s: %w", namespaceName, err)
 	}
 	return nil
 }

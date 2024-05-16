@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"math"
-	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -76,12 +74,12 @@ func maskStorageConfigSecrets(w *workspacev1.Workspace) error {
 	return nil
 }
 
-func validatePostWorkspaceRequest(req *apiv1.PostWorkspaceRequest) error {
+func (a *apiServer) validatePostWorkspaceRequest(req *apiv1.PostWorkspaceRequest) error {
 	if req.ClusterName != nil && req.NamespaceName == nil {
 		return status.Errorf(codes.InvalidArgument,
 			"Must specify either an existing Kubernetes namespace")
 	}
-	if req.NamespaceName != nil && req.ClusterName == nil {
+	if req.NamespaceName != nil && req.ClusterName == nil && len(a.m.allRms) > 1 {
 		return status.Errorf(codes.InvalidArgument,
 			"You must specify a cluster for the specified namespace that you would like to bind.")
 	}
@@ -99,19 +97,6 @@ func validateWorkspaceName(name string) error {
 	default:
 		return nil
 	}
-}
-func generateNamespaceName(workspace string, workspaceID int) (*string, error) {
-	// Kubernetes namespace names must follow the regex pattern [a-z0-9]([-a-z0-9]*[a-z0-9])? and
-	// therefore cannot contain any capital letters nor special characters other than "-".
-	// Ensure namespace name is lowercased and strip workspace of all characters that are out of
-	// compliance with the kubernetes namespace name.
-	re := regexp.MustCompile(`[a-z0-9]([-a-z0-9]*[a-z0-9])?`)
-	re.ReplaceAllString(workspace, "")
-	cap := math.Min(float64(len(workspace)), float64(maxNamespaceLength-extraDetChars))
-	workspacePrefix := workspace[0:int(cap)]
-	id := strconv.Itoa(workspaceID)
-	namespace := "det-" + workspacePrefix + "_" + id
-	return &namespace, nil
 }
 
 func (a *apiServer) GetWorkspaceByID(
@@ -402,7 +387,7 @@ func (a *apiServer) PostWorkspace(
 			return status.Error(codes.PermissionDenied, err.Error())
 		}
 
-		if err := validatePostWorkspaceRequest(req); err != nil {
+		if err := a.validatePostWorkspaceRequest(req); err != nil {
 			return err
 		}
 
@@ -584,10 +569,11 @@ func (a *apiServer) PatchWorkspace(
 
 func (a *apiServer) modifyWorkspaceNamespaceBinding(ctx context.Context,
 	req *apiv1.ModifyWorkspaceNamespaceBindingRequest, tx *bun.Tx, w *model.Workspace) (*apiv1.ModifyWorkspaceNamespaceBindingResponse, error) {
-	// Create the namespace in Kubernetes.
-	err := a.m.rm.CreateNamespace(false, *req.NamespaceName, req.ClusterName)
+
+	// Verify that the namespace exists in Kubernetes.
+	err := a.m.rm.VerifyNamespaceExists(*req.NamespaceName, req.ClusterName)
 	if err != nil {
-		return nil, fmt.Errorf("error creating k8s namespace: %w", err)
+		return nil, fmt.Errorf("error verifying Kubernetes namespace: %w", err)
 	}
 
 	var wsns model.WorkspaceNamespace

@@ -381,15 +381,15 @@ func (m *MultiRMRouter) DisableSlot(req *apiv1.DisableSlotRequest) (*apiv1.Disab
 	return m.rms[resolvedRMName].DisableSlot(req)
 }
 
-func (m *MultiRMRouter) CreateNamespace(autoCreateNamespace bool, namespaceName string,
+func (m *MultiRMRouter) VerifyNamespaceExists(namespaceName string,
 	clusterName string) error {
 	rm, err := m.getRM(clusterName)
 	if err != nil {
 		return fmt.Errorf("Error getting resource manager for cluster %s: %w", clusterName, err)
 	}
-	err = rm.CreateNamespace(autoCreateNamespace, namespaceName, clusterName)
+	err = rm.VerifyNamespaceExists(namespaceName, clusterName)
 	if err != nil {
-		return fmt.Errorf("Error creating namespace %s: %w", namespaceName, err)
+		return fmt.Errorf("Error verifying namespace existence %s: %w", namespaceName, err)
 	}
 
 	return nil
