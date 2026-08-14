@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/jinzhu/copier"
 	log "github.com/sirupsen/logrus"
@@ -35,10 +36,29 @@ var (
 	masterConfig *Config
 )
 
-// KubernetesDefaultPriority is the default K8 resource manager priority.
 const (
+	// KubernetesDefaultPriority is the default K8 resource manager priority.
 	KubernetesDefaultPriority = 50
 	sslModeDisable            = "disable"
+	preemptionScheduler       = "preemption"
+	// InfiniteTokenLifespan is the value to set the token lifespan to infinite.
+	InfiniteTokenLifespan = -1
+	// InfiniteTokenLifespanString is the string representation of InfiniteTokenLifespan.
+	InfiniteTokenLifespanString = "-1"
+	// DefaultTokenLifespanDays is the default token lifespan in days.
+	DefaultTokenLifespanDays = 30
+	// MaxAllowedTokenLifespanDays is the max allowed lifespan for tokens.
+	// This is the maximum number of days a go duration can represent.
+	MaxAllowedTokenLifespanDays = 106751
+)
+
+const (
+	// KeyTypeRSA uses RSA.
+	KeyTypeRSA = "RSA"
+	// KeyTypeECDSA uses ECDSA.
+	KeyTypeECDSA = "ECDSA"
+	// KeyTypeED25519 uses ED25519.
+	KeyTypeED25519 = "ED25519"
 )
 
 type (
@@ -107,9 +127,13 @@ func DefaultConfig() *Config {
 				Group: "root",
 			},
 			SSH: SSHConfig{
-				RsaKeySize: 1024,
+				KeyType: KeyTypeED25519,
 			},
 			AuthZ: *DefaultAuthZConfig(),
+			Token: TokenConfig{
+				MaxLifespanDays:     DefaultTokenLifespanDays,
+				DefaultLifespanDays: DefaultTokenLifespanDays,
+			},
 		},
 		// If left unspecified, the port is later filled in with 8080 (no TLS) or 8443 (TLS).
 		Port: 0,
@@ -161,6 +185,7 @@ type Config struct {
 	EnableCors            bool                              `json:"enable_cors"`
 	LaunchError           bool                              `json:"launch_error"`
 	ClusterName           string                            `json:"cluster_name"`
+	UICustomization       UICustomizationConfig             `json:"ui_customization"`
 	Logging               model.LoggingConfig               `json:"logging"`
 	RetentionPolicy       model.LogRetentionPolicy          `json:"retention_policy"`
 	Observability         ObservabilityConfig               `json:"observability"`
@@ -328,14 +353,28 @@ func (c *Config) Resolve() error {
 	}
 
 	for _, r := range c.ResourceManagers() {
-		if r.ResourceManager.AgentRM != nil && r.ResourceManager.AgentRM.Scheduler == nil {
-			r.ResourceManager.AgentRM.Scheduler = DefaultSchedulerConfig()
+		if r.ResourceManager.AgentRM != nil {
+			if r.ResourceManager.AgentRM.Scheduler == nil {
+				r.ResourceManager.AgentRM.Scheduler = DefaultSchedulerConfig()
+			}
+			if r.ResourceManager.AgentRM.Scheduler.GetType() == FairShareScheduling {
+				log.Warn("Fair-Share Scheduler has been deprecated, please update master config to use Priority Scheduler.")
+			}
+			if r.ResourceManager.AgentRM.Scheduler.GetType() == RoundRobinScheduling {
+				log.Error("Round Robin Scheduler has been removed, please update master config to use Priority Scheduler.")
+				log.Info("Priority Scheduler with all priorities equal will have the same behavior as a Round Robin Scheduler.")
+				return fmt.Errorf("scheduler not available")
+			}
 		}
 
 		if r.ResourceManager.KubernetesRM != nil {
 			c.TaskContainerDefaults, err = k8sValidateMaxSlots(r, c.TaskContainerDefaults, len(c.ResourceManagers()))
 			if err != nil {
 				return err
+			}
+			if r.ResourceManager.KubernetesRM.DefaultScheduler == preemptionScheduler {
+				log.Info("priority with preemption scheduler has been deprecated as of 0.36.0, and this field will be ignored")
+				return fmt.Errorf("scheduler not available")
 			}
 		}
 	}
@@ -378,6 +417,13 @@ func (c *Config) Resolve() error {
 		c.SAML.GroupsAttributeName = ""
 	}
 
+	if c.Security.Token.MaxLifespanDays == InfiniteTokenLifespan {
+		c.Security.Token.MaxLifespanDays = MaxAllowedTokenLifespanDays
+	}
+	if c.Security.Token.DefaultLifespanDays == InfiniteTokenLifespan {
+		c.Security.Token.DefaultLifespanDays = MaxAllowedTokenLifespanDays
+	}
+
 	return nil
 }
 
@@ -392,6 +438,34 @@ func (c *Config) Deprecations() (errs []error) {
 				))
 			}
 		}
+		rm := r.ResourceManager
+		nameDeprecatedWarning := "name is set for resource manager %s, but this field is " +
+			"deprecated and will be ignored unless cluster_name is left empty. Please specify " +
+			"cluster_name instead of name in future master deployments."
+		switch {
+		case rm.AgentRM != nil:
+			if len(rm.AgentRM.Name) > 0 {
+				errs = append(errs, fmt.Errorf(nameDeprecatedWarning, rm.AgentRM.ClusterName))
+			}
+		case rm.KubernetesRM != nil:
+			if len(rm.KubernetesRM.Name) > 0 {
+				errs = append(errs, fmt.Errorf(nameDeprecatedWarning, rm.KubernetesRM.ClusterName))
+			}
+			if rm.KubernetesRM.DefaultScheduler == preemptionScheduler {
+				errs = append(errs, fmt.Errorf("the priority with preemption scheduler for Kubernetes is deprecated, "+
+					"and this field will be ignored"))
+			}
+		case rm.DispatcherRM != nil:
+			if len(rm.DispatcherRM.Name) > 0 {
+				errs = append(errs, fmt.Errorf(nameDeprecatedWarning, rm.DispatcherRM.ClusterName))
+			}
+		case rm.PbsRM != nil:
+			if len(rm.PbsRM.Name) > 0 {
+				errs = append(errs, fmt.Errorf(nameDeprecatedWarning, rm.PbsRM.ClusterName))
+			}
+		default:
+			panic(fmt.Sprintf("unknown rm type %+v", r))
+		}
 	}
 	return errs
 }
@@ -402,13 +476,61 @@ type SecurityConfig struct {
 	TLS         TLSConfig            `json:"tls"`
 	SSH         SSHConfig            `json:"ssh"`
 	AuthZ       AuthZConfig          `json:"authz"`
+	Token       TokenConfig          `json:"token"`
 
 	InitialUserPassword string `json:"initial_user_password"`
 }
 
+// TokenConfig is the configuration setting for tokens.
+type TokenConfig struct {
+	MaxLifespanDays     int `json:"max_lifespan_days"`
+	DefaultLifespanDays int `json:"default_lifespan_days"`
+}
+
+// MaxLifespan returns MaxLifespanDays as a time.Duration.
+func (t *TokenConfig) MaxLifespan() time.Duration {
+	return time.Duration(t.MaxLifespanDays) * 24 * time.Hour
+}
+
+// DefaultLifespan returns DefaultLifespanDays as a time.Duration.
+func (t *TokenConfig) DefaultLifespan() time.Duration {
+	return time.Duration(t.DefaultLifespanDays) * 24 * time.Hour
+}
+
+// Validate implements the check.Validatable interface for the TokenConfig.
+func (t *TokenConfig) Validate() []error {
+	var errs []error
+	if t.MaxLifespanDays < 0 {
+		errs = append(errs, errors.New("max token lifespan must be greater than 0 days, unless"+
+			" set to -1 for infinite lifespan"),
+		)
+	}
+	if t.DefaultLifespanDays < 0 {
+		errs = append(errs, errors.New("default token lifespan must be greater than 0 days,"+
+			" unless set to -1 for infinite lifespan"),
+		)
+	}
+	if t.DefaultLifespanDays > t.MaxLifespanDays {
+		errs = append(errs, errors.New("default token lifespan must be less than max token"+
+			" lifespan"))
+	}
+	if t.MaxLifespanDays > MaxAllowedTokenLifespanDays {
+		errs = append(errs, fmt.Errorf("max token lifespan should be less than %v, Go's max duration"+
+			" value", MaxAllowedTokenLifespanDays),
+		)
+	}
+	if t.DefaultLifespanDays > MaxAllowedTokenLifespanDays {
+		errs = append(errs, fmt.Errorf("default token lifespan days should be less than %v, Go's max"+
+			" duration value", MaxAllowedTokenLifespanDays),
+		)
+	}
+	return errs
+}
+
 // SSHConfig is the configuration setting for SSH.
 type SSHConfig struct {
-	RsaKeySize int `json:"rsa_key_size"`
+	RsaKeySize int    `json:"rsa_key_size"`
+	KeyType    string `json:"key_type"`
 }
 
 // TLSConfig is the configuration for setting up serving over TLS.
@@ -431,10 +553,15 @@ func (t *TLSConfig) Validate() []error {
 // Validate implements the check.Validatable interface.
 func (t *SSHConfig) Validate() []error {
 	var errs []error
-	if t.RsaKeySize < 1 {
-		errs = append(errs, errors.New("RSA Key size must be greater than 0"))
-	} else if t.RsaKeySize > 16384 {
-		errs = append(errs, errors.New("RSA Key size must be less than 16,384"))
+	if t.KeyType != KeyTypeRSA && t.KeyType != KeyTypeECDSA && t.KeyType != KeyTypeED25519 {
+		errs = append(errs, errors.New("Crypto system must be one of 'RSA', 'ECDSA' or 'ED25519'"))
+	}
+	if t.KeyType == KeyTypeRSA {
+		if t.RsaKeySize < 1 {
+			errs = append(errs, errors.New("RSA Key size must be greater than 0"))
+		} else if t.RsaKeySize > 16384 {
+			errs = append(errs, errors.New("RSA Key size must be less than 16,384"))
+		}
 	}
 	return errs
 }
@@ -467,7 +594,6 @@ type InternalConfig struct {
 	AuditLoggingEnabled bool                   `json:"audit_logging_enabled"`
 	ExternalSessions    model.ExternalSessions `json:"external_sessions"`
 	ProxiedServers      []ProxiedServerConfig  `json:"proxied_servers"`
-	PreemptionTimeout   *model.Duration        `json:"preemption_timeout"`
 }
 
 // Validate implements the check.Validatable interface.
@@ -561,10 +687,10 @@ func readRMPreemptionStatus(config *ResourceManagerWithPoolsConfig, rpName strin
 			panic("scheduler not configured")
 		}
 		return config.ResourceManager.AgentRM.Scheduler.GetPreemption()
-	case config.ResourceManager.KubernetesRM != nil:
-		return config.ResourceManager.KubernetesRM.GetPreemption()
-	case config.ResourceManager.DispatcherRM != nil,
+	case config.ResourceManager.KubernetesRM != nil,
+		config.ResourceManager.DispatcherRM != nil,
 		config.ResourceManager.PbsRM != nil:
+		// KubernetesRM priority scheduler with preemption is deprecated as of 0.36.0.
 		return false
 	default:
 		panic("unexpected resource configuration")
@@ -573,7 +699,6 @@ func readRMPreemptionStatus(config *ResourceManagerWithPoolsConfig, rpName strin
 
 // ReadPriority resolves the priority value for a job.
 func ReadPriority(rpName string, jobConf interface{}) int {
-	config := GetMasterConfig()
 	var prio *int
 	// look at the individual job config
 	switch conf := jobConf.(type) {
@@ -585,13 +710,18 @@ func ReadPriority(rpName string, jobConf interface{}) int {
 	if prio != nil {
 		return *prio
 	}
-
 	// if not found, fall back to the resource pools config
+	return DefaultPriorityForPool(rpName)
+}
+
+// DefaultPriorityForPool returns the default priority for any jobs (user-defined if provided, otherwise our default).
+func DefaultPriorityForPool(rpName string) int {
+	config := GetMasterConfig()
 	for _, rm := range config.ResourceManagers() {
 		for _, rpConfig := range rm.ResourcePools {
 			if rpConfig.PoolName == rpName {
 				schedulerConf := rpConfig.Scheduler
-				prio = readPriorityFromScheduler(schedulerConf)
+				prio := readPriorityFromScheduler(schedulerConf)
 				if prio != nil {
 					return *prio
 				}
@@ -604,16 +734,13 @@ func ReadPriority(rpName string, jobConf interface{}) int {
 						return *prio
 					}
 				}
-
 				if rm.ResourceManager.KubernetesRM != nil {
 					return KubernetesDefaultPriority
 				}
-
-				break
+				return DefaultSchedulingPriority
 			}
 		}
 	}
-
 	return DefaultSchedulingPriority
 }
 

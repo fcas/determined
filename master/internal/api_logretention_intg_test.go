@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-co-op/gocron/v2"
 	"github.com/jonboulle/clockwork"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 
@@ -42,10 +43,10 @@ retention_policy:
 
 func setRetentionTime(timestamp string) error {
 	_, err := db.Bun().NewRaw(fmt.Sprintf(`
-	CREATE or REPLACE FUNCTION retention_timestamp() RETURNS TIMESTAMPTZ AS $$ 
+	CREATE or REPLACE FUNCTION retention_timestamp() RETURNS TIMESTAMPTZ AS $$
     BEGIN
         RETURN %s;
-    END 
+    END
     $$ LANGUAGE PLPGSQL;
 	`, timestamp)).Exec(context.Background())
 	return err
@@ -95,10 +96,9 @@ hyperparameters:
 searcher:
   name: grid
   metric: none
-  max_length: %d
   max_concurrent_trials: %d
 %s
-`, numTrials, numTrials, config)
+`, numTrials, config)
 	createReq := &apiv1.CreateExperimentRequest{
 		ModelDefinition: []*utilv1.File{{Content: []byte{1}}},
 		Config:          conf,
@@ -108,6 +108,9 @@ searcher:
 	}
 
 	// No checkpoint specified anywhere.
+	mockRM := MockRM()
+	api.m.rm = mockRM
+	mockRM.On("SmallerValueIsHigherPriority", mock.Anything).Return(true, nil)
 	resp, err := api.CreateExperiment(ctx, createReq)
 	require.NoError(t, err)
 	require.Empty(t, resp.Warnings)
@@ -166,7 +169,7 @@ func TestDeleteExpiredTaskLogs(t *testing.T) {
 	for _, taskID := range taskIDs {
 		logCount, err := api.m.db.TaskLogsCount(taskID, nil)
 		require.NoError(t, err)
-		require.Equal(t, logCount, 2)
+		require.Equal(t, 2, logCount)
 	}
 
 	// Move time database time 30 days in the future.
@@ -207,7 +210,7 @@ func TestDeleteExpiredTaskLogs(t *testing.T) {
 	for _, taskID := range taskIDs1 {
 		logCount, err := api.m.db.TaskLogsCount(taskID, nil)
 		require.NoError(t, err)
-		require.Equal(t, 0, logCount)
+		require.Zero(t, logCount)
 	}
 	// Ensure that experiment2 logs are not deleted.
 	for _, taskID := range taskIDs2 {
@@ -240,7 +243,7 @@ func TestDeleteExpiredTaskLogs(t *testing.T) {
 	for _, taskID := range taskIDs2 {
 		logCount, err := api.m.db.TaskLogsCount(taskID, nil)
 		require.NoError(t, err)
-		require.Equal(t, 0, logCount)
+		require.Zero(t, logCount)
 	}
 	// Ensure that experiment3 logs are not deleted.
 	for _, taskID := range taskIDs3 {
@@ -278,17 +281,18 @@ func countTaskLogs(db *db.PgDB, taskIDs []model.TaskID) (int, error) {
 
 func incrementScheduler(
 	t *testing.T,
+	lrs *logretention.Scheduler,
 	timestamp time.Time,
 	fakeClock clockwork.FakeClock,
 	days int,
 ) (time.Time, clockwork.FakeClock) {
 	for i := 0; i < days; i++ {
 		fakeClock.BlockUntil(1)
-		logretention.TestingOnlySynchronizationHelper.Add(1)
+		lrs.TestingOnlySynchronizationHelper.Add(1)
 		timestamp = timestamp.AddDate(0, 0, 1)
 		require.NoError(t, quoteSetRetentionTime(timestamp))
 		fakeClock.Advance(timestamp.Sub(fakeClock.Now()))
-		logretention.TestingOnlySynchronizationHelper.Wait()
+		lrs.TestingOnlySynchronizationHelper.Wait()
 	}
 	return timestamp, fakeClock
 }
@@ -300,12 +304,18 @@ func TestScheduleRetentionNoConfig(t *testing.T) {
 	}()
 
 	fakeClock := clockwork.NewFakeClock()
-	logretention.SetupScheduler(gocron.WithClock(fakeClock))
-	logretention.TestingOnlySynchronizationHelper = &sync.WaitGroup{}
+	lrs, err := logretention.NewScheduler(gocron.WithClock(fakeClock))
+	require.NoError(t, err)
+	defer func() {
+		if err := lrs.Shutdown(); err != nil {
+			t.Logf("failed to shutdown gocron.Scheduler: %v", err)
+		}
+	}()
+	lrs.TestingOnlySynchronizationHelper = &sync.WaitGroup{}
 
 	api, _, ctx := setupAPITest(t, nil)
 
-	err := logretention.Schedule(model.LogRetentionPolicy{
+	err = lrs.Schedule(model.LogRetentionPolicy{
 		LogRetentionDays: ptrs.Ptr(int16(10)),
 		Schedule:         ptrs.Ptr("0 0 * * *"),
 	})
@@ -336,13 +346,13 @@ func TestScheduleRetentionNoConfig(t *testing.T) {
 	for _, taskID := range taskIDs {
 		logCount, err := api.m.db.TaskLogsCount(taskID, nil)
 		require.NoError(t, err)
-		require.Equal(t, logCount, 2)
+		require.Equal(t, 2, logCount)
 	}
 
 	// Advance time to midnight.
 	now := time.Now()
 	midnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 1, 0, 0, now.Location())
-	midnight, fakeClock = incrementScheduler(t, midnight, fakeClock, 1)
+	midnight, fakeClock = incrementScheduler(t, lrs, midnight, fakeClock, 1)
 
 	// Verify that the logs are still there.
 	count, err := countTaskLogs(api.m.db, taskIDs)
@@ -369,24 +379,24 @@ func TestScheduleRetentionNoConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// Advance time by 1 day.
-	midnight, fakeClock = incrementScheduler(t, midnight, fakeClock, 1)
+	midnight, fakeClock = incrementScheduler(t, lrs, midnight, fakeClock, 1)
 	// Verify that the logs are still there.
 	count, err = countTaskLogs(api.m.db, taskIDs)
 	require.NoError(t, err)
 	require.Equal(t, 10, count)
 
 	// Advance time by 9 days.
-	_, _ = incrementScheduler(t, midnight, fakeClock, 9)
+	_, _ = incrementScheduler(t, lrs, midnight, fakeClock, 9)
 	// Verify that logs are deleted.
 	count, err = countTaskLogs(api.m.db, taskIDs)
 	require.NoError(t, err)
-	require.Equal(t, 0, count)
+	require.Zero(t, count)
 
 	// Ensure that experiment1 logs are deleted.
 	for _, taskID := range taskIDs {
 		logCount, err := api.m.db.TaskLogsCount(taskID, nil)
 		require.NoError(t, err)
-		require.Equal(t, 0, logCount)
+		require.Zero(t, logCount)
 	}
 }
 
@@ -397,12 +407,18 @@ func TestScheduleRetention100days(t *testing.T) {
 	}()
 
 	fakeClock := clockwork.NewFakeClock()
-	logretention.SetupScheduler(gocron.WithClock(fakeClock))
-	logretention.TestingOnlySynchronizationHelper = &sync.WaitGroup{}
+	lrs, err := logretention.NewScheduler(gocron.WithClock(fakeClock))
+	require.NoError(t, err)
+	defer func() {
+		if err := lrs.Shutdown(); err != nil {
+			t.Logf("failed to shutdown gocron.Scheduler: %v", err)
+		}
+	}()
+	lrs.TestingOnlySynchronizationHelper = &sync.WaitGroup{}
 
 	api, _, ctx := setupAPITest(t, nil)
 
-	err := logretention.Schedule(model.LogRetentionPolicy{
+	err = lrs.Schedule(model.LogRetentionPolicy{
 		LogRetentionDays: ptrs.Ptr(int16(10)),
 		Schedule:         ptrs.Ptr("0 0 * * *"),
 	})
@@ -433,13 +449,13 @@ func TestScheduleRetention100days(t *testing.T) {
 	for _, taskID := range taskIDs {
 		logCount, err := api.m.db.TaskLogsCount(taskID, nil)
 		require.NoError(t, err)
-		require.Equal(t, logCount, 2)
+		require.Equal(t, 2, logCount)
 	}
 
 	// Advance time to midnight.
 	now := time.Now()
 	midnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 1, 0, 0, now.Location())
-	midnight, fakeClock = incrementScheduler(t, midnight, fakeClock, 1)
+	midnight, fakeClock = incrementScheduler(t, lrs, midnight, fakeClock, 1)
 
 	// Verify that the logs are still there.
 	count, err := countTaskLogs(api.m.db, taskIDs)
@@ -466,7 +482,7 @@ func TestScheduleRetention100days(t *testing.T) {
 	require.NoError(t, err)
 
 	// Advance time by 98 days.
-	midnight, fakeClock = incrementScheduler(t, midnight, fakeClock, 98)
+	midnight, fakeClock = incrementScheduler(t, lrs, midnight, fakeClock, 98)
 	// Verify that no logs are deleted.
 	count, err = countTaskLogs(api.m.db, taskIDs)
 	require.NoError(t, err)
@@ -480,17 +496,17 @@ func TestScheduleRetention100days(t *testing.T) {
 	}
 
 	// Move time 1 day in the future.
-	_, _ = incrementScheduler(t, midnight, fakeClock, 1)
+	_, _ = incrementScheduler(t, lrs, midnight, fakeClock, 1)
 	// Verify that logs are deleted.
 	count, err = countTaskLogs(api.m.db, taskIDs)
 	require.NoError(t, err)
-	require.Equal(t, 0, count)
+	require.Zero(t, count)
 
 	// Ensure that experiment logs are deleted.
 	for _, taskID := range taskIDs {
 		logCount, err := api.m.db.TaskLogsCount(taskID, nil)
 		require.NoError(t, err)
-		require.Equal(t, 0, logCount)
+		require.Zero(t, logCount)
 	}
 }
 
@@ -501,12 +517,18 @@ func TestScheduleRetentionNeverExpire(t *testing.T) {
 	}()
 
 	fakeClock := clockwork.NewFakeClock()
-	logretention.SetupScheduler(gocron.WithClock(fakeClock))
-	logretention.TestingOnlySynchronizationHelper = &sync.WaitGroup{}
+	lrs, err := logretention.NewScheduler(gocron.WithClock(fakeClock))
+	require.NoError(t, err)
+	defer func() {
+		if err := lrs.Shutdown(); err != nil {
+			t.Logf("failed to shutdown gocron.Scheduler: %v", err)
+		}
+	}()
+	lrs.TestingOnlySynchronizationHelper = &sync.WaitGroup{}
 
 	api, _, ctx := setupAPITest(t, nil)
 
-	err := logretention.Schedule(model.LogRetentionPolicy{
+	err = lrs.Schedule(model.LogRetentionPolicy{
 		LogRetentionDays: ptrs.Ptr(int16(10)),
 		Schedule:         ptrs.Ptr("0 0 * * *"),
 	})
@@ -537,13 +559,13 @@ func TestScheduleRetentionNeverExpire(t *testing.T) {
 	for _, taskID := range taskIDs {
 		logCount, err := api.m.db.TaskLogsCount(taskID, nil)
 		require.NoError(t, err)
-		require.Equal(t, logCount, 2)
+		require.Equal(t, 2, logCount)
 	}
 
 	// Advance time to midnight.
 	now := time.Now()
 	midnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 1, 0, 0, now.Location())
-	midnight, fakeClock = incrementScheduler(t, midnight, fakeClock, 1)
+	midnight, fakeClock = incrementScheduler(t, lrs, midnight, fakeClock, 1)
 
 	// Verify that the logs are still there.
 	count, err := countTaskLogs(api.m.db, taskIDs)
@@ -570,7 +592,7 @@ func TestScheduleRetentionNeverExpire(t *testing.T) {
 	require.NoError(t, err)
 
 	// Move time 1 year in the future.
-	_, _ = incrementScheduler(t, midnight, fakeClock, 365)
+	_, _ = incrementScheduler(t, lrs, midnight, fakeClock, 365)
 	// Verify that no logs are deleted.
 	count, err = countTaskLogs(api.m.db, taskIDs)
 	require.NoError(t, err)

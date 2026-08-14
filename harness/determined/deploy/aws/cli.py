@@ -10,6 +10,7 @@ import boto3
 import termcolor
 from botocore import exceptions
 
+import determined
 from determined import cli
 from determined.deploy import errors
 from determined.deploy.aws import aws, constants, preflight
@@ -65,7 +66,6 @@ def error_no_credentials() -> None:
 
 def get_deployment_class(deployment_type: str) -> Type[base.DeterminedDeployment]:
     deployment_type_map = {
-        constants.deployment_types.SIMPLE: simple.Simple,
         constants.deployment_types.SIMPLE_RDS: simple.SimpleRDS,
         constants.deployment_types.SECURE: secure.Secure,
         constants.deployment_types.EFS: vpc.EFS,
@@ -141,10 +141,7 @@ def deploy_aws(command: str, args: argparse.Namespace) -> None:
     ):
         raise cli.CliError("If a CPU or GPU environment image is specified, both should be.")
 
-    if (
-        args.deployment_type != constants.deployment_types.SIMPLE
-        or args.deployment_type != constants.deployment_types.SIMPLE_RDS
-    ):
+    if args.deployment_type != constants.deployment_types.SIMPLE_RDS:
         if args.agent_subnet_id is not None:
             raise ValueError(
                 f"The agent-subnet-id can only be set if the deployment-type=simple. "
@@ -512,6 +509,7 @@ args_description = cli.Cmd(
                 cli.Arg(
                     "--det-version",
                     type=str,
+                    default=determined.__version__,
                     help=argparse.SUPPRESS,
                 ),
                 cli.Arg(

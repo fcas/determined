@@ -15,27 +15,30 @@ import (
 const (
 	// DefaultWorkspaceID is a special, always-existing, workspace titled "Uncategorized".
 	DefaultWorkspaceID = 1
+	// DefaultWorkspaceName is the default workspace name, which is always present, and always has ID 1.
+	DefaultWorkspaceName = "Uncategorized"
 	// DefaultProjectID is the default project ID for the default workspace.
 	DefaultProjectID = 1
 )
 
 // Workspace is the bun model of a workspace.
 type Workspace struct {
-	bun.BaseModel           `bun:"table:workspaces"`
-	ID                      int                              `bun:"id,pk,autoincrement"`
-	Name                    string                           `bun:"name"`
-	Archived                bool                             `bun:"archived"`
-	CreatedAt               time.Time                        `bun:"created_at,scanonly"`
-	UserID                  UserID                           `bun:"user_id"`
-	Immutable               bool                             `bun:"immutable"`
-	State                   *WorkspaceState                  `bun:"state"`
-	AgentUID                *int32                           `bun:"uid"`
-	AgentUser               *string                          `bun:"user_"`
-	AgentGID                *int32                           `bun:"gid"`
-	AgentGroup              *string                          `bun:"group_"`
-	CheckpointStorageConfig *expconf.CheckpointStorageConfig `bun:"checkpoint_storage_config"`
-	DefaultComputePool      string                           `bun:"default_compute_pool"`
-	DefaultAuxPool          string                           `bun:"default_aux_pool"`
+	bun.BaseModel            `bun:"table:workspaces"`
+	ID                       int                              `bun:"id,pk,autoincrement"`
+	Name                     string                           `bun:"name"`
+	Archived                 bool                             `bun:"archived"`
+	CreatedAt                time.Time                        `bun:"created_at,scanonly"`
+	UserID                   UserID                           `bun:"user_id"`
+	Immutable                bool                             `bun:"immutable"`
+	State                    *WorkspaceState                  `bun:"state"`
+	AgentUID                 *int32                           `bun:"uid"`
+	AgentUser                *string                          `bun:"user_"`
+	AgentGID                 *int32                           `bun:"gid"`
+	AgentGroup               *string                          `bun:"group_"`
+	CheckpointStorageConfig  *expconf.CheckpointStorageConfig `bun:"checkpoint_storage_config"`
+	DefaultComputePool       string                           `bun:"default_compute_pool"`
+	DefaultAuxPool           string                           `bun:"default_aux_pool"`
+	AutoCreatedNamespaceName *string                          `bun:"auto_created_namespace_name"`
 }
 
 // ToProto converts a bun model of a workspace to a proto object.
@@ -76,6 +79,7 @@ func (w *Workspace) ToProto() (*workspacev1.Workspace, error) {
 		CheckpointStorageConfig: storageConfig,
 		DefaultComputePool:      w.DefaultComputePool,
 		DefaultAuxPool:          w.DefaultAuxPool,
+		AutoCreatedNamespace:    w.AutoCreatedNamespaceName,
 	}, nil
 }
 
@@ -104,4 +108,23 @@ type WorkspacePin struct {
 	bun.BaseModel `bun:"table:workspace_pins"`
 	WorkspaceID   int    `bun:"workspace_id"`
 	UserID        UserID `bun:"user_id"`
+}
+
+// WorkspaceNamespace is the bun model of a workspace-namespace binding.
+type WorkspaceNamespace struct {
+	bun.BaseModel       `bun:"table:workspace_namespace_bindings"`
+	WorkspaceID         int    `bun:"workspace_id"`
+	Namespace           string `bun:"namespace"`
+	ClusterName         string `bun:"cluster_name"`
+	AutoCreateNamespace bool   `bun:"auto_create_namespace"`
+}
+
+// ToProto converts a WorkspaceNamespaceBinding to its protobuf representation.
+func (wn WorkspaceNamespace) ToProto() *workspacev1.WorkspaceNamespaceBinding {
+	return &workspacev1.WorkspaceNamespaceBinding{
+		WorkspaceId:         int32(wn.WorkspaceID),
+		Namespace:           wn.Namespace,
+		ClusterName:         wn.ClusterName,
+		AutoCreateNamespace: wn.AutoCreateNamespace,
+	}
 }

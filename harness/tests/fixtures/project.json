@@ -23,6 +23,8 @@
     "userId":2,
     "workspaceName":"",
     "state":"WORKSPACE_STATE_UNSPECIFIED",
-    "errorMessage":""
+    "errorMessage":"",
+    "key":"cap1",
+    "numRuns":0
   }
 }

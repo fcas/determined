@@ -5,10 +5,11 @@
 #######################
 
 .. meta::
-   :description: Discover how to create and monitor experiment progress, organize your experiments into projects and workspaces, start a Jupyter Notebook, and more using the Determined WebUI.
+   :description: Discover how to create and monitor experiment progress, track experiments, evaluate model performance, and organize your experiments into projects and workspaces using the Determined WebUI.
 
-You can use the WebUI to create and monitor experiment progress, organize your experiments into
-projects and workspaces, start a Jupyter Notebook, and more.
+You can use the WebUI to create and monitor experiment progress, track experiments, evaluate model
+performance, organize your experiments into projects and workspaces, start a Jupyter Notebook, and
+more.
 
 *****************
  Getting Started
@@ -32,6 +33,10 @@ If you have an existing experiment or trial, you can use the WebUI to create an 
 need to use the CLI to create a new experiment. To learn how to create a new experiment, visit
 :ref:`experiments`.
 
+After creating an experiment, you can use the WebUI to track its progress in real-time. The WebUI
+allows you to monitor metrics, analyze results, and maintain full oversight of your experiments,
+providing a clear and detailed view of the entire process.
+
 **********************************************************
  Organizing Your Experiments into Projects and Workspaces
 **********************************************************
@@ -46,12 +51,32 @@ Projects and Workspaces, visit :ref:`workspaces`.
 Many experiment configuration settings can be performed via the WebUI. To learn more about
 configuring an experiment via a YAML file, visit :ref:`experiment-config-reference`.
 
-***************************************
- Evaluating the Performance of a Model
-***************************************
+**************************************************
+ Evaluating Model Performance and Experiment Runs
+**************************************************
 
-You can access training and validation performance information via the WebUI. To see model
-evaluation in action, follow the steps described in the :ref:`pytorch-mnist-tutorial`.
+You can access training and validation performance information via the WebUI to evaluate your model.
+To see model evaluation in action, follow the steps described in the :ref:`pytorch-mnist-tutorial`.
+
+You can also compare single trials with various datasets, parameters, and settings so that you can
+choose the best model. This simplified flat trials view lets you perform a quick metric evaluation
+by selecting two or more runs to compare. This feature can be toggled on or off in :ref:`user
+settings <web-ui-user-settings>`.
+
+To start, select two or more runs and then select **Compare**:
+
+.. image:: /assets/images/webui-runs.png
+   :alt: WebUI showing list of runs for comparison
+
+|
+
+In the compare view, choose a tab for comparing metrics, hyperparameters, and other details of the
+runs you selected.
+
+.. image:: /assets/images/webui-runs-compared.png
+   :alt: WebUI showing selected runs with hyperparameters compared
+
+|
 
 *************************************
  Adding Models to the Model Registry
@@ -100,6 +125,8 @@ visit :ref:`users`.
 
 With the Determined Enterprise Edition, you can also create and manage user groups. To learn more,
 visit :ref:`rbac`.
+
+.. _web-ui-user-settings:
 
 ************************
  Managing User Settings
@@ -168,3 +195,63 @@ You can start :ref:`notebooks` from the WebUI.
 ***********************
 
 You can launch TensorBoard from the WebUI. To learn how, visit :ref:`tensorboards`.
+
+*****************************
+ Displaying a Banner Message
+*****************************
+
+Administrators can create a banner message to alert users about important information, such as
+maintenance, setting a password, or other announcements. This message will be displayed on the
+header of every page in the WebUI for the configured duration. Commands include ``help``, ``clear``,
+``get``, and ``set``.
+
+**Prerequisites**
+
+-  Install the :ref:`CLI <cli-ug>`.
+
+**Prepare the Message**
+
+Prepare the maintenance message using the CLI command, ``det master cluster-message set``.
+
+-  For example, the following command creates a maintenance message with a start and end date (which
+   must be expressed in UTC):
+
+      .. code:: bash
+
+         det master cluster-message set --message "Scheduled maintenance on Dec 1st from 10pm CST to 11pm CST." --start "2024-12-02-04:00:00Z" --end "2024-12-02-05:00:00Z"
+
+-  You can also express the end date as a duration:
+
+      .. code:: bash
+
+         det master cluster-message set --message "Please change your password by Jan 1, 2025" --duration 14d
+
+**Verify the Message**
+
+Verify the message with the following command:
+
+   .. code:: bash
+
+      det master cluster-message get
+
+**Clear the Message**
+
+Clear the message with the following command:
+
+   .. code:: bash
+
+      det master cluster-message clear
+
+****************************
+ Viewing Log Search Results
+****************************
+
+To perform a log search:
+
+#. Navigate to your run in the WebUI.
+#. In the Logs tab, start typing in the search box to open the search pane.
+#. To use regex search, click the "Regex" checkbox in the search pane.
+#. Click on a search result to view it in context, with logs before and after visible.
+#. Scroll up and down to fetch new logs.
+
+Note: Search results are not auto-updating. You may need to refresh to see new logs.

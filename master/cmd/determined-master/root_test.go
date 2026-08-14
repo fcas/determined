@@ -73,8 +73,9 @@ webhooks:
 		},
 	}
 	expected.TaskContainerDefaults = model.TaskContainerDefaultsConfig{
-		ShmSizeBytes: 4294967296,
-		NetworkMode:  "bridge",
+		ShmSizeBytes:      4294967296,
+		NetworkMode:       "bridge",
+		PreemptionTimeout: model.DefaultPreemptionTimeout,
 	}
 	expected.TaskContainerDefaults.CPUPodSpec = &k8sV1.Pod{
 		TypeMeta: metaV1.TypeMeta{
@@ -147,7 +148,7 @@ func TestApplyBackwardsCompatibility(t *testing.T) {
 					"type": "agent",
 					"scheduler": map[string]interface{}{
 						"fitting_policy": "best",
-						"type":           "fair_share",
+						"type":           "priority",
 					},
 					"default_cpu_resource_pool": "default",
 					"default_gpu_resource_pool": "default",
@@ -178,9 +179,135 @@ func TestApplyBackwardsCompatibility(t *testing.T) {
 					"type": "kubernetes",
 					"scheduler": map[string]interface{}{
 						"fitting_policy": "best",
-						"type":           "fair_share",
+						"type":           "priority",
 					},
 					"master_service_name": "k8s-det",
+				},
+			},
+		},
+		{
+			name: "preemption timeout (__internal set)",
+			before: map[string]interface{}{
+				"__internal": map[string]interface{}{
+					"audit_logging_enabled": false,
+					"preemption_timeout":    "1h10m10s",
+				},
+				"task_container_defaults": map[string]interface{}{
+					"shm_size_bytes": 4294967296,
+				},
+			},
+			expected: map[string]interface{}{
+				"__internal": map[string]interface{}{
+					"audit_logging_enabled": false,
+				},
+				"task_container_defaults": map[string]interface{}{
+					"shm_size_bytes":     4294967296,
+					"preemption_timeout": 4210,
+				},
+			},
+		},
+		{
+			name: "preemption timeout (both set)",
+			before: map[string]interface{}{
+				"__internal": map[string]interface{}{
+					"audit_logging_enabled": false,
+					"preemption_timeout":    "1h10m10s",
+				},
+				"task_container_defaults": map[string]interface{}{
+					"shm_size_bytes":     4294967296,
+					"preemption_timeout": 1000,
+				},
+			},
+			expected: map[string]interface{}{
+				"__internal": map[string]interface{}{
+					"audit_logging_enabled": false,
+				},
+				"task_container_defaults": map[string]interface{}{
+					"shm_size_bytes":     4294967296,
+					"preemption_timeout": 1000,
+				},
+			},
+		},
+		{
+			name: "determined master ip to host rename, ip set",
+			before: map[string]interface{}{
+				"resource_manager": map[string]interface{}{
+					"type":                 "kubernetes",
+					"determined_master_ip": "10.0.0.1",
+				},
+				"additional_resource_managers": []map[string]any{
+					{
+						"type":                 "kubernetes",
+						"determined_master_ip": "10.0.0.2",
+					},
+				},
+			},
+			expected: map[string]interface{}{
+				"resource_manager": map[string]interface{}{
+					"type":                   "kubernetes",
+					"determined_master_host": "10.0.0.1",
+				},
+				"additional_resource_managers": []map[string]any{
+					{
+						"type":                   "kubernetes",
+						"determined_master_host": "10.0.0.2",
+					},
+				},
+			},
+		},
+		{
+			name: "determined master ip to host rename, both set",
+			before: map[string]interface{}{
+				"resource_manager": map[string]interface{}{
+					"type":                   "kubernetes",
+					"determined_master_host": "10.0.0.1",
+					"determined_master_ip":   "10.0.0.1",
+				},
+				"additional_resource_managers": []map[string]any{
+					{
+						"type":                   "kubernetes",
+						"determined_master_host": "10.0.0.2",
+						"determined_master_ip":   "10.0.0.2",
+					},
+				},
+			},
+			expected: map[string]interface{}{
+				"resource_manager": map[string]interface{}{
+					"type":                   "kubernetes",
+					"determined_master_host": "10.0.0.1",
+				},
+				"additional_resource_managers": []map[string]any{
+					{
+						"type":                   "kubernetes",
+						"determined_master_host": "10.0.0.2",
+					},
+				},
+			},
+		},
+		{
+			name: "determined master ip to host rename, host set get left alone",
+			before: map[string]interface{}{
+				"resource_manager": map[string]interface{}{
+					"type":                   "kubernetes",
+					"determined_master_host": "10.0.0.1",
+				},
+				"additional_resource_managers": []map[string]any{
+					{
+						"type":                   "kubernetes",
+						"determined_master_host": "10.0.0.2",
+					},
+				},
+			},
+			expected: map[string]interface{}{
+				"resource_manager": map[string]interface{}{
+					"type":                   "kubernetes",
+					"determined_master_host": "10.0.0.1",
+				},
+				"additional_resource_managers": []map[string]any{
+					{
+						"type":                   "kubernetes",
+						"determined_master_host": "10.0.0.2",
+					},
 				},
 			},
 		},

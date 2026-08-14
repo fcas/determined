@@ -8,6 +8,8 @@ import { closestPointPlugin } from 'components/UPlot/UPlotChart/closestPointPlug
 import { drawPointsPlugin } from 'components/UPlot/UPlotChart/drawPointsPlugin';
 import { tooltipsPlugin } from 'components/UPlot/UPlotChart/tooltipsPlugin';
 import { useCheckpointFlow } from 'hooks/useCheckpointFlow';
+import useFeature from 'hooks/useFeature';
+import { useMetrics } from 'hooks/useMetrics';
 import {
   CheckpointWorkloadExtended,
   ExperimentBase,
@@ -19,8 +21,6 @@ import {
 import { glasbeyColor } from 'utils/color';
 import handleError from 'utils/error';
 import { metricSorter, metricToKey } from 'utils/metric';
-
-import { useTrialMetrics } from './useTrialMetrics';
 
 export interface Props {
   experiment: ExperimentBase;
@@ -39,6 +39,7 @@ const stripPrefix = (metricName: string): string => {
 
 const TrialDetailsMetrics: React.FC<Props> = ({ experiment, trial }: Props) => {
   const [xAxis, setXAxis] = useState<XAxisDomain>(XAxisDomain.Batches);
+  const f_flat_runs = useFeature().isOn('flat_runs');
 
   const checkpoint: CheckpointWorkloadExtended | undefined = useMemo(
     () =>
@@ -51,18 +52,12 @@ const TrialDetailsMetrics: React.FC<Props> = ({ experiment, trial }: Props) => {
   const { openCheckpoint, checkpointModalComponents } = useCheckpointFlow({
     checkpoint,
     config: experiment.config,
-    title: `Best checkpoint for Trial ${trial?.id}`,
+    title: `Best checkpoint for ${f_flat_runs ? 'Run' : 'Trial'} ${trial?.id}`,
   });
 
   const trials: (TrialDetails | undefined)[] = useMemo(() => [trial], [trial]);
 
-  const {
-    metrics,
-    isLoaded: isMetricsLoaded,
-    data: allData,
-    scale,
-    setScale,
-  } = useTrialMetrics(trials);
+  const { metrics, isLoaded: isMetricsLoaded, data: allData, scale, setScale } = useMetrics(trials);
   const data = useMemo(() => allData?.[trial?.id || 0], [allData, trial?.id]);
 
   const checkpointsDict = useMemo<CheckpointsDict>(() => {

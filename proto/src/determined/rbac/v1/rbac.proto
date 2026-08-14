@@ -1,3 +1,4 @@
+
 syntax = "proto3";
 
 package determined.rbac.v1;
@@ -165,8 +166,50 @@ enum PermissionType {
   // Ability to create and delete webhooks.
   PERMISSION_TYPE_EDIT_WEBHOOKS = 97001;
 
+  // Ability to view webhooks.
+  PERMISSION_TYPE_VIEW_WEBHOOKS = 97002;
+
   // Ability to bind, unbind or overwrite resource pool workspace bindings.
   PERMISSION_TYPE_MODIFY_RP_WORKSPACE_BINDINGS = 10001;
+
+  // Ability to bind, unbind, or overwrite namespace workspace bindings.
+  PERMISSION_TYPE_SET_WORKSPACE_NAMESPACE_BINDINGS = 11001;
+
+  // Ability to set resource quotas on workspaces.
+  PERMISSION_TYPE_SET_RESOURCE_QUOTAS = 11002;
+
+  // Ability to view resource quotas on workspaces.
+  PERMISSION_TYPE_VIEW_RESOURCE_QUOTAS = 11003;
+
+  // Ability to modify global config policies.
+  PERMISSION_TYPE_MODIFY_GLOBAL_CONFIG_POLICIES = 11004;
+
+  // Ability to modify workspace config policies.
+  PERMISSION_TYPE_MODIFY_WORKSPACE_CONFIG_POLICIES = 11005;
+
+  // Ability to view global config policies.
+  PERMISSION_TYPE_VIEW_GLOBAL_CONFIG_POLICIES = 11006;
+
+  // Ability to view workspace config policies.
+  PERMISSION_TYPE_VIEW_WORKSPACE_CONFIG_POLICIES = 11007;
+
+  // Ability to administrate other users' tokens.
+  PERMISSION_TYPE_ADMINISTRATE_TOKEN = 12001;
+
+  // Ability to update one's own token.
+  PERMISSION_TYPE_UPDATE_TOKEN = 12002;
+
+  // Ability to create one's own token
+  PERMISSION_TYPE_CREATE_TOKEN = 12003;
+
+  // Ability to create another user's token
+  PERMISSION_TYPE_CREATE_OTHER_TOKEN = 12004;
+
+  // Ability to view another user's token
+  PERMISSION_TYPE_VIEW_OTHER_TOKEN = 12005;
+
+  // Ability to view one's own token
+  PERMISSION_TYPE_VIEW_TOKEN = 12006;
 }
 
 // RoleAssignmentSummary is used to describe permissions a user has.

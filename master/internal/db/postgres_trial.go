@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"regexp"
@@ -35,6 +36,15 @@ func AddTrial(ctx context.Context, trial *model.Trial, taskID model.TaskID) erro
 			return fmt.Errorf("converting trial to run and trialv2: %w", err)
 		}
 
+		var key string
+		var localID int
+		if err := tx.NewUpdate().Table("projects").
+			Set("max_local_id = max_local_id + 1").Where("id = ?", run.ProjectID).
+			Returning("key, max_local_id").Scan(ctx, &key, &localID); err != nil {
+			return fmt.Errorf("updating and returning project max_local_id: %w", err)
+		}
+		run.LocalID = localID
+
 		if _, err := tx.NewInsert().Model(run).Returning("id").Exec(ctx); err != nil {
 			return fmt.Errorf("inserting trial run model: %w", err)
 		}
@@ -44,6 +54,23 @@ func AddTrial(ctx context.Context, trial *model.Trial, taskID model.TaskID) erro
 			return fmt.Errorf("inserting trial v2 model: %w", err)
 		}
 
+		redirect := struct {
+			bun.BaseModel `bun:"table:local_id_redirect"`
+
+			RunID      int    `db:"run_id" bun:"run_id"`
+			ProjectID  int    `db:"project_id" bun:"project_id"`
+			ProjectKey string `db:"project_key" bun:"project_key"`
+			LocalID    int    `db:"local_id" bun:"local_id"`
+		}{
+			RunID:      run.ID,
+			ProjectID:  run.ProjectID,
+			ProjectKey: key,
+			LocalID:    localID,
+		}
+		if _, err := tx.NewInsert().Model(&redirect).Exec(ctx); err != nil {
+			return fmt.Errorf("storing run_id in redirect table: %w", err)
+		}
+
 		trial.ID = run.ID // We need to mutate trial.ID.
 
 		runTaskID := &model.RunTaskID{RunID: trial.ID, TaskID: taskID}
@@ -51,6 +78,39 @@ func AddTrial(ctx context.Context, trial *model.Trial, taskID model.TaskID) erro
 			return fmt.Errorf("inserting trial task id relationship: %w", err)
 		}
 
+		hparams, projHparams, err := BuildRunHParams(run.ID, run.ProjectID, run.HParams, "")
+		if err != nil {
+			return fmt.Errorf("getting run hyperparameters: %w", err)
+		}
+
+		if len(hparams) > 0 {
+			if err := tx.NewInsert().Model(&hparams).Scan(ctx); err != nil {
+				return fmt.Errorf("inserting run hyperparameters: %w", err)
+			}
+		}
+
+		if len(projHparams) > 0 {
+			if err := tx.NewInsert().Model(&projHparams).
+				On("CONFLICT (project_id, hparam, type) DO NOTHING").Scan(ctx); err != nil {
+				return fmt.Errorf("inserting project hyperparameters: %w", err)
+			}
+		}
+
+		var isSingleTrial bool
+		err = tx.NewSelect().
+			ColumnExpr("config->'searcher'->>'name' = 'single'").
+			Table("experiments").
+			Where("id = ?", run.ExperimentID).
+			Scan(ctx, &isSingleTrial)
+		if err != nil {
+			return fmt.Errorf("getting experiment config while inserting trial: %w", err)
+		}
+		if isSingleTrial {
+			if _, err := tx.NewUpdate().Table("experiments").Set("best_trial_id = ?", run.ID).
+				Where("id = ?", run.ExperimentID).Exec(ctx); err != nil {
+				return fmt.Errorf("updating best trial id for single trial experiment: %w", err)
+			}
+		}
 		return nil
 	})
 	if err != nil {
@@ -58,6 +118,102 @@ func AddTrial(ctx context.Context, trial *model.Trial, taskID model.TaskID) erro
 	}
 
 	return nil
+}
+
+// AddProjectHparams adds project hyperparams from provided runs to provided project.
+func AddProjectHparams(ctx context.Context, tx bun.Tx, projectID int, runIDs []int32) error {
+	if _, err := tx.NewRaw(`
+		INSERT INTO project_hparams
+		SELECT ?::int as project_id, hparam,
+		CASE
+			WHEN number_val iS NOT NULL THEN 'number'
+			WHEN text_val iS NOT NULL THEN 'string'
+			WHEN bool_val iS NOT NULL THEN 'boolean'
+		END as type 
+		FROM run_hparams WHERE run_id IN (?)
+		GROUP BY hparam, type
+		ON CONFLICT (project_id, hparam, type) DO NOTHING`,
+		projectID, bun.In(runIDs)).
+		Exec(ctx); err != nil {
+		return fmt.Errorf("bulk inserting project hyperparameters: %w", err)
+	}
+	return nil
+}
+
+// RemoveOutdatedProjectHparams removes outdated project hyperparams from provided project.
+func RemoveOutdatedProjectHparams(ctx context.Context, tx bun.Tx, projectID int) error {
+	if _, err := tx.NewRaw(`
+	WITH removed_project_hparams as 
+	(SELECT * FROM project_hparams WHERE project_id=?
+	EXCEPT
+	SELECT ? as project_id, rhp.hparam, CASE
+							WHEN rhp.number_val iS NOT NULL THEN 'number'
+							WHEN rhp.text_val iS NOT NULL THEN 'string'
+							WHEN rhp.bool_val iS NOT NULL THEN 'boolean'
+					END as type FROM run_hparams as rhp JOIN
+					(SELECT id, project_id FROM runs WHERE project_id=?) as r ON
+					r.id=rhp.run_id GROUP BY hparam, type)
+	DELETE FROM project_hparams as p WHERE EXISTS
+	(SELECT * FROM removed_project_hparams as rm
+		 WHERE (p.project_id=rm.project_id AND p.type=rm.type AND p.hparam=rm.hparam))
+	`, projectID, projectID, projectID).Exec(ctx); err != nil {
+		return fmt.Errorf("bulk deleting project hyperparameters: %w", err)
+	}
+	return nil
+}
+
+// BuildRunHParams builds hyperparameters objects to add into the `run_hparams` & `project_hparams` table.
+func BuildRunHParams(runID int, projectID int, hparams map[string]any,
+	parentName string,
+) ([]model.RunHparam, []model.ProjectHparam, error) {
+	hparamsModel := []model.RunHparam{}
+	projHparamsModel := []model.ProjectHparam{}
+	for hpName, v := range hparams {
+		hp := model.RunHparam{
+			RunID:  runID,
+			HParam: parentName + hpName,
+		}
+		projHp := model.ProjectHparam{
+			ProjectID: projectID,
+			HParam:    parentName + hpName,
+		}
+		switch val := v.(type) {
+		case float64:
+			hp.NumberVal = &val
+			projHp.Type = MetricTypeNumber
+		case int:
+			conv := float64(val)
+			hp.NumberVal = &conv
+			projHp.Type = MetricTypeNumber
+		case string:
+			hp.TextVal = &val
+			projHp.Type = MetricTypeString
+		case bool:
+			hp.BoolVal = &val
+			projHp.Type = MetricTypeBool
+		case map[string]any:
+			nestedHParams, nestedProjHparams, err := BuildRunHParams(runID, projectID, v.(map[string]any), hpName+".")
+			if err != nil {
+				return hparamsModel, projHparamsModel, fmt.Errorf("failed to get nested hyperperameters for %s: %w", hpName, err)
+			}
+			hparamsModel = append(hparamsModel, nestedHParams...)
+			projHparamsModel = append(projHparamsModel, nestedProjHparams...)
+			continue
+		default:
+			valBytes, err := json.Marshal(v)
+			if err != nil {
+				return hparamsModel, projHparamsModel,
+					fmt.Errorf("cannot assign hyperparameter %s, failed to encode type %T: %w", hpName, val, err)
+			}
+			valString := string(valBytes)
+			hp.TextVal = &valString
+			projHp.Type = MetricTypeString
+		}
+		hparamsModel = append(hparamsModel, hp)
+		projHparamsModel = append(projHparamsModel, projHp)
+	}
+
+	return hparamsModel, projHparamsModel, nil
 }
 
 // UpsertTrialByExternalIDTx UPSERTs the trial with respect to the external_trial_id.
@@ -118,19 +274,6 @@ func TrialTaskIDsByTrialID(ctx context.Context, trialID int) ([]*model.RunTaskID
 		return nil, fmt.Errorf("getting tasks for trial ID %d: %w", trialID, err)
 	}
 	return ids, nil
-}
-
-// TrialByExperimentAndRequestID looks up a trial, returning an error if none exists.
-func TrialByExperimentAndRequestID(
-	ctx context.Context, experimentID int, requestID model.RequestID,
-) (*model.Trial, error) {
-	t := &model.Trial{}
-	if err := Bun().NewSelect().Model(t).
-		Where("experiment_id = ?", experimentID).
-		Where("request_id = ?", requestID).Scan(ctx); err != nil {
-		return nil, fmt.Errorf("error querying for trial %s: %w", requestID, err)
-	}
-	return t, nil
 }
 
 // TrialByTaskID looks up a trial by taskID, returning an error if none exists.
@@ -239,8 +382,7 @@ func (db *PgDB) UpdateTrialFields(id int, newRunnerMetadata *trialv1.TrialRunner
 }
 
 // TrialRunIDAndRestarts returns the run id and restart count for a trial.
-func (db *PgDB) TrialRunIDAndRestarts(trialID int) (int, int, error) {
-	var runID, restart int
+func (db *PgDB) TrialRunIDAndRestarts(trialID int) (runID int, restart int, err error) {
 	if err := db.sql.QueryRowx(`
 SELECT run_id, restarts
 FROM trials
@@ -396,7 +538,7 @@ func (db *PgDB) _addTrialMetricsTx(
 	}
 	var summaryMetrics model.JSONObj
 	err = tx.QueryRowContext(ctx, `
-		SELECT summary_metrics FROM trials WHERE id = $1 FOR UPDATE;
+		SELECT summary_metrics FROM runs WHERE id = $1 FOR UPDATE;
 	`, m.TrialId).Scan(&summaryMetrics)
 	if err != nil {
 		return rollbacks, fmt.Errorf("error getting summary metrics from trials: %w", err)
@@ -510,6 +652,11 @@ func (db *PgDB) addTrialMetrics(
 	case float64, nil:
 	default:
 		return 0, fmt.Errorf("cannot add metric with non numeric 'epoch' value got %v", v)
+	}
+	switch v := m.Metrics.AvgMetrics.Fields["epochs"].AsInterface().(type) {
+	case float64, nil:
+	default:
+		return 0, fmt.Errorf("cannot add metric with non numeric 'epochs' value got %v", v)
 	}
 	return rollbacks, db.withTransaction(fmt.Sprintf("add trial metrics %s", mGroup),
 		func(tx *sqlx.Tx) error {
@@ -922,4 +1069,17 @@ RETURNING true`, bun.In(uniqueExpIDs)).Scan(ctx, &res)
 	}
 
 	return nil
+}
+
+// TrialByExperimentAndRequestID looks up a trial, returning an error if none exists.
+func TrialByExperimentAndRequestID(
+	ctx context.Context, experimentID int, requestID model.RequestID,
+) (*model.Trial, error) {
+	var t model.Trial
+	if err := Bun().NewSelect().Model(&t).
+		Where("experiment_id = ?", experimentID).
+		Where("request_id = ?", requestID).Scan(ctx); err != nil {
+		return nil, fmt.Errorf("error querying for trial %s: %w", requestID, err)
+	}
+	return &t, nil
 }

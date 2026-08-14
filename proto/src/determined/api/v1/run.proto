@@ -182,3 +182,81 @@ message UnarchiveRunsResponse {
   // Details on success or error for each run.
   repeated RunActionResult results = 1;
 }
+
+// Request to pause the experiment associated witha run.
+message PauseRunsRequest {
+  option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+    json_schema: { required: [ "project_id", "run_ids", "skip_multitrial" ] }
+  };
+
+  // The ids of the runs being moved.
+  repeated int32 run_ids = 1;
+  // The id of the project of the runs being paused.
+  int32 project_id = 2;
+  // Filter expression
+  optional string filter = 3;
+}
+
+// Response to PauseRunsRequest.
+message PauseRunsResponse {
+  option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+    json_schema: { required: [ "results" ] }
+  };
+
+  // Details on success or error for each run.
+  repeated RunActionResult results = 1;
+}
+
+// Request to unpause the experiment associated witha run.
+message ResumeRunsRequest {
+  option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+    json_schema: { required: [ "project_id", "run_ids", "skip_multitrial" ] }
+  };
+
+  // The ids of the runs being moved.
+  repeated int32 run_ids = 1;
+  // The id of the project of the runs being unpaused.
+  int32 project_id = 2;
+  // Filter expression
+  optional string filter = 3;
+}
+
+// Response to ResumeRunsRequest.
+message ResumeRunsResponse {
+  option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+    json_schema: { required: [ "results" ] }
+  };
+
+  // Details on success or error for each run.
+  repeated RunActionResult results = 1;
+}
+
+// Request to get the metadata of a run.
+message GetRunMetadataRequest {
+  option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+    json_schema: { required: [ "id" ] }
+  };
+  // The ID of the run to get metadata for.
+  int32 run_id = 1;
+}
+// Response to get the metadata of a run.
+message GetRunMetadataResponse {
+  // The arbitrary metadata of the run.
+  google.protobuf.Struct metadata = 1;
+}
+
+// Request to post metadata for a run.
+message PostRunMetadataRequest {
+  option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+    json_schema: { required: [ "id", "metadata" ] }
+  };
+  // The ID of the run to post metadata for.
+  int32 run_id = 1;
+  // The arbitrary metadata to post.
+  google.protobuf.Struct metadata = 2;
+}
+// Response to post metadata for a run.
+message PostRunMetadataResponse {
+  // The new metadata of the run.
+  google.protobuf.Struct metadata = 1;
+}

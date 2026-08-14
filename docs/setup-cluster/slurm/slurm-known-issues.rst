@@ -12,7 +12,6 @@ When using the HPC Launcher, Determined delegates all job scheduling and priorit
 workload manager (either Slurm or PBS) and the following experiment configuration options are
 ignored.
 
--  ``resources.agent_label``
 -  ``resources.max_slots``
 -  ``resources.priority``
 -  ``resources.weight``
@@ -250,7 +249,7 @@ Some constraints are due to differences in behavior between Docker and Singulari
 *********************
 
 -  Enroot uses ``XDG_RUNTIME_DIR`` which is not provided to the compute jobs by Slurm/PBS by
-   default. The error ``mkdir: cannot create directory ‘/run/enroot’: Permission denied`` indicates
+   default. The error ``mkdir: cannot create directory ' /run/enroot': Permission denied`` indicates
    that the environment variable ``XDG_RUNTIME_DIR`` is not defined on the compute nodes. See
    :ref:`podman-config-requirements` for recommendations.
 
@@ -290,7 +289,7 @@ Some constraints are due to differences in behavior between Docker and Singulari
    Unable to allocate resources: Requested node configuration is not available``.
 
    Slurm 22.05.5 through 22.05.8 are not supported due to `Slurm Bug 15857
-   <https://bugs.schedmd.com/show_bug.cgi?id=15857>`__. The bug was addressed in 22.05.09 or
+   <https://support.schedmd.com/show_bug.cgi?id=15857>`__. The bug was addressed in 22.05.09 or
    23.02.00.
 
 -  A Determined experiment remains ``QUEUEUED`` for an extended period:
@@ -393,32 +392,10 @@ Some constraints are due to differences in behavior between Docker and Singulari
    <pbs-config-requirements>`.
 
 ***********************
- AMD/ROCm Known Issues
+ AMD ROCm Known Issues
 ***********************
 
--  AMD/ROCm support is available only with Singularity containers. While Determined does add the
-   proper Podman arguments to enable ROCm GPU support, the capabilities have not yet been verified.
-
--  Launching experiments with ``slot_type: rocm``, may fail with the error ``RuntimeError: No HIP
-   GPUs are available``. Ensure that the compute nodes are providing ROCm drivers and libraries
-   compatible with the environment image that you are using and that they are available in the
-   default locations, or are added to the ``path`` and/or ``ld_library_path`` variables in the
-   :ref:`slurm configuration <cluster-configuration-slurm>`. Depending upon your system
-   configuration, you may need to select a different ROCm image. See :ref:`set-environment-images`
-   for the images available.
-
--  Launching experiments with ``slot_type: rocm``, may fail in the AMD/ROCm libraries with with the
-   error ``terminate called after throwing an instance of 'boost::filesystem::filesystem_error'
-   what(): boost::filesystem::remove: Directory not empty: "/tmp/miopen-...``. A potential
-   workaround is to disable the per-container ``/tmp`` by adding the following :ref:`bind mount
-   <exp-bind-mounts>` in your experiment configuration or globally by using the
-   ``task_container_defaults`` section in your master configuration:
-
-   .. code:: yaml
-
-      bind_mounts:
-         - host_path: /tmp
-           container_path: /tmp
+For AMD ROCm support and known issues, visit :ref:`AMD ROCm GPUs <rocm-support>`.
 
 ***************************************
  Determined AI Experiment Requirements
@@ -541,8 +518,9 @@ allocation on each node. Your ``slots_per_trial`` configuration should then be a
    integration. When using MPS, use one of the following workarounds:
 
    #. If the capabilities of MPS are not required, disable or uninstall the MPS service. See
-      `nvidia-cuda-mps-control <https://docs.nvidia.com/deploy/mps/index.html#topic_5_1_1>`__ or the
-      relevant documentation associated with your installation package.
+      `nvidia-cuda-mps-control
+      <https://docs.nvidia.com/deploy/mps/index.html#on-a-multi-user-system>`__ or the relevant
+      documentation associated with your installation package.
 
    #. Configure the MPS variable ``CUDA_MPS_PIPE_DIRECTORY`` to use a directory other than ``/tmp``
       (e.g. ``/dev/shm``).

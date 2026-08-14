@@ -211,7 +211,7 @@ func (a *apiServer) LaunchTensorboard(
 
 	// Validate the request.
 	if len(req.ExperimentIds) == 0 && len(req.TrialIds) == 0 && req.Filters == nil {
-		err = errors.New("must set experiment, trial ids, or filters")
+		err = fmt.Errorf("must set experiment, trial ids, or filters")
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
@@ -282,11 +282,15 @@ func (a *apiServer) LaunchTensorboard(
 		"DET_TASK_TYPE":        string(model.TaskTypeTensorboard),
 	}
 
-	OIDCPachydermEnvVars, err := a.getOIDCPachydermEnvVars(session)
+	oidcPachydermEnvVars, err := a.getOIDCPachydermEnvVars(session)
 	if err != nil {
 		return nil, err
 	}
-	maps.Copy(launchReq.Spec.Base.ExtraEnvVars, OIDCPachydermEnvVars)
+
+	if launchReq.Spec.Base.ExtraEnvVars == nil {
+		launchReq.Spec.Base.ExtraEnvVars = map[string]string{}
+	}
+	maps.Copy(launchReq.Spec.Base.ExtraEnvVars, oidcPachydermEnvVars)
 
 	if launchReq.Spec.Config.Debug {
 		uniqEnvVars["DET_DEBUG"] = "true"
@@ -504,8 +508,12 @@ func (a *apiServer) getTensorBoardConfigsFromReq(
 		confByID[expID] = &tensorboardConfig{ExperimentID: expID, Config: conf}
 	}
 
+	curUser, _, err := grpcutil.GetUser(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for _, trialID := range req.TrialIds {
-		if err := trials.CanGetTrialsExperimentAndCheckCanDoAction(ctx, int(trialID),
+		if err := trials.CanGetTrialsExperimentAndCheckCanDoAction(ctx, int(trialID), curUser,
 			exputil.AuthZProvider.Get().CanGetExperimentArtifacts); err != nil {
 			return nil, err
 		}

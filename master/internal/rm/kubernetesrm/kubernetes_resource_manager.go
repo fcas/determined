@@ -41,7 +41,7 @@ type ResourceManager struct {
 	poolsConfig           []config.ResourcePoolConfig
 	taskContainerDefaults *model.TaskContainerDefaultsConfig
 
-	podsService *pods
+	jobsService *jobsService
 	pools       map[string]*kubernetesResourcePool // immutable after initialization in new.
 
 	masterTLSConfig model.TLSClientConfig
@@ -65,11 +65,11 @@ func New(
 	}
 
 	// TODO(DET-9833) clusterID should just be a `internal/config` package singleton.
-	clusterID, err := db.GetOrCreateClusterID("")
+	id, err := db.GetOrCreateClusterID("")
 	if err != nil {
 		return nil, fmt.Errorf("getting clusterID: %w", err)
 	}
-	setClusterID(clusterID)
+	setClusterID(id)
 
 	k := &ResourceManager{
 		syslog: logrus.WithField("component", "k8srm"),
@@ -86,31 +86,33 @@ func New(
 		db: db,
 	}
 
-	poolNamespaces := make(map[string]string)
-	for i := range k.poolsConfig {
-		if k.poolsConfig[i].KubernetesNamespace == "" {
-			k.poolsConfig[i].KubernetesNamespace = k.config.Namespace
-		}
-
-		poolNamespaces[k.poolsConfig[i].KubernetesNamespace] = k.poolsConfig[i].PoolName
-	}
-
-	k.podsService = newPodsService(
-		k.config.Namespace,
-		poolNamespaces,
+	k.jobsService, err = newJobsService(
+		k.config.DefaultNamespace,
+		k.config.ClusterName,
 		k.config.MasterServiceName,
 		k.masterTLSConfig,
-		k.loggingConfig,
 		k.config.DefaultScheduler,
 		k.config.SlotType,
 		config.PodSlotResourceRequests{CPU: k.config.SlotResourceRequests.CPU},
 		k.poolsConfig,
 		k.taskContainerDefaults,
-		k.config.DetMasterIP,
+		k.config.DetMasterHost,
 		k.config.DetMasterPort,
+		k.config.DetMasterScheme,
 		k.config.KubeconfigPath,
-		k.podStatusUpdateCallback,
+		k.jobSchedulingStateCallback,
+		k.config.InternalTaskGateway,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(k.config.DefaultNamespace) > 0 {
+		err = k.jobsService.VerifyNamespaceExists(k.config.DefaultNamespace)
+		if err != nil {
+			return nil, fmt.Errorf("error verifying default namespace existence for cluster '%s': %w", k.config.ClusterName, err)
+		}
+	}
 
 	for _, poolConfig := range k.poolsConfig {
 		maxSlotsPerPod := 0
@@ -123,13 +125,16 @@ func New(
 			maxSlotsPerPod = *poolConfig.TaskContainerDefaults.Kubernetes.MaxSlotsPerPod
 		}
 
-		poolConfig := poolConfig
-		rp := newResourcePool(maxSlotsPerPod, &poolConfig, k.podsService, k.db)
+		if k.config.DefaultNamespace == "" {
+			k.config.DefaultNamespace = defaultNamespace
+		}
+		rp := newResourcePool(maxSlotsPerPod, &poolConfig, k.jobsService, k.db,
+			k.config.DefaultNamespace, k.config.ClusterName)
 		go func() {
 			t := time.NewTicker(podSubmissionInterval)
 			defer t.Stop()
 			for range t.C {
-				rp.Schedule()
+				rp.Admit()
 			}
 		}()
 		k.pools[poolConfig.PoolName] = rp
@@ -168,29 +173,24 @@ func (ResourceManager) DeleteJob(sproto.DeleteJob) (sproto.DeleteJobResponse, er
 	return sproto.EmptyDeleteJobResponse(), nil
 }
 
-// ExternalPreemptionPending implements rm.ResourceManager.
-func (ResourceManager) ExternalPreemptionPending(sproto.PendingPreemption) error {
-	return rmerrors.ErrNotSupported
-}
-
 // HealthCheck tries to call the KubeAPI.
 func (k *ResourceManager) HealthCheck() []model.ResourceManagerHealth {
 	return []model.ResourceManagerHealth{
 		{
-			Name:   k.config.Name,
-			Status: k.podsService.HealthStatus(),
+			ClusterName: k.config.ClusterName,
+			Status:      k.jobsService.HealthStatus(context.TODO()),
 		},
 	}
 }
 
 // GetAgent implements rm.ResourceManager.
 func (k *ResourceManager) GetAgent(msg *apiv1.GetAgentRequest) (*apiv1.GetAgentResponse, error) {
-	return k.podsService.GetAgent(msg), nil
+	return k.jobsService.GetAgent(msg), nil
 }
 
 // GetAgents implements rm.ResourceManager.
 func (k *ResourceManager) GetAgents() (*apiv1.GetAgentsResponse, error) {
-	return k.podsService.GetAgents(), nil
+	return k.jobsService.GetAgents()
 }
 
 // GetAllocationSummaries implements rm.ResourceManager.
@@ -278,7 +278,6 @@ func (k *ResourceManager) GetResourcePools() (*apiv1.GetResourcePoolsResponse, e
 			// But best to handle it anyway in case the implementation changes in the future.
 			return nil, err
 		}
-
 		jobStats, err := k.getPoolJobStats(pool)
 		if err != nil {
 			return nil, err
@@ -292,21 +291,12 @@ func (k *ResourceManager) GetResourcePools() (*apiv1.GetResourcePoolsResponse, e
 
 // GetSlot implements rm.ResourceManager.
 func (k *ResourceManager) GetSlot(msg *apiv1.GetSlotRequest) (*apiv1.GetSlotResponse, error) {
-	return k.podsService.GetSlot(msg), nil
+	return k.jobsService.GetSlot(msg), nil
 }
 
 // GetSlots implements rm.ResourceManager.
 func (k *ResourceManager) GetSlots(msg *apiv1.GetSlotsRequest) (*apiv1.GetSlotsResponse, error) {
-	return k.podsService.GetSlots(msg), nil
-}
-
-// MoveJob implements rm.ResourceManager.
-func (k *ResourceManager) MoveJob(msg sproto.MoveJob) error {
-	rp, err := k.poolByName(msg.ResourcePool)
-	if err != nil {
-		return fmt.Errorf("move job found no resource pool with name %s: %w", msg.ResourcePool, err)
-	}
-	return rp.MoveJob(msg)
+	return k.jobsService.GetSlots(msg), nil
 }
 
 // RecoverJobPosition implements rm.ResourceManager.
@@ -369,21 +359,86 @@ func (k *ResourceManager) ValidateResources(
 		return nil, nil
 	}
 
-	if msg.IsSingleNode {
-		rp, err := k.poolByName(msg.ResourcePool)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"validating request for (%s, %d): %w", msg.ResourcePool, msg.Slots, err)
-		}
-		resp := rp.ValidateResources(msg)
-		if !resp.Fulfillable {
-			return nil, errors.New("request unfulfillable, please try requesting less slots")
-		}
-		return nil, nil
-	} else if err := k.resourcePoolExists(msg.ResourcePool); err != nil {
-		return nil, fmt.Errorf("%s is an invalid resource pool", msg.ResourcePool)
+	rp, err := k.poolByName(msg.ResourcePool)
+	if err != nil {
+		return nil, fmt.Errorf("could not find resource pool with name %s", msg.ResourcePool)
 	}
-	return nil, nil
+
+	err = rp.ValidateResources(msg)
+	return nil, err
+}
+
+// DefaultNamespace implements rm.ResourceManager.
+func (k *ResourceManager) DefaultNamespace(clusterName string) (*string, error) {
+	if clusterName != k.config.ClusterName {
+		return nil, fmt.Errorf("invalid cluster name %s", clusterName)
+	}
+	namespace := k.jobsService.DefaultNamespace()
+	return &namespace, nil
+}
+
+// VerifyNamespaceExists implements rm.ResourceManager.
+func (k *ResourceManager) VerifyNamespaceExists(namespaceName string, clusterName string) error {
+	configClusterName := rm.ClusterName(k.config.ClusterName)
+	if configClusterName != rm.ClusterName(clusterName) {
+		return fmt.Errorf("invalid cluster name %s", clusterName)
+	}
+	err := k.jobsService.VerifyNamespaceExists(namespaceName)
+	if err != nil {
+		return fmt.Errorf("error verifying namespace existence %s: %w", namespaceName, err)
+	}
+	return nil
+}
+
+// CreateNamespace implements rm.ResourceManager.
+func (k *ResourceManager) CreateNamespace(namespaceName string, clusterName string,
+	fanout bool,
+) error {
+	err := k.jobsService.CreateNamespace(namespaceName)
+	if err != nil {
+		return fmt.Errorf("error creating namespace %s: %w", namespaceName, err)
+	}
+	return nil
+}
+
+// GetNamespaceResourceQuota gets the resource quota for the specified namespace.
+func (k *ResourceManager) GetNamespaceResourceQuota(namespaceName string, clusterName string) (*float64, error) {
+	quota, err := k.jobsService.GetNamespaceResourceQuota(namespaceName)
+	if err != nil {
+		return nil, fmt.Errorf("error deleting namespace %s: %w", namespaceName, err)
+	}
+	return quota, nil
+}
+
+// DeleteNamespace implements rm.ResourceManager.
+func (k *ResourceManager) DeleteNamespace(namespace string) error {
+	err := k.jobsService.DeleteNamespace(namespace)
+	if err != nil {
+		return fmt.Errorf("error deleting namespace %s: %w", namespace, err)
+	}
+	return nil
+}
+
+// SetResourceQuota implements rm.ResourceManager.
+func (k *ResourceManager) SetResourceQuota(quota int, namespace, clusterName string) error {
+	err := k.jobsService.SetResourceQuota(quota, namespace)
+	if err != nil {
+		return fmt.Errorf("error setting resource quota %d on namespace %s: %w", quota,
+			namespace, err)
+	}
+	return nil
+}
+
+// RemoveEmptyNamespace removes a namespace from our interfaces in cluster if it is no
+// longer used by any workspace.
+func (k *ResourceManager) RemoveEmptyNamespace(namespaceName string,
+	clusterName string,
+) error {
+	err := k.jobsService.RemoveEmptyNamespace(namespaceName, clusterName)
+	if err != nil {
+		return fmt.Errorf("error removing namespace %s: %w", namespaceName, err)
+	}
+	return nil
 }
 
 // getResourcePoolRef gets an actor ref to a resource pool by name.
@@ -515,9 +570,17 @@ func (k ResourceManager) TaskContainerDefaults(
 	return result, nil
 }
 
-func (k *ResourceManager) podStatusUpdateCallback(msg sproto.UpdatePodStatus) {
+type jobSchedulingStateCallback func(jobSchedulingStateChanged)
+
+type jobSchedulingStateChanged struct {
+	AllocationID model.AllocationID
+	NumPods      int
+	State        sproto.SchedulingState
+}
+
+func (k *ResourceManager) jobSchedulingStateCallback(msg jobSchedulingStateChanged) {
 	for _, rp := range k.pools {
-		rp.UpdatePodStatus(msg)
+		rp.JobSchedulingStateChanged(msg)
 	}
 }
 
@@ -554,7 +617,6 @@ func (k *ResourceManager) createResourcePoolSummary(
 	const na = "n/a"
 
 	poolType := resourcepoolv1.ResourcePoolType_RESOURCE_POOL_TYPE_K8S
-	preemptible := k.config.GetPreemption()
 	location := na
 	imageID := ""
 	instanceType := na
@@ -569,7 +631,7 @@ func (k *ResourceManager) createResourcePoolSummary(
 		SlotType:                     k.config.SlotType.Proto(),
 		DefaultAuxPool:               k.config.DefaultAuxResourcePool == poolName,
 		DefaultComputePool:           k.config.DefaultComputeResourcePool == poolName,
-		Preemptible:                  preemptible,
+		Preemptible:                  false,
 		SlotsPerAgent:                int32(slotsPerAgent),
 		AuxContainerCapacityPerAgent: int32(pool.MaxAuxContainersPerAgent),
 		SchedulerType:                schedulerType,
@@ -579,7 +641,7 @@ func (k *ResourceManager) createResourcePoolSummary(
 		InstanceType:                 instanceType,
 		Details:                      &resourcepoolv1.ResourcePoolDetail{},
 		Accelerator:                  accelerator,
-		ResourceManagerName:          k.config.Name,
+		ClusterName:                  k.config.ClusterName,
 		ResourceManagerMetadata:      k.config.Metadata,
 	}
 
@@ -588,7 +650,7 @@ func (k *ResourceManager) createResourcePoolSummary(
 		return &resourcepoolv1.ResourcePool{}, err
 	}
 
-	resourceSummary, err := rp.getResourceSummary(getResourceSummary{})
+	resourceSummary, err := rp.getResourceSummary()
 	if err != nil {
 		return &resourcepoolv1.ResourcePool{}, err
 	}
@@ -635,14 +697,14 @@ func (k *ResourceManager) getResourcePoolConfig(poolName string) (
 func (k *ResourceManager) EnableAgent(
 	req *apiv1.EnableAgentRequest,
 ) (resp *apiv1.EnableAgentResponse, err error) {
-	return k.podsService.EnableAgent(req)
+	return k.jobsService.EnableAgent(req)
 }
 
 // DisableAgent prevents scheduling on a node and has the option to kill running jobs.
 func (k *ResourceManager) DisableAgent(
 	req *apiv1.DisableAgentRequest,
 ) (resp *apiv1.DisableAgentResponse, err error) {
-	return k.podsService.DisableAgent(req)
+	return k.jobsService.DisableAgent(req)
 }
 
 // EnableSlot implements 'det slot enable...' functionality.
@@ -657,4 +719,9 @@ func (k ResourceManager) DisableSlot(
 	req *apiv1.DisableSlotRequest,
 ) (resp *apiv1.DisableSlotResponse, err error) {
 	return nil, rmerrors.ErrNotSupported
+}
+
+// SmallerValueIsHigherPriority returns true if smaller priority values indicate a higher priority level.
+func (k *ResourceManager) SmallerValueIsHigherPriority() (bool, error) {
+	return false, nil
 }

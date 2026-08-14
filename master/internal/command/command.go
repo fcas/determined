@@ -12,6 +12,7 @@ import (
 	"github.com/uptrace/bun"
 	"golang.org/x/exp/slices"
 
+	"github.com/determined-ai/determined/master/internal/configpolicy"
 	internaldb "github.com/determined-ai/determined/master/internal/db"
 	"github.com/determined-ai/determined/master/internal/job/jobservice"
 	"github.com/determined-ai/determined/master/internal/rm"
@@ -53,16 +54,15 @@ type Command struct {
 
 	tasks.GenericCommandSpec
 
-	registeredTime time.Time
-	taskID         model.TaskID
-	taskType       model.TaskType
-	jobType        model.JobType
-	jobID          model.JobID
-	allocationID   model.AllocationID
-	lastState      task.AllocationState
-	exitStatus     *task.AllocationExited
-	restored       bool
-
+	registeredTime   time.Time
+	taskID           model.TaskID
+	taskType         model.TaskType
+	jobType          model.JobType
+	jobID            model.JobID
+	allocationID     model.AllocationID
+	lastState        task.AllocationState
+	exitStatus       *task.AllocationExited
+	restored         bool
 	contextDirectory []byte // Don't rely on this being set outsides of PreStart non restore case.
 
 	logCtx logger.Context
@@ -125,6 +125,18 @@ func (c *Command) Start(ctx context.Context) error {
 		}
 		if err := c.persistAndEvictContextDirectoryFromMemory(); err != nil {
 			return err
+		}
+		err := task.InsertNTSCAllocationWorkspaceRecord(
+			ctx,
+			c.allocationID,
+			int(c.Metadata.WorkspaceID),
+			c.Base.Workspace,
+		)
+		if err != nil {
+			return fmt.Errorf(
+				"failure while attempting to persist workspace information for NTSC task (%s) allocation: %w",
+				c.taskID,
+				err)
 		}
 	}
 
@@ -237,6 +249,12 @@ func (c *Command) OnExit(ae *task.AllocationExited) {
 		c.syslog.WithError(err).Errorf(
 			"failure to delete user session for task: %v", c.taskID)
 	}
+	if c.TaskType == model.TaskTypeNotebook {
+		if err := internaldb.DeleteNotebookSessionByTask(context.TODO(), c.taskID); err != nil {
+			c.syslog.WithError(err).Errorf(
+				"failure to delete notebook session for task: %v", c.taskID)
+		}
+	}
 
 	go func() {
 		time.Sleep(terminatedDuration)
@@ -261,6 +279,16 @@ func (c *Command) garbageCollect() {
 }
 
 func (c *Command) setNTSCPriority(priority int, forward bool) error {
+	if smallerHigher, err := c.rm.SmallerValueIsHigherPriority(); err == nil {
+		ok, err := configpolicy.PriorityUpdateAllowed(int(c.Metadata.WorkspaceID), model.NTSCType, priority, smallerHigher)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("priority exceeds task config policy's priority_limit")
+		}
+	}
+
 	if forward {
 		switch err := c.rm.SetGroupPriority(sproto.SetGroupPriority{
 			Priority:     priority,
@@ -323,14 +351,15 @@ func (c *Command) ToV1Command() *commandv1.Command {
 func (c *Command) ToV1Notebook() *notebookv1.Notebook {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
 	allo := c.refreshAllocationState()
+	notebookToken := c.Base.ExtraEnvVars[model.NotebookSessionEnvVar]
+	notebookAddress := fmt.Sprintf("%s?token=%s", c.serviceAddress(), notebookToken)
 	return &notebookv1.Notebook{
 		Id:             c.stringID(),
 		State:          enrichState(allo.State),
 		Description:    c.Config.Description,
 		Container:      allo.SingleContainer().ToProto(),
-		ServiceAddress: c.serviceAddress(),
+		ServiceAddress: notebookAddress,
 		StartTime:      protoutils.ToTimestamp(c.registeredTime),
 		Username:       c.Base.Owner.Username,
 		UserId:         int32(c.Base.Owner.ID),

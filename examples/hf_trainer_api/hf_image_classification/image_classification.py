@@ -22,10 +22,11 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import datasets
+import evaluate
 import numpy as np
 import torch
 import transformers
-from datasets import load_dataset
+import util
 from PIL import Image
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.transforms import (
@@ -51,7 +52,6 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils.versions import require_version
 
 import determined as det
-from determined.pytorch import dsat
 from determined.transformers import DetCallback
 
 """ Fine-tuning a 🤗 Transformers model for image classification"""
@@ -223,7 +223,7 @@ def parse_input_arguments(
         args = sys.argv[1:]
         args.extend(dict2args(training_arguments))
         if any("--deepspeed" == arg.strip() for arg in args):
-            args = dsat.get_hf_args_with_overwrites(args, hparams)
+            args = util.get_hf_args_with_overwrites(args, hparams)
         model_args, data_args, training_args = parser.parse_args_into_dataclasses(
             args, look_for_args_file=False
         )
@@ -273,11 +273,12 @@ def main(det_callback, tb_callback, model_args, data_args, training_args):
 
     # Initialize our dataset and prepare it for the 'image-classification' task.
     if data_args.dataset_name is not None:
-        dataset = load_dataset(
+        dataset = datasets.load_dataset(
             data_args.dataset_name,
             data_args.dataset_config_name,
             cache_dir=model_args.cache_dir,
             use_auth_token=True if model_args.use_auth_token else None,
+            trust_remote_code=True,
         )
     else:
         data_files = {}
@@ -285,11 +286,12 @@ def main(det_callback, tb_callback, model_args, data_args, training_args):
             data_files["train"] = os.path.join(data_args.train_dir, "**")
         if data_args.validation_dir is not None:
             data_files["validation"] = os.path.join(data_args.validation_dir, "**")
-        dataset = load_dataset(
+        dataset = datasets.load_dataset(
             "imagefolder",
             data_files=data_files,
             cache_dir=model_args.cache_dir,
             task="image-classification",
+            trust_remote_code=True,
         )
 
     # If we don't have a validation split, split off a percentage of train as validation.
@@ -310,7 +312,7 @@ def main(det_callback, tb_callback, model_args, data_args, training_args):
         id2label[str(i)] = label
 
     # Load the accuracy metric from the datasets package
-    metric = datasets.load_metric("accuracy")
+    metric = evaluate.load("accuracy")
 
     # Define our compute_metrics function. It takes an `EvalPrediction` object (a namedtuple with a
     # predictions and label_ids field) and has to return a dictionary string to float.
@@ -428,8 +430,7 @@ def main(det_callback, tb_callback, model_args, data_args, training_args):
         elif last_checkpoint is not None:
             checkpoint = last_checkpoint
 
-        with dsat.dsat_reporting_context(core_context, op=det_callback.current_op):
-            train_result = trainer.train(resume_from_checkpoint=checkpoint)
+        train_result = trainer.train(resume_from_checkpoint=checkpoint)
         trainer.save_model()
         trainer.log_metrics("train", train_result.metrics)
         trainer.save_metrics("train", train_result.metrics)

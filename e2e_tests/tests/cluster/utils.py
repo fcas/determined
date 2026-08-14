@@ -1,7 +1,7 @@
 import copy
 import datetime
 import http.server
-import subprocess
+import sys
 import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple, Type
@@ -11,9 +11,12 @@ import requests
 from typing_extensions import Literal  # noqa:I2041
 
 from determined.common import api
+from determined.common.api import bindings
 from tests import command
 from tests import config as conf
 from tests import detproc
+
+KUBERNETES_EXPERIMENT_TIMEOUT = 600
 
 
 class _HTTPServerWithRequest(http.server.HTTPServer):
@@ -99,7 +102,7 @@ def num_free_slots(sess: api.Session) -> int:
 
 
 def run_command_set_priority(
-    sess: api.Session, sleep: int = 30, slots: int = 1, priority: int = 0
+    sess: api.Session, sleep: int, slots: int = 1, priority: int = 0
 ) -> str:
     cmd = [
         "det",
@@ -116,7 +119,7 @@ def run_command_set_priority(
     return detproc.check_output(sess, cmd).strip()
 
 
-def run_command(sess: api.Session, sleep: int = 30, slots: int = 1) -> str:
+def run_command(sess: api.Session, sleep: int, slots: int = 1) -> str:
     cmd = [
         "det",
         "command",
@@ -142,7 +145,7 @@ def run_command_args(sess: api.Session, entrypoint: str, args: Optional[List[str
     return detproc.check_output(sess, cmd + [entrypoint]).strip()
 
 
-def run_zero_slot_command(sess: api.Session, sleep: int = 30) -> str:
+def run_zero_slot_command(sess: api.Session, sleep: int) -> str:
     return run_command(sess, sleep=sleep, slots=0)
 
 
@@ -177,7 +180,9 @@ def wait_for_task_state(
             return
         time.sleep(1)
 
-    print(subprocess.check_output(["det", "-m", conf.make_master_url(), "task", "logs", task_id]))
+    print("== begin task logs ==", file=sys.stderr)
+    print(detproc.check_output(sess, ["det", "task", "logs", task_id]), file=sys.stderr)
+    print("== end task logs ==", file=sys.stderr)
     pytest.fail(f"{task_type} expected {state} state got {gotten_state} instead after {ticks} secs")
 
 
@@ -193,3 +198,30 @@ def set_master_port(config: str) -> None:
     lc = conf.load_config(config_path=config)
     port = get_master_port(lc)
     conf.MASTER_PORT = port
+
+
+def get_run_by_exp_id(sess: api.Session, exp_id: int) -> bindings.v1SearchRunsResponse:
+    return bindings.post_SearchRuns(
+        sess,
+        body=bindings.v1SearchRunsRequest(
+            limit=1,
+            filter="""{
+            "filterGroup": {
+                "children": [
+                {
+                    "columnName": "experimentId",
+                    "kind": "field",
+                    "location": "LOCATION_TYPE_RUN",
+                    "operator": "=",
+                    "type": "COLUMN_TYPE_NUMBER",
+                    "value": %s
+                }
+                ],
+                "conjunction": "and",
+                "kind": "group"
+            },
+            "showArchived": false
+            }"""
+            % exp_id,
+        ),
+    )

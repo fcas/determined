@@ -5,6 +5,7 @@ import json
 import os
 import pathlib
 import re
+import sys
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 from urllib import parse
 
@@ -21,6 +22,15 @@ def salt_and_hash(password: str) -> str:
         return hashlib.sha512((PASSWORD_SALT + password).encode()).hexdigest()
     else:
         return password
+
+
+def warn_about_complexity(e: ValueError) -> None:
+    print(
+        "Warning: your password does not appear to satisfy "
+        + f"recommended complexity requirements:\n{e}\n"
+        + "Please change your password as soon as possible.",
+        file=sys.stderr,
+    )
 
 
 def check_password_complexity(password: Optional[str]) -> None:
@@ -89,6 +99,10 @@ def get_det_user_token_from_env() -> Optional[str]:
 
 def get_det_password_from_env() -> Optional[str]:
     return os.environ.get("DET_PASS")
+
+
+def get_det_session_token_from_env() -> Optional[str]:
+    return os.environ.get("DET_SESSION_TOKEN")
 
 
 def login(
@@ -236,6 +250,11 @@ def login_with_cache(
             raise api.errors.UnauthenticatedException()
         raise
 
+    try:
+        check_password_complexity(password)
+    except ValueError as e:
+        warn_about_complexity(e)
+
     token_store.set_token(user, token)
 
     return sess
@@ -290,6 +309,27 @@ def logout_all(master_address: str, cert: Optional[certs.Cert]) -> None:
 
     for user in users:
         logout(master_address, user, cert)
+
+
+def login_from_task(
+    master_address: str,
+    cert: Optional[certs.Cert],
+) -> "api.TaskSession":
+    """
+    Creates a ``TaskSession`` from environment variables to be used for authenticating subsequent
+    requests.
+
+    This method should only be called on-cluster, from inside a task container.
+    """
+    session_token = get_det_session_token_from_env()
+    if not session_token:
+        raise ValueError("DET_SESSION_TOKEN environment variable not set.")
+
+    username = get_det_username_from_env()
+    if not username:
+        raise ValueError("DET_USER environment variable not set.")
+
+    return api.TaskSession(master=master_address, username=username, token=session_token, cert=cert)
 
 
 def _is_token_valid(master_address: str, token: str, cert: Optional[certs.Cert]) -> bool:

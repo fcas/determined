@@ -30,6 +30,7 @@ type SSOProviderInfo struct {
 	SSOInitiateURL string `json:"sso_url"`
 	Name           string `json:"name"`
 	Type           string `json:"type"`
+	AlwaysRedirect bool   `json:"always_redirect"`
 }
 
 // MasterInfo contains the master information that the agent has connected to.
@@ -79,6 +80,7 @@ type AgentStarted struct {
 	Version              string
 	Devices              []device.Device
 	ContainersReattached []ContainerReattachAck
+	ResourcePoolName     string
 }
 
 // ContainerStateChanged notifies the master that the agent transitioned the container state.

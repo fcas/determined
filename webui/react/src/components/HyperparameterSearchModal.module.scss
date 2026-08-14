@@ -14,9 +14,6 @@
     :global(.ant-modal-confirm-btns) {
       display: none;
     }
-    :global(.ant-form-item-explain) {
-      display: none;
-    }
     :global(.ant-form-item) {
       min-width: fit-content;
     }
@@ -63,9 +60,15 @@
         width: 100%;
       }
       .hyperparameterContainer {
+        align-items: center;
         display: grid;
         gap: 8px;
+        grid-auto-rows: max-content;
+        overflow-x: auto;
 
+        :global(.ant-form-item-explain) {
+          display: none;
+        }
         .hyperparameterName {
           align-items: center;
           display: flex;
@@ -84,6 +87,9 @@
           font-size: 1rem;
           font-weight: normal;
           margin: 0;
+        }
+        .delete {
+          cursor: pointer;
         }
       }
       p {

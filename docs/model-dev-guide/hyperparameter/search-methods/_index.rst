@@ -8,9 +8,9 @@ Determined supports a :ref:`variety of hyperparameter search algorithms <hyperpa
 Aside from the ``single`` searcher, a searcher runs multiple trials and decides the hyperparameter
 values to use in each trial. Every searcher is configured with the name of the validation metric to
 optimize (via the ``metric`` field), in addition to other searcher-specific options. For example,
-the ``adaptive_asha`` searcher (`arXiv:1810.0593 <https://arxiv.org/pdf/1810.05934.pdf>`_), suitable
-for larger experiments with many trials, is configured with the maximum number of trials to run, the
-maximum training length allowed per trial, and the maximum number of trials that can be worked on
+the ``adaptive_asha`` searcher (`arXiv:1810.0593 <http://arxiv.org/pdf/1810.05934>`_), suitable for
+larger experiments with many trials, is configured with the maximum number of trials to run, the
+name and maxmimum value of a "time" metric, and the maximum number of trials that can be worked on
 simultaneously:
 
 .. code:: yaml
@@ -19,8 +19,8 @@ simultaneously:
      name: "adaptive_asha"
      metric: "validation_loss"
      max_trials: 16
-     max_length:
-         epochs: 1
+     time_metric: batches
+     max_time: 100000
      max_concurrent_trials: 8
 
 For details on the supported searchers and their respective configuration options, refer to
@@ -38,8 +38,8 @@ checkpoints for downstream serving.
  Adaptive Search
 *****************
 
-Our default recommended search method is `Adaptive (ASHA) <https://arxiv.org/pdf/1810.05934.pdf>`_,
-a state-of-the-art early-stopping based technique that speeds up traditional techniques like random
+Our default recommended search method is `Adaptive (ASHA) <http://arxiv.org/pdf/1810.05934>`_, a
+state-of-the-art early-stopping based technique that speeds up traditional techniques like random
 search by periodically abandoning low-performing hyperparameter configurations in a principled
 fashion.
 
@@ -58,8 +58,6 @@ Determined also supports other common hyperparameter search algorithms:
    configurations by brute force and returns the best.
 -  :ref:`Random <topic-guides_hp-tuning-det_random>` evaluates a set of hyperparameter
    configurations chosen at random and returns the best.
-
-You can also implement your own :ref:`custom search methods <topic-guides_hp-tuning-det_custom>`.
 
 .. toctree::
    :maxdepth: 1

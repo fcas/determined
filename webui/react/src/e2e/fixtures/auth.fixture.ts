@@ -1,6 +1,9 @@
-import { expect, Page } from '@playwright/test';
+import { Page } from '@playwright/test';
 
+import { expect } from 'e2e/fixtures/global-fixtures';
+import { DefaultRoute } from 'e2e/models/pages/DefaultRoute';
 import { SignIn } from 'e2e/models/pages/SignIn';
+import { password, username } from 'e2e/utils/envVars';
 
 export class AuthFixture {
   readonly #page: Page;
@@ -9,24 +12,18 @@ export class AuthFixture {
   readonly signInPage: SignIn;
 
   constructor(readonly page: Page) {
-    if (process.env.PW_USER_NAME === undefined) {
-      throw new Error('username must be defined');
-    }
-    if (process.env.PW_PASSWORD === undefined) {
-      throw new Error('password must be defined');
-    }
-    this.#USERNAME = process.env.PW_USER_NAME;
-    this.#PASSWORD = process.env.PW_PASSWORD;
+    this.#USERNAME = username();
+    this.#PASSWORD = password();
     this.#page = page;
     this.signInPage = new SignIn(page);
   }
 
   async login({
-    waitForURL = /dashboard/,
+    expectedURL,
     username = this.#USERNAME,
     password = this.#PASSWORD,
   }: {
-    waitForURL?: string | RegExp | ((url: URL) => boolean);
+    expectedURL?: string | RegExp | ((url: URL) => boolean);
     username?: string;
     password?: string;
   } = {}): Promise<void> {
@@ -34,16 +31,19 @@ export class AuthFixture {
     if (!(await detAuth.pwLocator.isVisible())) {
       await this.#page.goto('/');
       await expect(detAuth.pwLocator).toBeVisible();
+      await expect.soft(this.signInPage.detAuth.submit.pwLocator).toBeDisabled();
     }
     await detAuth.username.pwLocator.fill(username);
     await detAuth.password.pwLocator.fill(password);
     await detAuth.submit.pwLocator.click();
-    await this.#page.waitForURL(waitForURL);
-    // BUG [ET-239] can cause the following line to fail
+
+    const defaultPage = new DefaultRoute(this.#page);
+    await this.#page.waitForURL(expectedURL ?? defaultPage.url);
   }
 
   async logout(): Promise<void> {
     await (await this.signInPage.nav.sidebar.headerDropdown.open()).signOut.pwLocator.click();
-    await this.#page.waitForURL(/login/);
+    await expect.soft(this.#page).toHaveDeterminedTitle(this.signInPage.title);
+    await this.signInPage.waitForURL();
   }
 }

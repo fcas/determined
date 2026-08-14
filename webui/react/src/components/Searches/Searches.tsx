@@ -8,6 +8,7 @@ import {
   defaultNumberColumn,
   defaultSelectionColumn,
   defaultTextColumn,
+  MIN_COLUMN_WIDTH,
   MULTISELECT,
 } from 'hew/DataGrid/columns';
 import DataGrid, {
@@ -21,6 +22,7 @@ import DataGrid, {
 } from 'hew/DataGrid/DataGrid';
 import { MenuItem } from 'hew/Dropdown';
 import Icon from 'hew/Icon';
+import Link from 'hew/Link';
 import Message from 'hew/Message';
 import Pagination from 'hew/Pagination';
 import Row from 'hew/Row';
@@ -28,10 +30,10 @@ import { useToast } from 'hew/Toast';
 import { Loadable, Loaded, NotLoaded } from 'hew/utils/loadable';
 import { isUndefined } from 'lodash';
 import { useObservable } from 'micro-observables';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 
-import { Error, NoExperiments } from 'components/exceptions';
+import { Error } from 'components/exceptions';
 import ExperimentActionDropdown from 'components/ExperimentActionDropdown';
 import { FilterFormStore, ROOT_ID } from 'components/FilterForm/components/FilterFormStore';
 import {
@@ -50,13 +52,20 @@ import { DataGridGlobalSettings, settingsConfigGlobal } from 'components/Options
 import TableActionBar from 'components/TableActionBar';
 import useUI from 'components/ThemeProvider';
 import { useAsync } from 'hooks/useAsync';
+import { useDebouncedSettings } from 'hooks/useDebouncedSettings';
 import { useGlasbey } from 'hooks/useGlasbey';
 import useMobile from 'hooks/useMobile';
 import usePolling from 'hooks/usePolling';
 import { useSettings } from 'hooks/useSettings';
 import { useTypedParams } from 'hooks/useTypedParams';
+import { paths } from 'routes/utils';
 import { getProjectColumns, searchExperiments } from 'services/api';
-import { V1BulkExperimentFilters, V1ColumnType, V1LocationType } from 'services/api-ts-sdk';
+import {
+  V1BulkExperimentFilters,
+  V1ColumnType,
+  V1LocationType,
+  V1TableType,
+} from 'services/api-ts-sdk';
 import usersStore from 'stores/users';
 import userSettings from 'stores/userSettings';
 import {
@@ -66,6 +75,7 @@ import {
   Project,
   ProjectColumn,
   RunState,
+  SelectionType as SelectionState,
 } from 'types';
 import handleError from 'utils/error';
 import { getProjectExperimentForExperimentItem } from 'utils/experiment';
@@ -75,11 +85,11 @@ import { pluralizer } from 'utils/string';
 import { getColumnDefs, searcherMetricsValColumn } from './columns';
 import css from './Searches.module.scss';
 import {
+  ColumnWidthsSlice,
   DEFAULT_SELECTION,
   defaultProjectSettings,
   ProjectSettings,
   ProjectUrlSettings,
-  SelectionType as SelectionState,
   settingsPathForProject,
 } from './Searches.settings';
 
@@ -88,6 +98,9 @@ interface Props {
 }
 
 type ExperimentWithIndex = { index: number; experiment: BulkExperimentItem };
+
+const BANNED_FILTER_COLUMNS = new Set(['searcherMetricsVal']);
+const BANNED_SORT_COLUMNS = new Set(['tags', 'searcherMetricsVal']);
 
 const makeSortString = (sorts: ValidSort[]): string =>
   sorts.map((s) => `${s.column}=${s.direction}`).join(',');
@@ -104,7 +117,7 @@ const parseSortString = (sortString: string): Sort[] => {
   });
 };
 
-const formStore = new FilterFormStore();
+const formStore = new FilterFormStore(V1LocationType.EXPERIMENT);
 
 export const PAGE_SIZE = 100;
 const INITIAL_LOADING_EXPERIMENTS: Loadable<ExperimentWithTrial>[] = new Array(PAGE_SIZE).fill(
@@ -135,12 +148,13 @@ const Searches: React.FC<Props> = ({ project }) => {
     (p: Partial<ProjectSettings>) => userSettings.setPartial(ProjectSettings, settingsPath, p),
     [settingsPath],
   );
+  const [columnWidths, setColumnWidths] = useDebouncedSettings(ColumnWidthsSlice, settingsPath);
   const settings = useMemo(
     () =>
-      projectSettings
-        .map((s) => ({ ...defaultProjectSettings, ...s }))
+      Loadable.all([projectSettings, columnWidths])
+        .map(([s, cw]) => ({ ...defaultProjectSettings, ...s, ...cw }))
         .getOrElse(defaultProjectSettings),
-    [projectSettings],
+    [projectSettings, columnWidths],
   );
 
   const { params, updateParams } = useTypedParams(ProjectUrlSettings, {});
@@ -153,13 +167,7 @@ const Searches: React.FC<Props> = ({ project }) => {
   const { settings: globalSettings, updateSettings: updateGlobalSettings } =
     useSettings<DataGridGlobalSettings>(settingsConfigGlobal);
 
-  const isPagedView = true;
-  const [sorts, setSorts] = useState<Sort[]>(() => {
-    if (!isLoadingSettings) {
-      return parseSortString(settings.sortString);
-    }
-    return [EMPTY_SORT];
-  });
+  const [sorts, setSorts] = useState<Sort[]>([EMPTY_SORT]);
   const sortString = useMemo(() => makeSortString(sorts.filter(validSort.is)), [sorts]);
   const [experiments, setExperiments] = useState<Loadable<ExperimentWithTrial>[]>(
     INITIAL_LOADING_EXPERIMENTS,
@@ -296,28 +304,34 @@ const Searches: React.FC<Props> = ({ project }) => {
     [resetPagination, sortString, updateSettings],
   );
 
-  useEffect(() => {
-    if (!isLoadingSettings && settings.sortString) {
-      setSorts(parseSortString(settings.sortString));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoadingSettings]);
+  useLayoutEffect(() => {
+    let cleanup: () => void;
+    // eslint-disable-next-line prefer-const
+    cleanup = eagerSubscribe(projectSettingsObs, (ps, prevPs) => {
+      if (!prevPs?.isLoaded) {
+        ps.forEach((s) => {
+          const { sortString } = { ...defaultProjectSettings, ...s };
+          setSorts(parseSortString(sortString));
+          cleanup?.();
+        });
+      }
+    });
+    return cleanup;
+  }, [projectSettingsObs]);
 
   const fetchExperiments = useCallback(async (): Promise<void> => {
     if (isLoadingSettings || Loadable.isNotLoaded(loadableFormset)) return;
     try {
-      const tableOffset = Math.max((page - 0.5) * PAGE_SIZE, 0);
-
       // always filter out single trial experiments
       const filters = JSON.parse(filtersString);
       const existingFilterGroup = { ...filters.filterGroup };
       const singleTrialFilter = {
-        columnName: 'numTrials',
+        columnName: 'searcherType',
         kind: 'field',
         location: 'LOCATION_TYPE_EXPERIMENT',
-        operator: '>',
-        type: 'COLUMN_TYPE_NUMBER',
-        value: 1,
+        operator: '!=',
+        type: 'COLUMN_TYPE_TEXT',
+        value: 'single',
       };
       filters.filterGroup = {
         children: [existingFilterGroup, singleTrialFilter],
@@ -325,39 +339,27 @@ const Searches: React.FC<Props> = ({ project }) => {
         kind: 'group',
       };
 
+      const offset = page * settings.pageLimit;
       const response = await searchExperiments(
         {
           ...experimentFilters,
           filter: JSON.stringify(filters),
-          limit: isPagedView ? settings.pageLimit : 2 * PAGE_SIZE,
-          offset: isPagedView ? page * settings.pageLimit : tableOffset,
+          limit: settings.pageLimit,
+          offset,
           sort: sortString || undefined,
         },
         { signal: canceler.signal },
       );
-      const total = response.pagination.total ?? 0;
       const loadedExperiments = response.experiments;
 
-      setExperiments((prev) => {
-        if (isPagedView) {
-          return loadedExperiments.map((experiment) => Loaded(experiment));
-        }
-
-        // Ensure experiments array has enough space for full result set
-        const newExperiments = prev.length !== total ? new Array(total).fill(NotLoaded) : [...prev];
-
-        // Update the list with the fetched results.
-        Array.prototype.splice.apply(newExperiments, [
-          tableOffset,
-          loadedExperiments.length,
-          ...loadedExperiments.map((experiment) => Loaded(experiment)),
-        ]);
-
-        return newExperiments;
-      });
+      setExperiments(loadedExperiments.map((experiment) => Loaded(experiment)));
       setTotal(
         response.pagination.total !== undefined ? Loaded(response.pagination.total) : NotLoaded,
       );
+      // oob check
+      if ((response.pagination.total || 0) < offset) {
+        resetPagination();
+      }
     } catch (e) {
       handleError(e, { publicSubject: 'Unable to fetch experiments.' });
     } finally {
@@ -368,9 +370,9 @@ const Searches: React.FC<Props> = ({ project }) => {
     experimentFilters,
     filtersString,
     isLoadingSettings,
-    isPagedView,
     loadableFormset,
     page,
+    resetPagination,
     sortString,
     settings.pageLimit,
   ]);
@@ -379,7 +381,10 @@ const Searches: React.FC<Props> = ({ project }) => {
 
   const projectColumns = useAsync(async () => {
     try {
-      const columns = await getProjectColumns({ id: project.id });
+      const columns = await getProjectColumns({
+        id: project.id,
+        tableType: V1TableType.EXPERIMENT,
+      });
       return columns.filter((c) => c.location === V1LocationType.EXPERIMENT);
     } catch (e) {
       handleError(e, { publicSubject: 'Unable to fetch project columns' });
@@ -509,7 +514,7 @@ const Searches: React.FC<Props> = ({ project }) => {
           break;
         case ExperimentAction.Edit:
           if (data) updateExperiment(data);
-          openToast({ severity: 'Confirm', title: 'Experiment updated successfully' });
+          openToast({ severity: 'Confirm', title: 'Search updated successfully' });
           break;
         case ExperimentAction.Move:
         case ExperimentAction.Delete:
@@ -548,16 +553,18 @@ const Searches: React.FC<Props> = ({ project }) => {
           acc[col] = DEFAULT_COLUMN_WIDTH;
           return acc;
         }, {});
-      updateSettings({
-        columns: newColumnsOrder,
+      setColumnWidths({
         columnWidths: {
           ...settings.columnWidths,
           ...newColumnWidths,
         },
+      });
+      updateSettings({
+        columns: newColumnsOrder,
         pinnedColumnsCount: isUndefined(pinnedCount) ? settings.pinnedColumnsCount : pinnedCount,
       });
     },
-    [updateSettings, settings.pinnedColumnsCount, settings.columnWidths],
+    [setColumnWidths, updateSettings, settings.pinnedColumnsCount, settings.columnWidths],
   );
 
   const handleRowHeightChange = useCallback(
@@ -594,24 +601,20 @@ const Searches: React.FC<Props> = ({ project }) => {
 
   const handleColumnWidthChange = useCallback(
     (columnId: string, width: number) => {
-      updateSettings({
+      setColumnWidths({
         columnWidths: {
           ...settings.columnWidths,
-          [columnId]: width,
+          [columnId]: Math.max(MIN_COLUMN_WIDTH, width),
         },
       });
     },
-    [updateSettings, settings.columnWidths],
+    [setColumnWidths, settings.columnWidths],
   );
 
   const columnsIfLoaded = useMemo(
     () => (isLoadingSettings ? [] : settings.columns),
     [isLoadingSettings, settings.columns],
   );
-
-  const showPagination = useMemo(() => {
-    return isPagedView && !isMobile;
-  }, [isMobile, isPagedView]);
 
   const {
     ui: { theme: appTheme },
@@ -638,10 +641,25 @@ const Searches: React.FC<Props> = ({ project }) => {
         if (columnName === MULTISELECT) {
           return (columnDefs[columnName] = defaultSelectionColumn(selection.rows, false));
         }
-        if (columnName in columnDefs) return columnDefs[columnName];
-        if (!Loadable.isLoaded(projectColumnsMap)) return;
+
+        if (!Loadable.isLoaded(projectColumnsMap)) {
+          if (columnName in columnDefs) return columnDefs[columnName];
+          return;
+        }
+
         const currentColumn = projectColumnsMap.data[columnName];
-        if (!currentColumn) return;
+        if (!currentColumn) {
+          if (columnName in columnDefs) return columnDefs[columnName];
+          return;
+        }
+
+        // prioritize column title from getProjectColumns API response, but use static front-end definition as fallback:
+        if (columnName in columnDefs)
+          return {
+            ...columnDefs[columnName],
+            title: currentColumn.displayName ?? columnDefs[columnName].title,
+          };
+
         let dataPath: string | undefined = undefined;
         switch (currentColumn.location) {
           case V1LocationType.EXPERIMENT:
@@ -735,7 +753,6 @@ const Searches: React.FC<Props> = ({ project }) => {
 
     const filterCount = formStore.getFieldCount(column.column).get();
 
-    const BANNED_FILTER_COLUMNS = ['searcherMetricsVal'];
     const loadableFormset = formStore.formset.get();
     const filterMenuItemsForColumn = () => {
       const isSpecialColumn = (SpecialColumnNames as ReadonlyArray<string>).includes(column.column);
@@ -809,11 +826,15 @@ const Searches: React.FC<Props> = ({ project }) => {
           }
         },
       },
-      { type: 'divider' as const },
-      ...(BANNED_FILTER_COLUMNS.includes(column.column)
+      ...(BANNED_SORT_COLUMNS.has(column.column)
         ? []
         : [
+            { type: 'divider' as const },
             ...sortMenuItemsForColumn(column, sorts, handleSortChange),
+          ]),
+      ...(BANNED_FILTER_COLUMNS.has(column.column)
+        ? []
+        : [
             { type: 'divider' as const },
             {
               icon: <Icon decorative name="filter" />,
@@ -845,7 +866,10 @@ const Searches: React.FC<Props> = ({ project }) => {
   return (
     <>
       <TableActionBar
+        bannedFilterColumns={BANNED_FILTER_COLUMNS}
+        bannedSortColumns={BANNED_SORT_COLUMNS}
         columnGroups={[V1LocationType.EXPERIMENT]}
+        entityCopy="Show searches…"
         formStore={formStore}
         initialVisibleColumns={columnsIfLoaded}
         isOpenFilter={isOpenFilter}
@@ -867,7 +891,16 @@ const Searches: React.FC<Props> = ({ project }) => {
       <div className={css.content} ref={contentRef}>
         {!isLoading && experiments.length === 0 ? (
           numFilters === 0 ? (
-            <NoExperiments />
+            <Message
+              action={
+                <Link external href={paths.docs('/get-started/webui-qs.html')}>
+                  Quick Start Guide
+                </Link>
+              }
+              description="Keep track of searches in a project by connecting up your code."
+              icon="experiment"
+              title="No Searches"
+            />
           ) : (
             <Message description="No results matching your filters" icon="search" />
           )
@@ -881,9 +914,6 @@ const Searches: React.FC<Props> = ({ project }) => {
               getHeaderMenuItems={getHeaderMenuItems}
               getRowAccentColor={getRowAccentColor}
               imperativeRef={dataGridRef}
-              isPaginated={isPagedView}
-              page={page}
-              pageSize={PAGE_SIZE}
               pinnedColumnsCount={isLoadingSettings ? 0 : settings.pinnedColumnsCount}
               renderContextMenuComponent={({
                 cell,
@@ -911,15 +941,13 @@ const Searches: React.FC<Props> = ({ project }) => {
               selection={selection}
               sorts={sorts}
               staticColumns={STATIC_COLUMNS}
-              total={Loadable.getOrElse(PAGE_SIZE, total)}
               onColumnResize={handleColumnWidthChange}
               onColumnsOrderChange={handleColumnsOrderChange}
               onContextMenuComplete={handleContextMenuComplete}
-              onPageUpdate={setPage}
               onPinnedColumnsCountChange={handlePinnedColumnsCountChange}
               onSelectionChange={handleSelectionChange}
             />
-            {showPagination && (
+            {!isMobile && (
               <Row>
                 <Column align="right">
                   <Pagination

@@ -5,7 +5,6 @@ See the documentation: http://www.sphinx-doc.org/en/master/config
 
 import json
 import os
-import pathlib
 import sys
 import time
 
@@ -20,7 +19,19 @@ project = "Determined"
 html_title = "Determined AI Documentation"
 copyright = time.strftime("%Y, Determined AI")
 author = "ai-open-source@hpe.com"
-version = pathlib.Path(__file__).parents[1].joinpath("VERSION").read_text().strip()
+
+class VersionError(Exception):
+    pass
+
+# Read the application version string from the VERSION environment
+# variable. Previously, this was read from a static VERSION file at the root of
+# the repository. Now, we read it from an environment variable set by a
+# Makefile, generated from version.sh in the repository root.
+try:
+    version = os.environ["VERSION"]
+except KeyError as e:
+    raise VersionError("Please ensure VERSION environment variable is set.").with_traceback(e.__traceback__)
+
 release = version
 language = "en"
 
@@ -157,6 +168,7 @@ linkcheck_ignore = [
     r"^http://127.0.0.1",
     r"^\.\./",
     "https://www.hpe.com/us/en/hpe-machine-learning-development-environment.html",
+    r"https://mldes\.ext\.hpe\.com.*",
 ]
 
 linkcheck_timeout = 20
@@ -164,8 +176,14 @@ linkcheck_timeout = 20
 # linkcheck gets confused by anchors sometimes
 linkcheck_anchors_ignore = [
     "install-nvidia-device-plugin",
+    "on-a-multi-user-system",
     "tag/System/operation/SystemAuth",
     "batch-size-related-parameters",
+    "metrics",
+    "join-metrics",
+    "exposed-metrics",
+    "L139-L169",
+    "/Experiments/GetExperimentCheckpoints",
 ]
 
 # Some pages block python requests. Set user-agent to appear as a browser.

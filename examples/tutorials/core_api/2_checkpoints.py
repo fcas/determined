@@ -41,14 +41,14 @@ def load_state(trial_id, checkpoint_directory):
 
 def main(core_context, latest_checkpoint, trial_id, increment_by):
     x = 0
-
+    max_length = 100
     # NEW: load a checkpoint if one was provided.
     starting_batch = 0
     if latest_checkpoint is not None:
         with core_context.checkpoint.restore_path(latest_checkpoint) as path:
             x, starting_batch = load_state(trial_id, path)
 
-    for batch in range(starting_batch, 100):
+    for batch in range(starting_batch, max_length):
         x += increment_by
         steps_completed = batch + 1
         time.sleep(0.1)
@@ -57,6 +57,7 @@ def main(core_context, latest_checkpoint, trial_id, increment_by):
             core_context.train.report_training_metrics(
                 steps_completed=steps_completed, metrics={"x": x}
             )
+            core_context.train.report_progress(steps_completed / float(max_length))
 
             # NEW: write checkpoints at regular intervals to limit lost progress
             # in case of a crash during training.
@@ -65,8 +66,8 @@ def main(core_context, latest_checkpoint, trial_id, increment_by):
                 save_state(x, steps_completed, trial_id, path)
 
             # NEW: check for a preemption signal.  This could originate from a
-            # higher-priority task bumping us off the cluster, or for a user pausing
-            # the experiment via the WebUI or CLI.
+            # higher-priority task bumping us off the cluster, from the hpsearch
+            # algorithm, or from a user pausing in the WebUI or CLI.
             if core_context.preempt.should_preempt():
                 # At this point, a checkpoint was just saved, so training can exit
                 # immediately and resume when the trial is reactivated.

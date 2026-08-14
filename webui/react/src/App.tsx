@@ -1,22 +1,22 @@
 import Button from 'hew/Button';
 import Spinner from 'hew/Spinner';
 import UIProvider from 'hew/Theme';
-import { notification } from 'hew/Toast';
 import { ConfirmationProvider } from 'hew/useConfirm';
 import { Loadable } from 'hew/utils/loadable';
 import { useObservable } from 'micro-observables';
-import React, { useEffect, useLayoutEffect, useState } from 'react';
+import React, { Suspense, useEffect, useLayoutEffect, useState } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { HelmetProvider } from 'react-helmet-async';
 import { useParams } from 'react-router-dom';
 
+import ClusterMessageBanner from 'components/ClusterMessage';
 import JupyterLabGlobal from 'components/JupyterLabGlobal';
-import Link from 'components/Link';
 import Navigation from 'components/Navigation';
 import PageMessage from 'components/PageMessage';
 import Router from 'components/Router';
 import useUI, { Mode, ThemeProvider } from 'components/ThemeProvider';
+import VersionChecker from 'components/VersionChecker';
 import useAuthCheck from 'hooks/useAuthCheck';
 import useFeature from 'hooks/useFeature';
 import useKeyTracker from 'hooks/useKeyTracker';
@@ -29,7 +29,7 @@ import useTelemetry from 'hooks/useTelemetry';
 import { STORAGE_PATH, settings as themeSettings } from 'hooks/useTheme.settings';
 import Omnibar from 'omnibar/Omnibar';
 import appRoutes from 'routes';
-import { paths, serverAddress } from 'routes/utils';
+import { serverAddress } from 'routes/utils';
 import authStore from 'stores/auth';
 import clusterStore from 'stores/cluster';
 import determinedStore from 'stores/determinedInfo';
@@ -87,44 +87,7 @@ const AppView: React.FC = () => {
     () => (isAuthenticated ? workspaceStore.startPolling({ delay: 60_000 }) : undefined),
     [isAuthenticated],
   );
-  useEffect(() => determinedStore.startPolling({ delay: 600_000 }), []);
-
-  useEffect(() => {
-    /*
-     * Check to make sure the WebUI version matches the platform version.
-     * Skip this check for development version.
-     */
-    Loadable.quickMatch(loadableInfo, undefined, undefined, (info) => {
-      if (!process.env.IS_DEV && info.version !== process.env.VERSION) {
-        const btn = (
-          <Button type="primary" onClick={refreshPage}>
-            Update Now
-          </Button>
-        );
-        const message = 'New WebUI Version';
-        const description = (
-          <div>
-            WebUI version <b>v{info.version}</b> is available. Check out what&apos;s new in
-            our&nbsp;
-            <Link external path={paths.docs('/release-notes.html')}>
-              release notes
-            </Link>
-            .
-          </div>
-        );
-        setTimeout(() => {
-          notification.warning({
-            btn,
-            description,
-            duration: 0,
-            key: 'version-mismatch',
-            message,
-            placement: 'bottomRight',
-          });
-        }, 10);
-      }
-    });
-  }, [loadableInfo]);
+  useEffect(() => determinedStore.startPolling({ delay: 60_000 }), []);
 
   // Detect telemetry settings changes and update telemetry library.
   useEffect(() => {
@@ -163,24 +126,29 @@ const AppView: React.FC = () => {
 
   return Loadable.match(loadableInfo, {
     Failed: () => null, // TODO display any errors we receive
-    Loaded: () => (
+    Loaded: (info) => (
       <UIProvider theme={theme} themeIsDark={isDarkMode}>
         <div className={css.base}>
           {isAuthChecked ? (
             <>
               {isServerReachable ? (
                 <ConfirmationProvider>
-                  <Navigation>
-                    <JupyterLabGlobal
-                      enabled={
-                        Loadable.isLoaded(loadableUser) &&
-                        (workspace ? canCreateWorkspaceNSC({ workspace }) : canCreateNSC)
-                      }
-                      workspace={workspace ?? undefined}
-                    />
-                    <Omnibar />
+                  {/* Global app components: */}
+                  <ClusterMessageBanner message={info.clusterMessage} />
+                  <JupyterLabGlobal
+                    enabled={
+                      Loadable.isLoaded(loadableUser) &&
+                      (workspace ? canCreateWorkspaceNSC({ workspace }) : canCreateNSC)
+                    }
+                    workspace={workspace ?? undefined}
+                  />
+                  <Omnibar />
+                  <VersionChecker version={info.version} />
+                  <Navigation isClusterMessagePresent={!!info.clusterMessage}>
                     <main>
-                      <Router routes={appRoutes} />
+                      <Suspense fallback={<Spinner center spinning />}>
+                        <Router routes={appRoutes} />
+                      </Suspense>
                     </main>
                   </Navigation>
                 </ConfirmationProvider>

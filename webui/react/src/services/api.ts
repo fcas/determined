@@ -219,6 +219,12 @@ export const disableAgent = generateDetApi<string, Api.V1DisableAgentResponse, T
   Config.disableAgent,
 );
 
+export const getKubernetesResourceManagers = generateDetApi<
+  void,
+  Api.V1GetKubernetesResourceManagersResponse,
+  Type.KubernetesResourceManagers
+>(Config.getKubernetesResourceManagers);
+
 export const getResourcePools = generateDetApi<
   Service.GetResourcePoolsParams,
   Api.V1GetResourcePoolsResponse,
@@ -319,6 +325,12 @@ export const getExpValidationHistory = generateDetApi<
   Type.ValidationHistory[]
 >(Config.getExpValidationHistory);
 
+export const getTrialRemainingLogRetentionDays = generateDetApi<
+  Service.TrialDetailsParams,
+  Api.V1GetTrialRemainingLogRetentionDaysResponse,
+  Type.TrialRemainingLogRetentionDays
+>(Config.getTrialRemainingLogRetentionDays);
+
 export const getTrialDetails = generateDetApi<
   Service.TrialDetailsParams,
   Api.V1GetTrialResponse,
@@ -330,6 +342,12 @@ export const timeSeries = generateDetApi<
   Api.V1CompareTrialsResponse,
   Type.TrialSummary[]
 >(Config.timeSeries);
+
+export const getTrialCheckpoints = generateDetApi<
+  Service.getExperimentCheckpointsParams,
+  Api.V1GetTrialCheckpointsResponse,
+  Type.CheckpointPagination
+>(Config.getTrialCheckpoints);
 
 export const getTrialWorkloads = generateDetApi<
   Service.TrialWorkloadsParams,
@@ -489,6 +507,12 @@ export const getActiveTasks = generateDetApi<
   Type.TaskCounts
 >(Config.getActiveTasks);
 
+export const getTaskAcceleratorData = generateDetApi<
+  Service.GetTaskParams,
+  Api.V1GetTaskAcceleratorDataResponse,
+  Api.V1AcceleratorData[]
+>(Config.getTaskAcceleratorData);
+
 /* Webhooks */
 
 export const createWebhook = generateDetApi<Api.V1Webhook, Api.V1PostWebhookResponse, Type.Webhook>(
@@ -504,6 +528,12 @@ export const deleteWebhook = generateDetApi<
 export const getWebhooks = generateDetApi<EmptyParams, Api.V1GetWebhooksResponse, Type.Webhook[]>(
   Config.getWebhooks,
 );
+
+export const patchWebhook = generateDetApi<
+  Service.PatchWebhookParams,
+  Api.V1PatchWebhookResponse,
+  void
+>(Config.patchWebhook);
 
 export const testWebhook = generateDetApi<
   Service.GetWebhookParams,
@@ -639,6 +669,24 @@ export const patchWorkspace = generateDetApi<
   Type.Workspace
 >(Config.patchWorkspace);
 
+export const listWorkspaceNamespaceBindings = generateDetApi<
+  Service.ListWorkspaceNamespaceBindingsParams,
+  Api.V1ListWorkspaceNamespaceBindingsResponse,
+  Type.WorkspaceNamespaceBindings
+>(Config.listWorkspaceNamespaceBindings);
+
+export const setResourceQuotas = generateDetApi<
+  Api.V1SetResourceQuotasRequest,
+  Api.V1SetResourceQuotasResponse,
+  void
+>(Config.setResourceQuotas);
+
+export const getKubernetesResourceQuotas = generateDetApi<
+  Service.GetKubernetesResourceQuotasParamas,
+  Api.V1GetKubernetesResourceQuotasResponse,
+  Type.WorkspaceResourceQuotas
+>(Config.getKubernetesResourceQuotas);
+
 export const archiveWorkspace = generateDetApi<
   Service.ActionWorkspaceParams,
   Api.V1ArchiveWorkspaceResponse,
@@ -743,6 +791,12 @@ export const getProjectNumericMetricsRange = generateDetApi<
   Type.ProjectMetricsRange[]
 >(Config.getProjectNumericMetricsRange);
 
+export const getMetadataValues = generateDetApi<
+  Service.GetMetadataValuesParams,
+  Api.V1GetMetadataValuesResponse,
+  string[]
+>(Config.getMetadataValues);
+
 /* Runs */
 
 export const searchRuns = generateDetApi<
@@ -750,6 +804,48 @@ export const searchRuns = generateDetApi<
   Api.V1SearchRunsResponse,
   Type.SearchFlatRunPagination
 >(Config.searchRuns);
+
+export const archiveRuns = generateDetApi<
+  Api.V1ArchiveRunsRequest,
+  Api.V1ArchiveRunsResponse,
+  Type.BulkActionResult
+>(Config.archiveRuns);
+
+export const deleteRuns = generateDetApi<
+  Api.V1DeleteRunsRequest,
+  Api.V1DeleteRunsResponse,
+  Type.BulkActionResult
+>(Config.deleteRuns);
+
+export const killRuns = generateDetApi<
+  Api.V1KillRunsRequest,
+  Api.V1KillRunsResponse,
+  Type.BulkActionResult
+>(Config.killRuns);
+
+export const moveRuns = generateDetApi<
+  Api.V1MoveRunsRequest,
+  Api.V1MoveRunsResponse,
+  Type.BulkActionResult
+>(Config.moveRuns);
+
+export const unarchiveRuns = generateDetApi<
+  Api.V1UnarchiveRunsRequest,
+  Api.V1UnarchiveRunsResponse,
+  void
+>(Config.unarchiveRuns);
+
+export const pauseRuns = generateDetApi<
+  Api.V1ResumeRunsRequest,
+  Api.V1ResumeRunsResponse,
+  Type.BulkActionResult
+>(Config.pauseRuns);
+
+export const resumeRuns = generateDetApi<
+  Api.V1ResumeRunsRequest,
+  Api.V1ResumeRunsResponse,
+  Type.BulkActionResult
+>(Config.resumeRuns);
 
 /* Tasks */
 
@@ -898,3 +994,39 @@ export const killTask = async (task: Pick<Type.CommandTask, 'id' | 'type'>): Pro
       return await killTensorBoard({ commandId: task.id });
   }
 };
+
+export const getWorkspaceConfigPolicies = generateDetApi<
+  Service.GetWorkspaceConfigPolicies,
+  Api.V1GetWorkspaceConfigPoliciesResponse,
+  Api.V1GetWorkspaceConfigPoliciesResponse
+>(Config.getWorkspaceConfigPolicies);
+
+export const updateWorkspaceConfigPolicies = generateDetApi<
+  Service.UpdateWorkspaceConfigPolicies,
+  Api.V1PutWorkspaceConfigPoliciesResponse,
+  Api.V1PutWorkspaceConfigPoliciesResponse
+>(Config.updateWorkspaceConfigPolicies);
+
+export const deleteWorkspaceConfigPolicies = generateDetApi<
+  Service.DeleteWorkspaceConfigPolicies,
+  Api.V1DeleteWorkspaceConfigPoliciesResponse,
+  Api.V1DeleteWorkspaceConfigPoliciesResponse
+>(Config.deleteWorkspaceConfigPolicies);
+
+export const getGlobalConfigPolicies = generateDetApi<
+  Service.GetGlobalConfigPolicies,
+  Api.V1GetGlobalConfigPoliciesResponse,
+  Api.V1GetGlobalConfigPoliciesResponse
+>(Config.getGlobalConfigPolicies);
+
+export const updateGlobalConfigPolicies = generateDetApi<
+  Service.UpdateGlobalConfigPolicies,
+  Api.V1PutGlobalConfigPoliciesResponse,
+  Api.V1PutGlobalConfigPoliciesResponse
+>(Config.updateGlobalConfigPolicies);
+
+export const deleteGlobalConfigPolicies = generateDetApi<
+  Service.DeleteGlobalConfigPolicies,
+  Api.V1DeleteGlobalConfigPoliciesResponse,
+  Api.V1DeleteGlobalConfigPoliciesResponse
+>(Config.deleteGlobalConfigPolicies);

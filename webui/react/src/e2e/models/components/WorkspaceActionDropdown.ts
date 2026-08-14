@@ -1,10 +1,7 @@
-import { DropdownMenu } from 'e2e/models/hew/Dropdown';
+import { DropdownMenu } from 'e2e/models/common/hew/Dropdown';
 
 /**
- * Returns a representation of the Action Menu Dropdown component.
- * @param {object} obj
- * @param {implementsGetLocator} obj.parent - The parent used to locate this dropdown. Normally dropdowns need to be the root.
- * @param {string} [obj.selector] - Used instead of `defaultSelector`
+ * Represents the WorkspaceActionDropdown component in src/components/WorkspaceActionDropdown.tsx
  */
 export class WorkspaceActionDropdown extends DropdownMenu {
   readonly pin = this.menuItem('switchPin');

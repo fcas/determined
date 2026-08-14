@@ -1,19 +1,25 @@
-import { BaseComponent, CanBeParent } from 'e2e/models/BaseComponent';
-import { BasePage } from 'e2e/models/BasePage';
+import { BaseComponent, ComponentContainer } from 'playwright-page-model-base/BaseComponent';
+import { BasePage } from 'playwright-page-model-base/BasePage';
+
+import { DropdownContent } from 'e2e/models/common/hew/Dropdown';
 import { FilterForm } from 'e2e/models/components/FilterForm/components/FilterForm';
-import { DropdownContent } from 'e2e/models/hew/Dropdown';
 
 /**
- * Returns a representation of the TableFilter component.
- * This constructor represents the contents in src/components/TableFilter.tsx.
- * @param {object} obj
- * @param {CanBeParent} obj.parent - The parent used to locate this TableFilter
- * @param {string} obj.selector - Used instead of `defaultSelector`
+ * Represents the TableFilter component in src/components/FilterForm/TableFilter.tsx
  */
 export class TableFilter extends DropdownContent {
-  constructor({ parent, root }: { parent: CanBeParent; root: BasePage }) {
+  /**
+   * Constructs a TableFilter
+   * @param {object} obj
+   * @param {ComponentContainer} obj.parent - parent component
+   * @param {BasePage} obj.root - root page
+   */
+  constructor({ parent, root }: { parent: ComponentContainer; root: BasePage }) {
     super({
-      childNode: new BaseComponent({ parent, selector: '[data-test-component="tableFilter"]' }),
+      clickThisComponentToOpen: new BaseComponent({
+        parent,
+        selector: '[data-test-component="tableFilter"]',
+      }),
       root,
     });
   }

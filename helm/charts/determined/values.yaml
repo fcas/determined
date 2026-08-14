@@ -26,13 +26,10 @@ defaultImages:
   # default Kube Scheduler image
   kubeScheduler: "k8s.gcr.io/scheduler-plugins/kube-scheduler:v0.18.9"
 
-  # Kube Scheduler used when the K8s default scheduler is set to preemption
-  # when, defaultScheduler: preemption
-  kubeSchedulerPreemption: "determinedai/kube-scheduler:0.17.0"
-
   # default images for CPU and GPU environments
-  cpuImage: "determinedai/pytorch-ngc-dev:8b3bea3"
-  gpuImage: "determinedai/pytorch-ngc-dev:8b3bea3"
+  cpuImage: "determinedai/pytorch-ngc-dev:0736b6d"
+  gpuImage: "determinedai/pytorch-ngc-dev:0736b6d"
+  rocmImage: "determinedai/environments:rocm-5.6-pytorch-1.3-tf-2.10-rocm-mpich-0736b6d"
 
 # Install Determined enterprise edition.
 enterpriseEdition: false
@@ -76,6 +73,11 @@ createNonNamespacedObjects: true
 # load-balancer.
 useNodePortForMaster: false
 
+# Allow specifying annotations that will be put on the master service.
+# masterService:
+  # annotations:
+  #   a: b
+
 # Enable route support for Openshift by setting enabled to true. Configure tls termination (i.e edge) if needed.
 # openshiftRoute:
   # enabled:
@@ -102,6 +104,10 @@ useNodePortForMaster: false
   # authz option (EE-only) sets the authorization mode.
   # authz:
   #   type: rbac
+  # access token option (EE-Only) allows to authenticate in automated workflows.
+  # token:
+  #   max_lifespan_days: -1
+  #   default_lifespan_days: 30
 
 # oidc (EE-only) enables OpenID Connect Integration, which is only available if enterpriseEdition
 # is true. It allows users to use single sign-on with their organization’s identity provider.
@@ -119,6 +125,12 @@ useNodePortForMaster: false
 #   autoProvisionUsers:
 #   groupsAttributeName:
 #   displayNameAttributeName:
+#   agentUidAttributeName:
+#   agentGidAttributeName:
+#   agentUserNameAttributeName:
+#   agentGroupNameAttributeName:
+#   alwaysRedirect:
+#   excludeGroupsScope:
 
 # scim (EE-only) enables System for Cross-domain Identity Management (SCIM) integration, which is
 # only available if enterpriseEdition is true. It allows administrators to easily and securely
@@ -143,6 +155,11 @@ useNodePortForMaster: false
 #   autoProvisionUsers:
 #   groupsAttributeName:
 #   displayNameAttributeName:
+#   agentUidAttributeName:
+#   agentGidAttributeName:
+#   agentUserNameAttributeName:
+#   agentGroupNameAttributeName:
+#   alwaysRedirect:
 
 # db sets the configurations for the database.
 db:
@@ -183,6 +200,22 @@ db:
   # resourceType: <secret/configMap>
   # certResourceName: <secret/configMap name>
 
+  # claimSuffix refers to the persistent volume claim name suffix for the database.
+  # If left undefined, a new PVC is created, named "determined-db-pvc-{{ .Release.name }}".
+  # Otherwise, use the PVC provided, given that it exists in the current context.
+  # claimSuffix:
+
+  # snapshotSuffix refers to the volume snapshot name suffix, a backup of Determined's database persistent volume.
+  # If defined, Helm will "snapshot" the DB upon its next upgrade, creating a volumeSnapshot called
+  # `determined-db-snapsnot-{{ .Values.snapshotSuffix}}`. This MUST NOT be the name of a persistent volume claim
+  # that already exists, such as `determined-db-pvc-{{Release.Name}}`.
+  # snapshotSuffix:
+
+  # restoreSnapshotSuffix refers to the volume snapshot name suffix which you wish to restore the database to.
+  # During an upgrade, a new persistent volume & claim will be created, named `determined-db-pvc-{{ .Values.restoreSnapshotSuffix}}`, 
+  # restoring the data from `determined-db-snapsnot-{{ .Values.restoreSnapshotSuffix}}`. MUST NOT be the name 
+  # of a persistent volume claim that already exists, e.g. the {{Release.Name}}.
+  # restoreSnapshotSuffix:
 
 # checkpointStorage controls where checkpoints are stored. Supported types include `shared_fs`,
 # `gcs`, and `s3`.
@@ -264,6 +297,10 @@ taskContainerDefaults:
   # cpuPodSpec:
   # gpuPodSpec:
 
+  # Configure a custom CheckpointGC pod spec for experiments. When a custom CheckpointGC pod spec
+  # is defined, it takes precedence over the default experiment pod specifications. See
+  # https://docs:determined.ai/latest/topic-guides/custom-pod-specs.html for more details.
+  # checkpointGcPodSpec:
 
   # Configure default Docker images for all GPU tasks (experiments, notebooks, commands) and
   # CPU tasks (CPU notebooks, TensorBoards, zero-slot commands). If a Docker image is defined
@@ -335,28 +372,66 @@ telemetry:
       # certificate: <certificate contents>
 
 ## Configure the default Determined scheduler
-## Currently supports "coscheduler" for gang scheduling and "preemption" for priority based
-## scheduling with preemption
-# defaultScheduler: preemption
+## Currently supports "coscheduler" for gang scheduling.
+# defaultScheduler: coscheduler
 
 ## Configure the resource pools in the Determined cluster.
 resourcePools:
   - pool_name: default
+## To set up multiple resource pools for Determined on your Kubernetes cluster
+## with custom pod spec or node selectors:
+# resourcePools:
+#   - pool_name: prod_pool
+#     kubernetes_namespace: default
+#     task_container_defaults:
+#       gpu_pod_spec:
+#         apiVersion: v1
+#         kind: Pod
+#         spec:
+#           tolerations:
+#             - key: "pool_taint"
+#               operator: "Equal"
+#               value: "prod"
+#               effect: "NoSchedule"
+#             affinity:
+#             # Define an example node selector label.
+#                nodeSelectorTerms:
+#                   kubernetes.io/hostname: "foo"
+#             # Define an example node affinity.
+#                nodeAffinity:
+#                requiredDuringSchedulingIgnoredDuringExecution:
+#                   nodeSelectorTerms:
+#                      - matchExpressions:
+#                      - key: topology.kubernetes.io/zone
+#                         operator: In
+#                         values:
+#                         - antarctica-west1
+#                         - antarctica-east1
 # defaultAuxResourcePool: default
 # defaultComputeResourcePool: default
 
 ## Configure the initial user password for the cluster
 # initialUserPassword:
 
+# determinedMasterHost configures the hostname that tasks launched by the primary resource manager use when
+# communicating with our API server. This is useful when installations span multiple Kubernetes clusters and when there
+# are proxies in between tasks and the master. It defaults to `<det_namespace>.<det_service_name>.svc.cluster.local`.
+# determinedMasterHost:
+# determinedMasterPort configures the port for the host above. It defaults to `masterPort` specified elsewhere. Must
+# be used with determinedMasterHost or it is ineffective.
+# determinedMasterPort:
+# determinedMasterScheme configures the scheme for the host and port above. It defaults to `https` if our API server
+# is deployed with TLS, else `http`. Must be used with determinedMasterHost or it is ineffective.
+# determinedMasterScheme:
 # additional_resource_managers:
 #   - resource_manager:
 #       type: kubernetes
 #       max_slots_per_pod: 1
-#       name: carolina-multirm-1
-#       namespace: default
+#       cluster_name: additional-cluster
+#       default_namespace: default
 #       kubeconfig_secret_name: additionalrm
 #       kubeconfig_secret_value: config
-#       determined_master_ip: 10.11.12.13
+#       determined_master_host: 10.11.12.13
 #       determined_master_port: 8080
 #     resource_pools:
 #       - pool_name: additional_pool
@@ -367,3 +442,8 @@ resourcePools:
   # logRetentionDays: 7
   # Schedule for cleaning up logs. This also accepts a cron expression. For example to run retention every Sunday at 2 am, use "0 2 * * 0"
   # schedule: "24h"
+
+resourceManager:
+  # Specifies the namespace in a given Kubernetes compute cluster where all workload pods will be sent by default.
+  defaultNamespace:
+  clusterName:

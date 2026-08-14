@@ -387,14 +387,26 @@ def deploy_stack(
                 print()
 
                 prompt_needed = True
-            elif tags[constants.deployment_types.TYPE_TAG_KEY] != deployment_type:
-                print("Value of --deployment-type has changed!")
-                prompt_needed = True
+            else:
+                if tags[constants.deployment_types.TYPE_TAG_KEY] != deployment_type:
+                    print("Value of --deployment-type has changed!")
+                    prompt_needed = True
+
+                if tags[constants.deployment_types.TYPE_TAG_KEY] == "simple":
+                    print()
+                    print(
+                        "Previous value of --deployment-type was 'simple'. This deployment type\n"
+                        "was removed in 0.38.0 because AWS Aurora V1 is EoL. Please follow this\n"
+                        "guide to migrate to RDS:\n"
+                        "\thttps://gist.github.com/maxrussell/"
+                        "c67f4f7d586d55c4eb2658cc2dd1c290"
+                    )
+                    print()
 
             if prompt_needed:
                 val = input(
                     "If --deployment-type has changed, updating the stack may erase the database.\n"
-                    "Are you sure you want to proceed? [y/N]"
+                    "Are you sure you want to proceed? [y/N]\n"
                 )
                 if val.lower() != "y":
                     print("Update canceled.")

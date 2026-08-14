@@ -17,84 +17,6 @@ example:
 
    det experiment create config-file.yaml model-directory
 
-****************
- Training Units
-****************
-
-Some configuration settings, such as searcher training lengths and budgets,
-``min_validation_period``, and ``min_checkpoint_period``, can be expressed in terms of a few
-training units: records, batches, or epochs.
-
--  ``records``: A *record* is a single labeled example (sometimes called a sample).
--  ``batches``: A *batch* is a group of records. The number of records in a batch is configured via
-   the ``global_batch_size`` hyperparameter.
--  ``epoch``: An *epoch* is a single copy of the entire training data set.
-
-For example, to specify the ``max_length`` for a searcher in terms of batches, the configuration
-would read as shown below.
-
-.. code:: yaml
-
-   max_length:
-     batches: 900
-
-To express it in terms of records or epochs, ``records`` or ``epochs`` would be specified in place
-of ``batches``. For :class:`~determined.pytorch.deepspeed.DeepSpeedTrial` and
-:class:`~determined.keras.TFKerasTrial`, :ref:`records_per_epoch <config-records-per-epoch>` must
-also be specified if using epochs. Below is an example that configures a ``single`` searcher to
-train a model for 64 epochs.
-
-.. code:: yaml
-
-   records_per_epoch: 50000
-   searcher:
-     name: single
-     metric: validation_error
-     max_length:
-       epochs: 64
-     smaller_is_better: true
-
-The configured :ref:`records_per_epoch <config-records-per-epoch>` is only used for interpreting
-configuration fields that are expressed in epochs. Actual epoch boundaries are still determined by
-the dataset itself (specifically, the end of an epoch occurs when the training data loader runs out
-of records).
-
-.. note::
-
-   When the amount of training data for a model is specified using records or epochs, and the batch
-   size does not evenly divide the configured number of inputs, the remaining "partial batch" of
-   data will be dropped (ignored). For example, if an experiment is configured to train a single
-   model on 10 records with a batch size of 3, the model will be trained on only 9 records of data.
-   In the special case where a trial is configured to train on less than a single batch of data, a
-   single complete batch will be used instead.
-
-Training Unit Conversion Limitations (Caveats)
-==============================================
-
-In most cases, values expressed in one type of training unit can be converted to another type while
-maintaining the same behavior. However, there are some limitations to consider:
-
--  Since training units must be positive integers, it is not always possible to convert between
-   different types of units. For example, converting 50 ``records`` into batches is not possible if
-   the batch size is 64.
-
--  When performing a hyperparameter search over a range of values for ``global_batch_size``, the
-   specified ``batches`` cannot be converted to a fixed number of records or epochs and hence cause
-   different behaviors in different trials of the search.
-
--  When using :ref:`adaptive_asha <experiment-configuration-searcher-adaptive>`, a single training
-   unit is treated as atomic (unable to be divided into fractional parts) when dividing
-   ``max_length`` into the series of rounds (or rungs) by which we early-stop underperforming
-   trials. This rounding may result in unexpected behavior when configuring ``max_length`` with a
-   small number of large epochs or batches.
-
-To verify your search is working as intended before committing to a full run, you can use the CLI's
-"preview search" feature:
-
-.. code::
-
-   det preview-search <configuration.yaml>
-
 **********
  Metadata
 **********
@@ -127,6 +49,24 @@ training data. The content and format of this field is user-defined: it should b
 whatever configuration is needed for loading data for use by the experiment's model definition. For
 example, if your experiment loads data from Amazon S3, the ``data`` field might contain the S3
 bucket name, object prefix, and AWS authentication credentials.
+
+As a special case, values found under a subfield named ``secrets`` will be obfuscated when
+experiment details are reviewed. For example, given the following configuration:
+
+.. code:: yaml
+
+   name: mnist_tf_const
+   data:
+      base_url: https://s3-us-west-2.amazonaws.com/determined-ai-datasets/mnist/
+      secrets:
+         auth_token: f020572a-a847-4cc6-9c2b-625c43515759
+
+The value of ``data["secrets"]["auth_token"]`` will be usable during the experiment run, but not
+when users view the experiment configuration. Note these values may still be visible in the
+configuration file itself; to hide this file from model context, add it to a ``.detignore`` file
+(see :ref:`Creating an Experiment <creating-an-experiment>`).
+
+See also: :ref:`det API Reference <det-reference>` > ``user_data`` property.
 
 ``workspace``
 =============
@@ -182,30 +122,31 @@ field is empty.
 Arbitrary Script
 ----------------
 
-Required. An arbitrary entrypoint script name.
+Required. An arbitrary entrypoint script with args.
 
 Example:
 
 .. code:: yaml
 
-   entrypoint: ./hello.sh
+   entrypoint: ./hello.sh args...
 
 Preconfigured Launch Module with Script
 ---------------------------------------
 
-Required. The name of a preconfigured launch module and script name.
+Required. The name of a preconfigured launch module and script with args.
 
 Example:
 
 .. code:: yaml
 
-   entrypoint: python3 -m (LAUNCH_MODULE) train.py
+   entrypoint: python3 -m (LAUNCH_MODULE) train.py args...
 
 ``LAUNCH_MODULE`` options:
 
 -  Horovod (determined.launch.horovod)
 -  PyTorch (determined.launch.torch_distributed)
 -  Deepspeed (determined.launch.deepspeed)
+-  TensorFlow (determined.launch.tensorflow)
 
 Preconfigured Launch Module with Legacy Trial Definition
 --------------------------------------------------------
@@ -241,33 +182,20 @@ Example:
 
 .. _scheduling-unit:
 
-``scheduling_unit``
-===================
+``scheduling_unit`` (deprecated)
+================================
 
 Optional. Instructs how frequent to perform system operations, such as periodic checkpointing and
-preemption, in the unit of batches. The number of records in a batch is controlled by the
-:ref:`global_batch_size <config-global-batch-size>` hyperparameter. Defaults to ``100``.
-
--  Setting this value too small can increase the overhead of system operations and decrease training
-   throughput.
--  Setting this value too large might prevent the system from reallocating resources from this
-   workload to another, potentially more important, workload.
--  As a rule of thumb, it should be set to the number of batches that can be trained in roughly
-   60--180 seconds.
+preemption, in the unit of batches. This field has been deprecated and the behavior should be
+configured in training code directly. Please see :ref:`apis-howto-overview` for details specific to
+your training framework.
 
 .. _config-records-per-epoch:
 
-``records_per_epoch``
-=====================
+``records_per_epoch`` (deprecated)
+==================================
 
-Optional. The number of records in the training data set. It must be configured if you want to
-specify ``min_validation_period``, ``min_checkpoint_period``, and ``searcher.max_length`` in units
-of ``epochs``.
-
-.. note::
-
-   For :class:`~determined.pytorch.PyTorchTrial`, epoch length is automatically determined using the
-   chief worker's dataset length, and this value will be ignored.
+Optional. The number of records in the training data set. This field has been deprecated.
 
 .. _max-restarts:
 
@@ -286,38 +214,69 @@ if at least one of its trials completes without errors. The default value for ``
 ``log_policies``
 ================
 
-Optional. Defines actions in response to trial logs matching specified regex patterns (Go language
-syntax). For more information about the syntax, you can visit this `RE2 reference page
-<https://github.com/google/re2/wiki/Syntax>`__. Actions include:
+Optional. Defines actions and labels in response to trial logs matching specified regex patterns (Go
+language syntax). For more information about the syntax, you can visit this `RE2 reference page
+<https://github.com/google/re2/wiki/Syntax>`__. Each log policy can have the following fields:
 
--  ``exclude_node``: Excludes a failed trial's restart attempts (due to its ``max_restarts`` policy)
-   from being scheduled on nodes with matched error logs. This is useful for bypassing nodes with
-   hardware issues, like uncorrectable GPU ECC errors.
+-  ``name``: Required. The name of the log policy, displayed as a label in the WebUI when a log
+   policy match occurs.
 
-   Note: This option is not supported on PBS systems.
+-  ``pattern``: Optional. Defines a regex pattern to match log entries. If not specified, this
+   policy is disabled.
 
-   For the agent resource manager, if a trial becomes unschedulable due to enough node exclusions,
-   and ``launch_error`` in the master config is true (default), the trial fails.
+-  ``action``: Optional. The action to take when the pattern is matched. Actions include:
 
--  ``cancel_retries``: Prevents a trial from restarting if a trial reports a log that matches the
-   pattern, even if it has remaining ``max_restarts``. This avoids using resources for retrying a
-   trial that encounters certain failures that won't be fixed by retrying the trial, such as CUDA
-   memory issues.
+   -  ``exclude_node``: Excludes a failed trial's restart attempts (due to its ``max_restarts``
+      policy) from being scheduled on nodes with matched error logs. This is useful for bypassing
+      nodes with hardware issues, such as uncorrectable GPU ECC errors.
+
+      .. note::
+
+         This option is not supported on PBS systems.
+
+      For the agent resource manager, if a trial becomes unschedulable due to enough node
+      exclusions, and ``launch_error`` in the master config is set to true (default), the trial will
+      fail.
+
+   -  ``cancel_retries``: Prevents a trial from restarting if a log matches the pattern, even if the
+      trial has remaining max_restarts. This avoids using resources retrying a trial that encounters
+      failures unlikely to be resolved by retrying, such as CUDA memory issues.
 
 Example configuration:
 
 .. code:: yaml
 
    log_policies:
-      - pattern: ".*uncorrectable ECC error encountered.*"
-        action:
-          type: exclude_node
-      - pattern: ".*CUDA out of memory.*"
-        action:
-          type: cancel_retries
+     - name: ECC Error
+       pattern: ".*uncorrectable ECC error encountered.*"
+       action: exclude_node
+     - name: CUDA OOM
+       pattern: ".*CUDA out of memory.*"
+       action: cancel_retries
+
+When a log policy matches, its name appears as a label in the WebUI, making it easy to identify
+specific issues during a run. These labels are shown in both the run table and run detail views.
 
 These settings may also be specified at the cluster or resource pool level through task container
 defaults.
+
+Default policies:
+
+.. code:: yaml
+
+   log_policies:
+     - name: CUDA OOM
+       pattern: ".*CUDA out of memory.*"
+     - name: ECC Error
+       pattern: ".*uncorrectable ECC error encountered.*"
+
+To disable showing labels from the default policies:
+
+.. code:: yaml
+
+   log_policies:
+     - name: CUDA OOM
+     - name: ECC Error
 
 .. _log-retention-days:
 
@@ -327,13 +286,17 @@ defaults.
 Optional. Defines retention policies for logs related to all trials of a given experiment.
 Parameters include:
 
--  ``log_retention_days``: Optional. Overrides the number of days to retain logs for a trial.
-   Acceptable values range from ``-1`` to ``32767``. If set to ``-1``, logs will be retained
-   indefinitely. If set to ``0``, logs will be deleted during the next cleanup. To modify the
-   retention settings post-completion for a single trial or the entire experiment, you can use the
-   CLI command ``det t set log-retention <trial-id>`` or ``det e set log-retention <exp-id>``. Both
-   commands accept either the argument: ``--days``, which sets the number of days to retain logs
-   from the end time of the task, or ``--forever`` which retains logs indefinitely.
+-  ``log_retention_days``: Optional. Overrides the number of days to retain logs for a trial set in
+   the cluster's task container defaults. Acceptable values range from ``-1`` to ``32767``. If set
+   to ``-1``, logs will be retained indefinitely. If set to ``0``, logs will be deleted during the
+   next cleanup. To modify the retention settings post-completion for a single trial or the entire
+   experiment, you can use the CLI command ``det t set log-retention <trial-id>`` or ``det e set
+   log-retention <exp-id>``. Both commands accept either the argument: ``--days``, which sets the
+   number of days to retain logs from the end time of the task, or ``--forever`` which retains logs
+   indefinitely.
+
+   Note: If the cluster's log retention policy/days is upgraded after the experiment is created, the
+   new cluster value will override the old experiment value.
 
 Example configuration:
 
@@ -359,22 +322,12 @@ While debugging, the logger will display lines highlighted in blue for easy iden
 
 .. _experiment-config-min-validation-period:
 
-``min_validation_period``
-=========================
+``min_validation_period`` (deprecated)
+======================================
 
-Optional. Specifies the minimum frequency at which validation should be run for each trial.
-
--  The frequency should be defined using a nested dictionary indicating the unit as records,
-   batches, or epochs. For example:
-
-.. code:: yaml
-
-   min_validation_period:
-      epochs: 2
-
--  :class:`~determined.pytorch.deepspeed.DeepSpeedTrial` and
-   :class:`~determined.keras.TFKerasTrial`: If this is in the unit of epochs,
-   :ref:`records_per_epoch <config-records-per-epoch>` must be specified.
+Optional. Specifies the minimum frequency at which validation should be run for each trial. This
+field has been deprecated and should be specified directly in training code. Please see
+:ref:`apis-howto-overview` for details specific to your training framework.
 
 .. _experiment-config-perform-initial-validation:
 
@@ -400,22 +353,12 @@ Determined checkpoints in the following situations:
 
 .. _experiment-config-min-checkpoint-period:
 
-``min_checkpoint_period``
-=========================
+``min_checkpoint_period`` (deprecated)
+======================================
 
-Optional. Specifies the minimum frequency for running checkpointing for each trial.
-
--  This value should be set using a nested dictionary in the form of records, batches, or epochs.
-   For example:
-
-   .. code:: yaml
-
-      min_checkpoint_period:
-         epochs: 2
-
--  :class:`~determined.pytorch.deepspeed.DeepSpeedTrial` and
-   :class:`~determined.keras.TFKerasTrial`: If the unit is in epochs, you must also specify
-   :ref:`records_per_epoch <config-records-per-epoch>`.
+Optional. Specifies the minimum frequency for running checkpointing for each trial. This field has
+been deprecated and should be specified directly in training code. Please see
+:ref:`apis-howto-overview` for details specific to your training framework.
 
 ``checkpoint_policy``
 =====================
@@ -432,8 +375,7 @@ Should be set to one of the following values:
 
 -  ``none``: A checkpoint will never be taken *due* to a validation. However, even with this policy
    selected, checkpoints are still expected to be taken after the trial is finished training, due to
-   cluster scheduling decisions, before search method decisions, or due to
-   :ref:`min_checkpoint_period <experiment-config-min-checkpoint-period>`.
+   cluster scheduling decisions, or when specified in training code.
 
 .. _checkpoint-storage:
 
@@ -580,7 +522,7 @@ inside Google Compute Engine (GCE), the simplest approach is to ensure that the 
 Determined are running in a service account that has the "Storage Object Admin" role on the GCS
 bucket being used for checkpoints. As an alternative (or when running outside of GCE), you can add
 the appropriate `service account credentials
-<https://cloud.google.com/docs/authentication/provide-credentials-adc#attached-sa>`__ to your
+<https://cloud.google.com/docs/authentication/set-up-adc-attached-service-account>`__ to your
 container (e.g., via a bind-mount), and then set the ``GOOGLE_APPLICATION_CREDENTIALS`` environment
 variable to the container path where the credentials are located. See :ref:`environment-variables`
 for more details on how to set environment variables in containers.
@@ -689,8 +631,8 @@ written to and read from the ``host_path``.
 ---------------
 
 Optional. `Propagation behavior
-<https://docs.docker.com/storage/bind-mounts/#configure-bind-propagation>`__ for replicas of the
-bind-mount. Defaults to ``rprivate``.
+<https://docs.docker.com/engine/storage/bind-mounts/#configure-bind-propagation>`__ for replicas of
+the bind-mount. Defaults to ``rprivate``.
 
 Local Directory
 ===============
@@ -850,9 +792,7 @@ points in the grid for this hyperparameter. Grid points are evenly spaced betwee
 The ``searcher`` section defines how the experiment's hyperparameter space will be explored. To run
 an experiment that trains a single trial with fixed hyperparameters, specify the ``single`` searcher
 and specify constant values for the model's hyperparameters. Otherwise, Determined supports three
-different hyperparameter search algorithms: ``adaptive_asha``, ``random``, and ``grid``. To define
-your own hyperparameter search algorithm, specify the ``custom`` searcher. For more information
-about custom search algorithms, see :ref:`topic-guides_hp-tuning-det_custom`.
+different hyperparameter search algorithms: ``adaptive_asha``, ``random``, and ``grid``.
 
 The name of the hyperparameter search algorithm to use is configured via the ``name`` field; the
 remaining fields configure the behavior of the searcher and depend on the searcher being used. For
@@ -864,8 +804,6 @@ example, to configure a ``random`` hyperparameter search that trains 5 trials fo
      name: random
      metric: accuracy
      max_trials: 5
-     max_length:
-       batches: 1000
 
 For details on using Determined to perform hyperparameter search, refer to
 :ref:`hyperparameter-tuning`. For more information on the search methods supported by Determined,
@@ -877,9 +815,6 @@ Single
 The ``single`` search method does not perform a hyperparameter search at all; rather, it trains a
 single trial for a fixed length. When using this search method, all of the hyperparameters specified
 in the :ref:`hyperparameters <experiment-configuration_hyperparameters>` section must be constants.
-By default, validation metrics are only computed once, after the specified length of training has
-been completed; :ref:`min_validation_period <experiment-config-min-validation-period>` can be used
-to specify that validation metrics should be computed more frequently.
 
 ``metric``
 ----------
@@ -889,22 +824,11 @@ configuration.
 
 .. _experiment-configuration_single-searcher-max-length:
 
-``max_length``
---------------
+``max_length`` (deprecated)
+---------------------------
 
-Required. The length of the trial.
-
--  This needs to be set in the unit of records, batches, or epochs using a nested dictionary. For
-   example:
-
-   .. code:: yaml
-
-      max_length:
-         epochs: 2
-
--  :class:`~determined.pytorch.deepspeed.DeepSpeedTrial` and
-   :class:`~determined.keras.TFKerasTrial`: If this is in the unit of epochs,
-   :ref:`records_per_epoch <config-records-per-epoch>` must be specified.
+Previously, ``max_length`` was required to determine the length of each trial. This field has been
+deprecated and all training lengths should be specified directly in training code.
 
 **Optional Fields**
 
@@ -932,10 +856,7 @@ Random
 
 The ``random`` search method implements a simple random search. The user specifies how many
 hyperparameter configurations should be trained and how long each configuration should be trained
-for; the configurations are sampled randomly from the hyperparameter space. Each trial is trained
-for the specified length and then validation metrics are computed. :ref:`min_validation_period
-<experiment-config-min-validation-period>` can be used to specify that validation metrics should be
-computed more frequently.
+for; the configurations are sampled randomly from the hyperparameter space.
 
 ``metric``
 ----------
@@ -948,22 +869,11 @@ configuration.
 
 Required. The number of trials, i.e., hyperparameter configurations, to evaluate.
 
-``max_length``
---------------
+``max_length`` (deprecated)
+---------------------------
 
-Required. The length of each trial.
-
--  This needs to be set in the unit of records, batches, or epochs using a nested dictionary. For
-   example:
-
-   .. code:: yaml
-
-      max_length:
-         epochs: 2
-
--  :class:`~determined.pytorch.deepspeed.DeepSpeedTrial` and
-   :class:`~determined.keras.TFKerasTrial`: If this is in the unit of epochs,
-   :ref:`records_per_epoch <config-records-per-epoch>` must be specified.
+Previously, ``max_length`` was required to determine the length of each trial. This field has been
+deprecated and all training lengths should be specified directly in training code.
 
 **Optional Fields**
 
@@ -1005,22 +915,11 @@ specified via the ``hyperparameters`` field. For more details see the
 Required. The name of the validation metric used to evaluate the performance of a hyperparameter
 configuration.
 
-``max_length``
---------------
+``max_length`` (deprecated)
+---------------------------
 
-Required. The length of each trial.
-
--  This needs to be set in the unit of records, batches, or epochs using a nested dictionary. For
-   example:
-
-   .. code:: yaml
-
-      max_length:
-         epochs: 2
-
--  :class:`~determined.pytorch.deepspeed.DeepSpeedTrial` and
-   :class:`~determined.keras.TFKerasTrial`: If this is in the unit of epochs,
-   :ref:`records_per_epoch <config-records-per-epoch>` must be specified.
+Previously, ``max_length`` was required to determine the length of each trial. This field has been
+deprecated and all training lengths should be specified directly in training code.
 
 **Optional Fields**
 
@@ -1049,6 +948,82 @@ the model architecture of this experiment.
 Optional. Like ``source_trial_id``, but specifies an arbitrary checkpoint from which to initialize
 weights. At most one of ``source_trial_id`` or ``source_checkpoint_uuid`` should be set.
 
+.. _experiment-configuration-searcher-asha:
+
+Asynchronous Halving (ASHA)
+===========================
+
+The ``async_halving`` search performs a version of the asynchronous successive halving algorithm
+(`ASHA <https://arxiv.org/pdf/1810.05934.pdf>`_) that stops trials early if there is enough evidence
+to terminate training. Once trials are stopped, they will not be resumed.
+
+``metric``
+----------
+
+Required. The name of the validation metric used to evaluate the performance of a hyperparameter
+configuration.
+
+``max_length`` (deprecated)
+---------------------------
+
+The length of the trial. This field has been deprecated and should be replaced with ``time_metric``
+and ``max_time`` below.
+
+``time_metric``
+---------------
+
+Required. The name of the validation metric used to evaluate the progress of a given trial.
+
+``max_time``
+------------
+
+Required. The maximum value that ``time_metric`` should take when a trial finishes training. Early
+stopping is decided based on how far the ``time_metric`` has progressed towards this ``max_time``
+value.
+
+``max_trials``
+--------------
+
+Required. The number of trials, i.e., hyperparameter configurations, to evaluate.
+
+``num_rungs``
+-------------
+
+Required. The number of rounds of successive halving to perform.
+
+``smaller_is_better``
+---------------------
+
+Optional. Whether to minimize or maximize the metric defined above. The default value is ``true``
+(minimize).
+
+``divisor``
+-----------
+
+Optional. The fraction of trials to keep at each rung, and also determines the training length for
+each rung. The default setting is ``4``; only advanced users should consider changing this value.
+
+``max_concurrent_trials``
+-------------------------
+
+Optional. The maximum number of trials that can be worked on simultaneously. The default value is
+``16``, and we set reasonable values depending on ``max_trials`` and the number of rungs in the
+brackets. This is akin to controlling the degree of parallelism of the experiment. If this value is
+less than the number of brackets produced by the adaptive algorithm, it will be rounded up.
+
+``source_trial_id``
+-------------------
+
+Optional. If specified, the weights of *every* trial in the search will be initialized to the most
+recent checkpoint of the given trial ID. This will fail if the source trial's model architecture is
+inconsistent with the model architecture of any of the trials in this experiment.
+
+``source_checkpoint_uuid``
+--------------------------
+
+Optional. Like ``source_trial_id``, but specifies an arbitrary checkpoint from which to initialize
+weights. At most one of ``source_trial_id`` or ``source_checkpoint_uuid`` should be set.
+
 .. _experiment-configuration-searcher-adaptive:
 
 Adaptive ASHA
@@ -1064,25 +1039,17 @@ experiments with hundreds or thousands of trials.
 Required. The name of the validation metric used to evaluate the performance of a hyperparameter
 configuration.
 
-``max_length``
---------------
+``time_metric``
+---------------
 
-Required. The maximum training length of any one trial. The vast majority of trials will be stopped
-early, and thus only a small fraction of trials will actually be trained for this long. This
-quantity is domain-specific and should roughly reflect the length of training needed for the model
-to converge on the data set.
+Required. The name of the validation metric used to evaluate the progress of a given trial.
 
--  This needs to be set in the unit of records, batches, or epochs using a nested dictionary. For
-   example:
+``max_time``
+------------
 
-   .. code:: yaml
-
-      max_length:
-         epochs: 2
-
--  :class:`~determined.pytorch.deepspeed.DeepSpeedTrial` and
-   :class:`~determined.keras.TFKerasTrial`: If this is in the unit of epochs,
-   :ref:`records_per_epoch <config-records-per-epoch>` must be specified.
+Required. The maximum value that ``time_metric`` should take when a trial finishes training. Early
+stopping is decided based on how far the ``time_metric`` has progressed towards this ``max_time``
+value.
 
 ``max_trials``
 --------------
@@ -1107,14 +1074,6 @@ hyperparameter configurations, but at the risk of discarding a configuration too
 end of the spectrum, ``conservative`` mode performs significantly less downsampling, but as a
 consequence does not explore as many configurations given the same budget. We recommend using either
 ``aggressive`` or ``standard`` mode.
-
-``stop_once``
--------------
-
-Optional. If ``stop_once`` is set to ``true``, we will use a variant of ASHA that will not resume
-trials once stopped. This variant defaults to continuing training and will only stop trials if there
-is enough evidence to terminate training. We recommend using this version of ASHA when training a
-trial for the max length as fast as possible is important or when fault tolerance is too expensive.
 
 ``divisor``
 -----------
@@ -1173,6 +1132,13 @@ multiple GPUs is done using data parallelism. Configuring ``slots_per_trial`` to
    Using ``slots_per_trial`` to enable data parallel training for PyTorch can alter the behavior of
    certain models, as described in the `PyTorch documentation
    <https://pytorch.org/docs/stable/generated/torch.nn.DataParallel.html#torch.nn.DataParallel>`__.
+
+``slots``
+=========
+
+For historical reasons, this field usually passes config validation steps, but has no practical
+effect when present in experiment config. Use :ref:`slots_per_trial
+<exp-config-resources-slots-per-trial>` instead.
 
 ``max_slots``
 =============
@@ -1248,11 +1214,6 @@ equivalent to a ``--device DEVICE`` command-line argument to ``docker run``. ``d
 by resource managers of type ``agent`` but is ignored by resource managers of type ``kubernetes``.
 See :ref:`master configuration <master-config-reference>` for details about resource managers.
 
-``agent_label``
-===============
-
-Optional. This field has been deprecated and will be ignored. Use ``resource_pool`` instead.
-
 .. _exp-bind-mounts:
 
 *************
@@ -1291,8 +1252,8 @@ Optional. Whether the bind-mount should be a read-only mount. Defaults to ``fals
 ===============
 
 Optional. `Propagation behavior
-<https://docs.docker.com/storage/bind-mounts/#configure-bind-propagation>`__ for replicas of the
-bind-mount. Defaults to ``rprivate``.
+<https://docs.docker.com/engine/storage/bind-mounts/#configure-bind-propagation>`__ for replicas of
+the bind-mount. Defaults to ``rprivate``.
 
 For example, to mount ``/data`` on the host to the same path in the container, use:
 
@@ -1333,12 +1294,12 @@ Optional. The Docker image to use when executing the workload. This image must b
 container images for NVIDIA GPU tasks using ``cuda`` key (``gpu`` prior to 0.17.6), CPU tasks using
 ``cpu`` key, and ROCm (AMD GPU) tasks using ``rocm`` key. Default values:
 
--  ``determinedai/pytorch-ngc-dev:8b3bea3`` for NVIDIA GPUs and for CPUs.
+-  ``determinedai/pytorch-ngc-dev:0736b6d`` for NVIDIA GPUs and for CPUs.
 -  ``determinedai/environments:rocm-5.0-pytorch-1.10-tf-2.7-rocm-0.26.4`` for ROCm.
 
 For TensorFlow users, we provide an image that must be referenced in the experiment configuration:
 
--  ``determinedai/tensorflow-ngc-dev:8b3bea3`` for NVIDIA GPUs and for CPUs.
+-  ``determinedai/tensorflow-ngc-dev:0736b6d`` for NVIDIA GPUs and for CPUs.
 
 When the cluster is configured with :ref:`resource_manager.type: slurm
 <cluster-configuration-slurm>` and ``container_run_type: singularity``, images are executed using
@@ -1438,12 +1399,13 @@ details.
 
 .. _exp-config-optimizations:
 
-***************
- Optimizations
-***************
+****************************
+ Optimizations (deprecated)
+****************************
 
 The ``optimizations`` section contains configuration options that influence the performance of the
-experiment.
+experiment. This section has been deprecated and should be configured in training code. Please see
+:ref:`apis-howto-overview` for details specific to your training framework.
 
 .. _config-aggregation-frequency:
 

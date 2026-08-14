@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -21,8 +22,6 @@ import (
 	"github.com/determined-ai/determined/agent/internal/options"
 	"github.com/determined-ai/determined/agent/pkg/docker"
 	"github.com/determined-ai/determined/agent/pkg/events"
-	"github.com/determined-ai/determined/agent/pkg/podman"
-	"github.com/determined-ai/determined/agent/pkg/singularity"
 	"github.com/determined-ai/determined/master/pkg/aproto"
 	"github.com/determined-ai/determined/master/pkg/cproto"
 	"github.com/determined-ai/determined/master/pkg/device"
@@ -121,46 +120,23 @@ func (a *Agent) run(ctx context.Context) error {
 	}
 
 	a.log.Tracef("setting up %s runtime", a.opts.ContainerRuntime)
-	var cruntime container.ContainerRuntime
-	switch a.opts.ContainerRuntime {
-	case options.PodmanContainerRuntime:
-		acl, sErr := podman.New(a.opts)
-		if sErr != nil {
-			return fmt.Errorf("failed to build podman client: %w", sErr)
-		}
-		defer func() {
-			if cErr := acl.Close(); cErr != nil {
-				a.log.WithError(cErr).Error("failed to close podman client")
-			}
-		}()
-		cruntime = acl
-	case options.ApptainerContainerRuntime:
-		fallthrough
-	case options.SingularityContainerRuntime:
-		acl, sErr := singularity.New(a.opts)
-		if sErr != nil {
-			return fmt.Errorf("failed to build singularity client: %w", sErr)
-		}
-		defer func() {
-			if cErr := acl.Close(); cErr != nil {
-				a.log.WithError(cErr).Error("failed to close singularity client")
-			}
-		}()
-		cruntime = acl
-	case options.DockerContainerRuntime:
-		dcl, dErr := dclient.NewClientWithOpts(dclient.WithAPIVersionNegotiation(), dclient.FromEnv)
-		if dErr != nil {
-			return fmt.Errorf("failed to build docker client: %w", dErr)
-		}
-		defer func() {
-			a.log.Trace("cleaning up docker client")
-			if cErr := dcl.Close(); cErr != nil {
-				a.log.WithError(cErr).Error("failed to close docker client")
-			}
-		}()
-		cl := docker.NewClient(dcl)
-		cruntime = cl
+	if a.opts.ContainerRuntime != options.DockerContainerRuntime {
+		a.log.Error(a.opts.ContainerRuntime,
+			" container runtime is not supported, please update runtime config to use docker instead.")
+		return fmt.Errorf("container runtime not available: %s", a.opts.ContainerRuntime)
 	}
+
+	dcl, dErr := dclient.NewClientWithOpts(dclient.WithAPIVersionNegotiation(), dclient.FromEnv)
+	if dErr != nil {
+		return fmt.Errorf("failed to build docker client: %w", dErr)
+	}
+	defer func() {
+		a.log.Trace("cleaning up docker client")
+		if cErr := dcl.Close(); cErr != nil {
+			a.log.WithError(cErr).Error("failed to close docker client")
+		}
+	}()
+	cruntime := docker.NewClient(dcl)
 
 	a.log.Trace("setting up container manager")
 	outbox := make(chan *aproto.MasterMessage, eventChanSize) // covers many from socket lifetimes
@@ -185,6 +161,7 @@ func (a *Agent) run(ctx context.Context) error {
 		Version:              a.version,
 		Devices:              devices,
 		ContainersReattached: reattached,
+		ResourcePoolName:     a.opts.ResourcePool,
 	}}:
 	case <-ctx.Done():
 		return ctx.Err()
@@ -266,7 +243,7 @@ func (a *Agent) connect(ctx context.Context, reconnect bool) (*MasterWebsocket, 
 
 	masterAddr := fmt.Sprintf(
 		"%s://%s:%d/agents?id=%s&version=%s&resource_pool=%s&reconnect=%v&hostname=%s",
-		masterProto, a.opts.MasterHost, a.opts.MasterPort, a.opts.AgentID, a.version,
+		masterProto, a.opts.MasterHost, a.opts.MasterPort, a.opts.AgentID, url.QueryEscape(a.version),
 		a.opts.ResourcePool, reconnect, hostname,
 	)
 	a.log.Infof("connecting to master at: %s", masterAddr)
@@ -376,6 +353,7 @@ func (a *Agent) reconnectFlow(
 		Version:              a.version,
 		Devices:              devices,
 		ContainersReattached: reattached,
+		ResourcePoolName:     a.opts.ResourcePool,
 	}}:
 	case <-ctx.Done():
 		return nil, nil, ctx.Err()

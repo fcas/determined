@@ -2,11 +2,16 @@ package kubernetesrm
 
 import (
 	"strconv"
+	"strings"
 	"sync"
+
+	batchV1 "k8s.io/api/batch/v1"
+	typedBatchV1 "k8s.io/client-go/kubernetes/typed/batch/v1"
 
 	"github.com/sirupsen/logrus"
 	k8sV1 "k8s.io/api/core/v1"
 	typedV1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	alphaGateway "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/typed/apis/v1alpha2"
 
 	"github.com/determined-ai/determined/master/pkg/set"
 )
@@ -19,14 +24,19 @@ const (
 // message types that are sent to the requestProcessingWorkers channel.
 type (
 	createKubernetesResources struct {
-		podSpec       *k8sV1.Pod
+		jobSpec       *batchV1.Job
 		configMapSpec *k8sV1.ConfigMap
+		gw            *gatewayResourceComm
 	}
 
 	deleteKubernetesResources struct {
-		namespace     string
-		podName       string
-		configMapName string
+		namespace          string
+		jobName            string
+		podName            string
+		configMapName      string
+		serviceNames       []string
+		tcpRouteNames      []string
+		gatewayPortsToFree []int
 	}
 )
 
@@ -34,26 +44,26 @@ type (
 // to creation or deletion requests.
 type (
 	resourceCreationFailed struct {
-		podName string
+		jobName string
 		err     error
 	}
 	resourceDeletionFailed struct {
-		podName string
+		jobName string
 		err     error
 	}
 	resourceCreationCancelled struct {
-		podName string
+		jobName string
 	}
 )
 
 type resourcesRequestFailure interface {
-	getPodName() string
+	getJobName() string
 	resourcesRequestFailure()
 }
 
-func (e resourceCreationFailed) getPodName() string    { return e.podName }
-func (e resourceDeletionFailed) getPodName() string    { return e.podName }
-func (e resourceCreationCancelled) getPodName() string { return e.podName }
+func (e resourceCreationFailed) getJobName() string    { return e.jobName }
+func (e resourceDeletionFailed) getJobName() string    { return e.jobName }
+func (e resourceCreationCancelled) getJobName() string { return e.jobName }
 
 func (resourceCreationFailed) resourcesRequestFailure()    {}
 func (resourceDeletionFailed) resourcesRequestFailure()    {}
@@ -101,9 +111,14 @@ type queuedResourceRequest struct {
 //     requestProcessingWorkers notify the requestQueue that they are available to receive work
 //     by sending a `workerAvailable` message.
 type requestQueue struct {
+	jobInterfaces       map[string]typedBatchV1.JobInterface
 	podInterfaces       map[string]typedV1.PodInterface
 	configMapInterfaces map[string]typedV1.ConfigMapInterface
-	failures            chan<- resourcesRequestFailure
+	serviceInterfaces   map[string]typedV1.ServiceInterface
+	tcpRouteInterfaces  map[string]alphaGateway.TCPRouteInterface
+	gatewayService      *gatewayService
+
+	failures chan<- resourcesRequestFailure
 
 	mu         sync.Mutex
 	workerChan chan interface{}
@@ -120,14 +135,23 @@ type requestQueue struct {
 type requestID string
 
 func startRequestQueue(
+	jobInterfaces map[string]typedBatchV1.JobInterface,
 	podInterfaces map[string]typedV1.PodInterface,
 	configMapInterfaces map[string]typedV1.ConfigMapInterface,
+	serviceInterfaces map[string]typedV1.ServiceInterface,
+	gatewayService *gatewayService,
+	tcpRouteInterfaces map[string]alphaGateway.TCPRouteInterface,
 	failures chan<- resourcesRequestFailure,
-) *requestQueue {
+) (*requestQueue, []*requestProcessingWorker) {
 	r := &requestQueue{
+		jobInterfaces:       jobInterfaces,
 		podInterfaces:       podInterfaces,
 		configMapInterfaces: configMapInterfaces,
-		failures:            failures,
+		serviceInterfaces:   serviceInterfaces,
+		gatewayService:      gatewayService,
+		tcpRouteInterfaces:  tcpRouteInterfaces,
+
+		failures: failures,
 
 		workerChan: make(chan interface{}),
 
@@ -137,28 +161,35 @@ func startRequestQueue(
 		pendingResourceCreations: make(map[requestID]*queuedResourceRequest),
 		blockedResourceDeletions: make(map[requestID]*queuedResourceRequest),
 
-		syslog: logrus.New().WithField("component", "kubernetesrm-queue"),
+		syslog: logrus.WithField("component", "kubernetesrm-queue"),
 	}
-	r.startWorkers()
-	return r
+	workers := r.startWorkers()
+	return r, workers
 }
 
-func (r *requestQueue) startWorkers() {
+func (r *requestQueue) startWorkers() []*requestProcessingWorker {
+	allWorkers := []*requestProcessingWorker{}
 	for i := 0; i < numKubernetesWorkers; i++ {
-		startRequestProcessingWorker(
+		worker := startRequestProcessingWorker(
+			r.jobInterfaces,
 			r.podInterfaces,
 			r.configMapInterfaces,
+			r.serviceInterfaces,
+			r.gatewayService,
+			r.tcpRouteInterfaces,
 			strconv.Itoa(i),
 			r.workerChan,
 			r.workerReady,
 			r.failures,
 		)
+		allWorkers = append(allWorkers, worker)
 	}
+	return allWorkers
 }
 
 func keyForCreate(msg createKubernetesResources) requestID {
-	if msg.podSpec != nil {
-		return requestID(msg.podSpec.Namespace + "/" + msg.podSpec.Name)
+	if msg.jobSpec != nil {
+		return requestID(msg.jobSpec.Namespace + "/" + msg.jobSpec.Name)
 	}
 	if msg.configMapSpec != nil {
 		return requestID(msg.configMapSpec.Namespace + "/" + msg.configMapSpec.Name)
@@ -167,23 +198,42 @@ func keyForCreate(msg createKubernetesResources) requestID {
 }
 
 func keyForDelete(msg deleteKubernetesResources) requestID {
+	if msg.jobName != "" {
+		return requestID(msg.namespace + "/" + msg.jobName)
+	}
 	if msg.podName != "" {
 		return requestID(msg.namespace + "/" + msg.podName)
 	}
 	if msg.configMapName != "" {
 		return requestID(msg.namespace + "/" + msg.configMapName)
 	}
+	if len(msg.serviceNames) > 0 {
+		return requestID(msg.namespace + "/" + strings.Join(msg.serviceNames, ","))
+	}
+	if len(msg.tcpRouteNames) > 0 {
+		return requestID(msg.namespace + "/" + strings.Join(msg.tcpRouteNames, ","))
+	}
+	if len(msg.gatewayPortsToFree) > 0 {
+		var stringPorts []string
+		for _, p := range msg.gatewayPortsToFree {
+			stringPorts = append(stringPorts, strconv.Itoa(p))
+		}
+
+		return requestID(msg.namespace + "/" + strings.Join(stringPorts, ","))
+	}
+
 	panic("invalid deleteKubernetesResources message")
 }
 
 func (r *requestQueue) createKubernetesResources(
-	podSpec *k8sV1.Pod,
+	jobSpec *batchV1.Job,
 	configMapSpec *k8sV1.ConfigMap,
+	gwResources *gatewayResourceComm,
 ) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	msg := createKubernetesResources{podSpec, configMapSpec}
+	msg := createKubernetesResources{jobSpec, configMapSpec, gwResources}
 	ref := keyForCreate(msg)
 
 	if _, requestAlreadyExists := r.pendingResourceCreations[ref]; requestAlreadyExists {
@@ -201,15 +251,10 @@ func (r *requestQueue) createKubernetesResources(
 	}
 }
 
-func (r *requestQueue) deleteKubernetesResources(
-	namespace string,
-	podName string,
-	configMapName string,
-) {
+func (r *requestQueue) deleteKubernetesResources(msg deleteKubernetesResources) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	msg := deleteKubernetesResources{namespace, podName, configMapName}
 	ref := keyForDelete(msg)
 
 	// If the request has not been processed yet, cancel it and inform the handler.
@@ -217,7 +262,7 @@ func (r *requestQueue) deleteKubernetesResources(
 		r.pendingResourceCreations[ref].createResources = nil
 		delete(r.pendingResourceCreations, ref)
 		r.failures <- resourceCreationCancelled{
-			podName: podName,
+			jobName: msg.jobName,
 		}
 		r.syslog.Warnf("delete issued with pending create request for %s", ref)
 		return

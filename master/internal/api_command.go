@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"strconv"
 
 	petname "github.com/dustinkirkland/golang-petname"
 	pstruct "github.com/golang/protobuf/ptypes/struct"
@@ -21,6 +22,8 @@ import (
 	"github.com/determined-ai/determined/master/internal/api/apiutils"
 	"github.com/determined-ai/determined/master/internal/authz"
 	"github.com/determined-ai/determined/master/internal/command"
+	masterConfig "github.com/determined-ai/determined/master/internal/config"
+	"github.com/determined-ai/determined/master/internal/configpolicy"
 	"github.com/determined-ai/determined/master/internal/db"
 	"github.com/determined-ai/determined/master/internal/grpcutil"
 	"github.com/determined-ai/determined/master/internal/rbac/audit"
@@ -142,10 +145,23 @@ func (a *apiServer) getCommandLaunchParams(ctx context.Context, req *protoComman
 	config.Resources.ResourcePool = poolName.String()
 	config.Resources.Slots = resources.Slots
 
+	// Apply the scheduler's default priority.
+	if config.Resources.Priority == nil {
+		prio := masterConfig.DefaultPriorityForPool(poolName.String())
+		config.Resources.Priority = &prio
+	}
+	// TODO (CM-493) NTSC invariant config overrides
+
 	var contextDirectory []byte
 	config.WorkDir, contextDirectory, err = fillContextDir(config.WorkDir, workDirInDefaults, req.Files)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// Check submitted config against task config policies.
+	err = configpolicy.CheckNTSCConstraints(ctx, int(cmdSpec.Metadata.WorkspaceID), config, a.m.rm)
+	if err != nil {
+		return nil, nil, status.Errorf(codes.InvalidArgument, "failed constraint check: %v", err)
 	}
 
 	token, err := getTaskSessionToken(ctx, userModel)
@@ -176,7 +192,7 @@ func (a *apiServer) GetCommands(
 		return nil, err
 	}
 
-	workspaceNotFoundErr := api.NotFoundErrs("workspace", fmt.Sprint(req.WorkspaceId), true)
+	workspaceNotFoundErr := api.NotFoundErrs("workspace", strconv.Itoa(int(req.WorkspaceId)), true)
 
 	if req.WorkspaceId != 0 {
 		// check if the workspace exists.
@@ -370,11 +386,11 @@ func (a *apiServer) LaunchCommand(
 		"DET_TASK_TYPE": string(model.TaskTypeCommand),
 	}
 
-	OIDCPachydermEnvVars, err := a.getOIDCPachydermEnvVars(session)
+	oidcPachydermEnvVars, err := a.getOIDCPachydermEnvVars(session)
 	if err != nil {
 		return nil, err
 	}
-	maps.Copy(launchReq.Spec.Base.ExtraEnvVars, OIDCPachydermEnvVars)
+	maps.Copy(launchReq.Spec.Base.ExtraEnvVars, oidcPachydermEnvVars)
 
 	// Launch a command.
 	cmd, err := command.DefaultCmdService.LaunchGenericCommand(

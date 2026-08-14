@@ -198,7 +198,7 @@ func calculateGroupStates(
 			case !taskList.IsScheduled(req.AllocationID):
 				state.pendingReqs = append(state.pendingReqs, req)
 			default:
-				if !req.Preemptible {
+				if !req.Preemption.Preemptible {
 					state.presubscribedSlots += req.SlotsNeeded
 				}
 				state.allocatedReqs = append(state.allocatedReqs, req)
@@ -229,7 +229,7 @@ func getTotalWeight(states []*groupState) float64 {
 	return total
 }
 
-func accountForPreoffers(preoffers int, offer int) (int, int) {
+func accountForPreoffers(preoffers int, offer int) (int, int) { // nolint: revive
 	if preoffers > 0 {
 		if preoffers == offer {
 			preoffers = 0
@@ -371,7 +371,7 @@ func assignTasks(
 			// the count of offered slots.
 			// TODO: We should terminate running tasks more intelligently.
 			for _, req := range state.allocatedReqs {
-				if req.Preemptible {
+				if req.Preemption.Preemptible {
 					toRelease = append(toRelease, req.AllocationID)
 					state.activeSlots -= req.SlotsNeeded
 					if state.activeSlots <= state.offered {

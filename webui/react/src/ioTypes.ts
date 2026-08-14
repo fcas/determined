@@ -7,6 +7,7 @@ import {
   CheckpointStorageType,
   ExperimentSearcherName,
   HyperparameterType,
+  Integration,
   LogLevel,
   Primitive,
   RunState,
@@ -169,6 +170,7 @@ const ioCheckpointStorageType = io.keyof(checkpointStorageTypes);
 
 export const ioCheckpointStorage = io.type({
   bucket: optional(io.string),
+  container_path: optional(io.string),
   host_path: optional(io.string),
   save_experiment_best: io.number,
   save_trial_best: io.number,
@@ -215,6 +217,7 @@ export const ioExperimentConfig = io.type({
   checkpoint_storage: optional(ioCheckpointStorage),
   description: optional(io.string),
   hyperparameters: ioHyperparameters,
+  integrations: optional(Integration),
   labels: optional(io.array(io.string)),
   max_restarts: io.number,
   name: io.string,
@@ -294,11 +297,13 @@ export const ioLocationType: io.Type<V1LocationType> = io.keyof({
   [V1LocationType.UNSPECIFIED]: null,
   [V1LocationType.RUN]: null,
   [V1LocationType.RUNHYPERPARAMETERS]: null,
+  [V1LocationType.RUNMETADATA]: null,
 });
 export const ioColumnType: io.Type<V1ColumnType> = io.keyof({
   [V1ColumnType.DATE]: null,
   [V1ColumnType.NUMBER]: null,
   [V1ColumnType.TEXT]: null,
+  [V1ColumnType.ARRAY]: null,
   [V1ColumnType.UNSPECIFIED]: null,
 });
 const ioProjectColumnRequired = io.type({

@@ -7,20 +7,21 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/uptrace/bun"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/pkg/errors"
-
 	"github.com/determined-ai/determined/master/internal/db"
 	"github.com/determined-ai/determined/master/internal/db/bunutils"
 	"github.com/determined-ai/determined/master/internal/experiment"
 	"github.com/determined-ai/determined/master/internal/grpcutil"
+	"github.com/determined-ai/determined/master/internal/run"
 	"github.com/determined-ai/determined/master/internal/storage"
 	"github.com/determined-ai/determined/master/internal/trials"
 	"github.com/determined-ai/determined/master/pkg/model"
+	"github.com/determined-ai/determined/master/pkg/protoutils"
 	"github.com/determined-ai/determined/master/pkg/ptrs"
 	"github.com/determined-ai/determined/master/pkg/schemas/expconf"
 	"github.com/determined-ai/determined/master/pkg/set"
@@ -33,6 +34,7 @@ import (
 
 type runCandidateResult struct {
 	Archived     bool
+	ExpArchived  bool
 	ID           int32
 	ExpID        *int32
 	IsMultitrial bool
@@ -42,8 +44,12 @@ type runCandidateResult struct {
 func (a *apiServer) RunPrepareForReporting(
 	ctx context.Context, req *apiv1.RunPrepareForReportingRequest,
 ) (*apiv1.RunPrepareForReportingResponse, error) {
+	curUser, _, err := grpcutil.GetUser(ctx)
+	if err != nil {
+		return nil, err
+	}
 	// TODO(runs) run specific RBAC.
-	if err := trials.CanGetTrialsExperimentAndCheckCanDoAction(ctx, int(req.RunId),
+	if err := trials.CanGetTrialsExperimentAndCheckCanDoAction(ctx, int(req.RunId), curUser,
 		experiment.AuthZProvider.Get().CanEditExperiment); err != nil {
 		return nil, err
 	}
@@ -139,6 +145,8 @@ func getRunsColumns(q *bun.SelectQuery) *bun.SelectQuery {
 		Column("r.external_run_id").
 		Column("r.project_id").
 		Column("r.searcher_metric_value").
+		ColumnExpr("COALESCE((r.archived OR e.archived), FALSE) AS archived").
+		ColumnExpr("CONCAT(p.key, '-' , r.local_id::text) as local_id").
 		ColumnExpr("extract(epoch FROM coalesce(r.end_time, now()) - r.start_time)::int AS duration").
 		ColumnExpr("CASE WHEN r.hparams='null' THEN NULL ELSE r.hparams END AS hyperparameters").
 		ColumnExpr("r.summary_metrics AS summary_metrics").
@@ -158,10 +166,13 @@ func getRunsColumns(q *bun.SelectQuery) *bun.SelectQuery {
 			'progress', e.progress,
 			'forked_from', e.parent_id,
 			'external_experiment_id', e.external_experiment_id,
-			'is_multitrial', ((SELECT COUNT(*) FROM runs r WHERE e.id = r.experiment_id) > 1),
+			'is_multitrial', (e.config->'searcher'->>'name' != 'single'),
 			'pachyderm_integration', NULLIF(e.config#>'{integrations,pachyderm}', 'null'),
 			'id', e.id) AS experiment`).
+		ColumnExpr("rm.metadata AS metadata").
+		ColumnExpr("r.log_policy_matched AS log_policy_matched").
 		Join("LEFT JOIN experiments AS e ON r.experiment_id=e.id").
+		Join("LEFT JOIN runs_metadata AS rm ON r.id=rm.run_id").
 		Join("LEFT JOIN users u ON e.owner_id = u.id").
 		Join("LEFT JOIN projects p ON r.project_id = p.id").
 		Join("LEFT JOIN workspaces w ON p.workspace_id = w.id")
@@ -192,11 +203,14 @@ func sortRuns(sortString *string, runQuery *bun.SelectQuery) error {
 		"checkpointSize":        "checkpoint_size",
 		"checkpointCount":       "checkpoint_count",
 		"duration":              "duration",
-		"searcherMetricsVal":    "r.searcher_metric_val",
+		"searcherMetricsVal":    "r.searcher_metric_value",
 		"externalExperimentId":  "e.external_experiment_id",
 		"externalRunId":         "r.external_run_id",
 		"experimentId":          "e.id",
-		"isExpMultitrial":       "((SELECT COUNT(*) FROM runs r WHERE e.id = r.experiment_id) > 1)",
+		"isExpMultitrial":       "(e.config->'searcher'->>'name' != 'single')",
+		"parentArchived":        "(w.archived OR p.archived)",
+		"localId":               "r.local_id",
+		"archived":              "COALESCE((r.archived OR e.archived), FALSE)",
 	}
 	sortParams := strings.Split(*sortString, ",")
 	hasIDSort := false
@@ -221,6 +235,17 @@ func sortRuns(sortString *string, runQuery *bun.SelectQuery) error {
 			hpQuery := strings.Join(hp, "->")
 			queryArgs = append(queryArgs, bun.Safe(sortDirection))
 			runQuery.OrderExpr(fmt.Sprintf(`r.hparams->%s ?`, hpQuery), queryArgs...)
+		case strings.HasPrefix(paramDetail[0], "metadata."):
+			param := strings.ReplaceAll(paramDetail[0], "'", "")
+			mdt := strings.Split(strings.TrimPrefix(param, "metadata."), ".")
+			var queryArgs []interface{}
+			for i := 0; i < len(mdt); i++ {
+				queryArgs = append(queryArgs, mdt[i])
+				mdt[i] = "?"
+			}
+			mdtQuery := strings.Join(mdt, "->")
+			queryArgs = append(queryArgs, bun.Safe(sortDirection))
+			runQuery.OrderExpr(fmt.Sprintf(`rm.metadata->%s ?`, mdtQuery), queryArgs...)
 		case strings.Contains(paramDetail[0], "."):
 			metricGroup, metricName, metricQualifier, err := parseMetricsName(paramDetail[0])
 			if err != nil {
@@ -302,6 +327,10 @@ func (a *apiServer) MoveRuns(
 		return nil, status.Error(codes.PermissionDenied, err.Error())
 	}
 
+	if req.SourceProjectId == req.DestinationProjectId {
+		return &apiv1.MoveRunsResponse{Results: []*apiv1.RunActionResult{}}, nil
+	}
+
 	var runChecks []runCandidateResult
 	getQ := db.Bun().NewSelect().
 		ModelTableExpr("runs AS r").
@@ -309,7 +338,7 @@ func (a *apiServer) MoveRuns(
 		Column("r.id").
 		ColumnExpr("COALESCE((r.archived OR e.archived OR p.archived OR w.archived), FALSE) AS archived").
 		ColumnExpr("r.experiment_id as exp_id").
-		ColumnExpr("((SELECT COUNT(*) FROM runs r WHERE e.id = r.experiment_id) > 1) as is_multitrial").
+		ColumnExpr("(e.config->'searcher'->>'name' != 'single') as is_multitrial").
 		Join("LEFT JOIN experiments e ON r.experiment_id=e.id").
 		Join("JOIN projects p ON r.project_id = p.id").
 		Join("JOIN workspaces w ON p.workspace_id = w.id").
@@ -378,17 +407,31 @@ func (a *apiServer) MoveRuns(
 		if err != nil {
 			return nil, err
 		}
+		tx, err := db.Bun().BeginTx(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+		defer func() {
+			txErr := tx.Rollback()
+			if txErr != nil && txErr != sql.ErrTxDone {
+				log.WithError(txErr).Error("error rolling back transaction in MoveRuns")
+			}
+		}()
 		failedExpMoveIds := []int32{-1}
+		successExpMoveIds := []int32{-1}
 		for _, res := range expMoveResults {
 			if res.Error != nil {
 				failedExpMoveIds = append(failedExpMoveIds, res.ID)
+			} else {
+				successExpMoveIds = append(successExpMoveIds, res.ID)
 			}
 		}
 		var acceptedIDs []int32
-		if _, err = db.Bun().NewUpdate().Table("runs").
+		if _, err = tx.NewUpdate().Table("runs").
 			Set("project_id = ?", req.DestinationProjectId).
 			Where("runs.id IN (?)", bun.In(validIDs)).
 			Where("runs.experiment_id NOT IN (?)", bun.In(failedExpMoveIds)).
+			Where("runs.experiment_id NOT IN (?)", bun.In(successExpMoveIds)).
 			Returning("runs.id").
 			Model(&acceptedIDs).
 			Exec(ctx); err != nil {
@@ -401,8 +444,69 @@ func (a *apiServer) MoveRuns(
 				Id:    acceptID,
 			})
 		}
+
+		if err = db.AddProjectHparams(ctx, tx, int(req.DestinationProjectId), acceptedIDs); err != nil {
+			return nil, err
+		}
+		if err = db.RemoveOutdatedProjectHparams(ctx, tx, int(req.SourceProjectId)); err != nil {
+			return nil, err
+		}
+
+		if _, err = tx.NewRaw(`
+		UPDATE runs SET local_id=s.local_id
+		FROM
+			(
+				SELECT
+					r.id as id,
+					(p.max_local_id + ROW_NUMBER() OVER(PARTITION BY p.id ORDER BY r.id)) as local_id
+				FROM
+					projects p
+					JOIN runs r ON r.project_id=p.id
+				WHERE r.id IN (?)
+			) as s 
+		WHERE s.id=runs.id
+		`,
+			bun.In(acceptedIDs)).Exec(ctx); err != nil {
+			return nil, fmt.Errorf("updating run's local IDs: %w", err)
+		}
+
+		if _, err = tx.NewRaw(`
+		UPDATE projects SET max_local_id=s.max_local_id
+		FROM 
+			(
+				SELECT 
+					project_id,
+					COALESCE(MAX(local_id), 1) as max_local_id
+				FROM 
+					runs
+				GROUP BY
+					project_id
+				HAVING project_id=?
+			) as s
+		WHERE projects.id=?
+		`, req.DestinationProjectId, req.DestinationProjectId).Exec(ctx); err != nil {
+			return nil, fmt.Errorf("updating projects max local id: %w", err)
+		}
+
+		if _, err = tx.NewRaw(`
+		INSERT INTO local_id_redirect (run_id, project_id, project_key, local_id)
+		SELECT 
+			r.id as runs_id,
+			p.id as project_id,
+			p.key as project_key,
+			r.local_id
+		FROM 
+			projects p
+			JOIN runs r 
+			ON r.project_id=p.id
+		WHERE r.id IN (?)
+		`, bun.In(acceptedIDs)).Exec(ctx); err != nil {
+			return nil, fmt.Errorf("adding local id redirect: %w", err)
+		}
+
 		var failedRunIDs []int32
-		if err = db.Bun().NewSelect().Table("runs").
+		if err = tx.NewSelect().Table("runs").
+			Column("id").
 			Where("runs.id IN (?)", bun.In(validIDs)).
 			Where("runs.experiment_id IN (?)", bun.In(failedExpMoveIds)).
 			Scan(ctx, &failedRunIDs); err != nil {
@@ -413,6 +517,23 @@ func (a *apiServer) MoveRuns(
 				Error: "Failed to move associated experiment",
 				Id:    failedRunID,
 			})
+		}
+
+		var successRunIDs []int32
+		if err = tx.NewSelect().Table("runs").
+			Column("id").
+			Where("runs.experiment_id IN (?)", bun.In(successExpMoveIds)).
+			Scan(ctx, &successRunIDs); err != nil {
+			return nil, fmt.Errorf("getting failed experiment move run IDs: %w", err)
+		}
+		for _, successRunID := range successRunIDs {
+			results = append(results, &apiv1.RunActionResult{
+				Error: "",
+				Id:    successRunID,
+			})
+		}
+		if err = tx.Commit(); err != nil {
+			return nil, err
 		}
 	}
 	return &apiv1.MoveRunsResponse{Results: results}, nil
@@ -427,7 +548,6 @@ func (a *apiServer) KillRuns(ctx context.Context, req *apiv1.KillRunsRequest,
 
 	type killRunOKResult struct {
 		ID         int32
-		RequestID  *string
 		IsTerminal bool
 	}
 
@@ -436,7 +556,6 @@ func (a *apiServer) KillRuns(ctx context.Context, req *apiv1.KillRunsRequest,
 		Model(&killCandidatees).
 		Join("LEFT JOIN trials_v2 t ON r.id=t.run_id").
 		Column("r.id").
-		ColumnExpr("t.request_id").
 		ColumnExpr("r.state IN (?) AS is_terminal", bun.In(model.StatesToStrings(model.TerminalStates))).
 		Where("r.project_id = ?", req.ProjectId)
 
@@ -469,13 +588,6 @@ func (a *apiServer) KillRuns(ctx context.Context, req *apiv1.KillRunsRequest,
 		case cand.IsTerminal:
 			results = append(results, &apiv1.RunActionResult{
 				Error: "",
-				Id:    cand.ID,
-			})
-		// This should be impossible in the current system but we will leave this check here
-		// to cover a possible error in integration tests
-		case cand.RequestID == nil:
-			results = append(results, &apiv1.RunActionResult{
-				Error: "Run has no associated request id.",
 				Id:    cand.ID,
 			})
 		default:
@@ -528,7 +640,7 @@ func (a *apiServer) DeleteRuns(ctx context.Context, req *apiv1.DeleteRunsRequest
 		Column("r.id").
 		ColumnExpr("COALESCE((r.archived OR e.archived OR p.archived OR w.archived), FALSE) AS archived").
 		ColumnExpr("r.experiment_id as exp_id").
-		ColumnExpr("((SELECT COUNT(*) FROM runs r WHERE e.id = r.experiment_id) > 1) as is_multitrial").
+		ColumnExpr("(e.config->'searcher'->>'name' != 'single') as is_multitrial").
 		ColumnExpr("r.state IN (?) AS is_terminal", bun.In(model.StatesToStrings(model.TerminalStates))).
 		Where("r.project_id = ?", req.ProjectId)
 
@@ -625,6 +737,17 @@ func (a *apiServer) DeleteRuns(ctx context.Context, req *apiv1.DeleteRunsRequest
 		})
 	}
 
+	// delete run hparams
+	if _, err = tx.NewDelete().Table("run_hparams").
+		Where("run_id IN (?)", bun.In(acceptedIDs)).
+		Exec(ctx); err != nil {
+		return nil, fmt.Errorf("deleting run hparams: %w", err)
+	}
+	// remove project hparams
+	if err = db.RemoveOutdatedProjectHparams(ctx, tx, int(req.ProjectId)); err != nil {
+		return nil, err
+	}
+
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -669,6 +792,7 @@ func archiveUnarchiveAction(ctx context.Context, archive bool, runIDs []int32,
 		Model(&runCandidates).
 		Column("r.id").
 		Column("r.archived").
+		ColumnExpr("e.archived AS exp_archived").
 		ColumnExpr("r.experiment_id as exp_id").
 		ColumnExpr("false as is_multitrial").
 		ColumnExpr("r.state IN (?) AS is_terminal", bun.In(model.StatesToStrings(model.TerminalStates))).
@@ -704,6 +828,11 @@ func archiveUnarchiveAction(ctx context.Context, archive bool, runIDs []int32,
 	for _, cand := range runCandidates {
 		visibleIDs.Insert(cand.ID)
 		switch {
+		case cand.ExpArchived:
+			results = append(results, &apiv1.RunActionResult{
+				Error: fmt.Sprintf("Run is part of archived Search (id: '%d').", *cand.ExpID),
+				Id:    cand.ID,
+			})
 		case cand.Archived && archive:
 			results = append(results, &apiv1.RunActionResult{
 				Error: "",
@@ -756,4 +885,190 @@ func archiveUnarchiveAction(ctx context.Context, archive bool, runIDs []int32,
 	}
 
 	return results, nil
+}
+
+func (a *apiServer) PauseRuns(ctx context.Context, req *apiv1.PauseRunsRequest,
+) (*apiv1.PauseRunsResponse, error) {
+	results, err := pauseResumeAction(ctx, true, req.ProjectId, req.RunIds, req.Filter)
+	if err != nil {
+		return nil, err
+	}
+	return &apiv1.PauseRunsResponse{Results: results}, nil
+}
+
+func (a *apiServer) ResumeRuns(ctx context.Context, req *apiv1.ResumeRunsRequest,
+) (*apiv1.ResumeRunsResponse, error) {
+	results, err := pauseResumeAction(ctx, false, req.ProjectId, req.RunIds, req.Filter)
+	if err != nil {
+		return nil, err
+	}
+	return &apiv1.ResumeRunsResponse{Results: results}, nil
+}
+
+func pauseResumeAction(ctx context.Context, isPause bool, projectID int32,
+	runIds []int32, filter *string) (
+	[]*apiv1.RunActionResult, error,
+) {
+	if len(runIds) > 0 && filter != nil {
+		return nil, fmt.Errorf("if filter is provided run id list must be empty")
+	}
+	// Get experiment ids
+	var err error
+	var runCandidates []runCandidateResult
+	isRunIDAction := (len(runIds) > 0)
+	getQ := db.Bun().NewSelect().
+		ModelTableExpr("runs AS r").
+		Model(&runCandidates).
+		Column("r.id").
+		ColumnExpr("COALESCE((r.archived OR e.archived OR p.archived OR w.archived), FALSE) AS archived").
+		ColumnExpr("r.experiment_id as exp_id").
+		ColumnExpr("(e.config->'searcher'->>'name' != 'single') as is_multitrial").
+		Join("LEFT JOIN experiments e ON r.experiment_id=e.id").
+		Join("JOIN projects p ON r.project_id = p.id").
+		Join("JOIN workspaces w ON p.workspace_id = w.id").
+		Where("r.project_id = ?", projectID)
+
+	if isRunIDAction {
+		getQ = getQ.Where("r.id IN (?)", bun.In(runIds))
+	} else {
+		getQ, err = filterRunQuery(getQ, filter)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	err = getQ.Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []*apiv1.RunActionResult
+	visibleIDs := set.New[int32]()
+	expIDs := set.New[int32]()
+	expToRun := make(map[int32]int32)
+	for _, cand := range runCandidates {
+		visibleIDs.Insert(cand.ID)
+		if cand.Archived {
+			results = append(results, &apiv1.RunActionResult{
+				Error: "Run is archived.",
+				Id:    cand.ID,
+			})
+			continue
+		}
+		if cand.IsMultitrial {
+			results = append(results, &apiv1.RunActionResult{
+				Error: fmt.Sprintf("Cannot pause/unpause run '%d' (part of multi-trial).", cand.ID),
+				Id:    cand.ID,
+			})
+			continue
+		}
+		if cand.ExpID == nil {
+			results = append(results, &apiv1.RunActionResult{
+				Error: fmt.Sprintf("Cannot pause run '%d' (no associated experiment).", cand.ID),
+				Id:    cand.ID,
+			})
+			continue
+		}
+		expToRun[*cand.ExpID] = cand.ID
+		expIDs.Insert(*cand.ExpID)
+	}
+	if isRunIDAction {
+		for _, originalID := range runIds {
+			if !visibleIDs.Contains(originalID) {
+				results = append(results, &apiv1.RunActionResult{
+					Error: fmt.Sprintf("Run with id '%d' not found in project with id '%d'", originalID, projectID),
+					Id:    originalID,
+				})
+			}
+		}
+	}
+	// Pause/Resume experiments
+	var expResults []experiment.ExperimentActionResult
+	var errMsg string
+	if isPause {
+		expResults, err = experiment.PauseExperiments(ctx, projectID, expIDs.ToSlice(), nil)
+		errMsg = "Failed to pause associated experiment: %s"
+	} else {
+		expResults, err = experiment.ActivateExperiments(ctx, projectID, expIDs.ToSlice(), nil)
+		errMsg = "Failed to resume associated experiment: %s"
+	}
+	if err != nil {
+		return nil, err
+	}
+	for _, expRes := range expResults {
+		val, ok := expToRun[expRes.ID]
+		if !ok {
+			results = append(results, &apiv1.RunActionResult{
+				Error: fmt.Sprintf("Unexpected action performed on experiment '%d'", expRes.ID),
+				Id:    -1,
+			})
+		}
+
+		if expRes.Error != nil {
+			results = append(results, &apiv1.RunActionResult{
+				Error: fmt.Sprintf(errMsg, expRes.Error),
+				Id:    val,
+			})
+		} else {
+			results = append(results, &apiv1.RunActionResult{
+				Error: "",
+				Id:    val,
+			})
+		}
+	}
+	return results, nil
+}
+
+// GetRunMetadata returns the metadata of a run.
+func (a *apiServer) GetRunMetadata(
+	ctx context.Context, req *apiv1.GetRunMetadataRequest,
+) (*apiv1.GetRunMetadataResponse, error) {
+	curUser, _, err := grpcutil.GetUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// TODO(runs) run specific RBAC.
+	if err := trials.CanGetTrialsExperimentAndCheckCanDoAction(ctx, int(req.RunId), curUser,
+		experiment.AuthZProvider.Get().CanGetExperimentArtifacts); err != nil {
+		return nil, err
+	}
+	metadata, err := db.GetRunMetadata(ctx, int(req.RunId))
+	if err != nil {
+		return nil, err
+	}
+	return &apiv1.GetRunMetadataResponse{
+		Metadata: protoutils.ToStruct(metadata),
+	}, nil
+}
+
+// PostRunMetadata updates the metadata of a run.
+func (a *apiServer) PostRunMetadata(
+	ctx context.Context, req *apiv1.PostRunMetadataRequest,
+) (*apiv1.PostRunMetadataResponse, error) {
+	curUser, _, err := grpcutil.GetUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// TODO(runs) run specific RBAC.
+	if err := trials.CanGetTrialsExperimentAndCheckCanDoAction(ctx, int(req.RunId), curUser,
+		experiment.AuthZProvider.Get().CanEditExperiment); err != nil {
+		return nil, err
+	}
+
+	// Flatten Request Metadata.
+	flatMetadata, err := run.FlattenMetadata(req.Metadata.AsMap())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	// Update the metadata in DB
+	result, err := db.UpdateRunMetadata(ctx,
+		int(req.RunId),
+		req.Metadata.AsMap(),
+		flatMetadata,
+	)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error updating metadata on run(%d)", req.RunId)
+	}
+	return &apiv1.PostRunMetadataResponse{Metadata: protoutils.ToStruct(result)}, nil
 }

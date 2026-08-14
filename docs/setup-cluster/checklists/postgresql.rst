@@ -8,8 +8,13 @@ Determined uses a PostgreSQL database to store experiment and trial metadata.
 
 .. note::
 
+   We recommend installing the latest available version of PostgreSQL.
+
+.. note::
+
    If you are using an existing PostgreSQL installation, we recommend confirming that
-   ``max_connections`` is at least 96, which is sufficient for Determined.
+   ``max_connections`` is at least 96, which is sufficient for Determined. See: :ref:`Max
+   Connections <postgresql-database-tuning>`.
 
 .. _install-postgres-docker:
 
@@ -21,11 +26,11 @@ Determined uses a PostgreSQL database to store experiment and trial metadata.
    GPUs, ensure that the :ref:`NVIDIA Container Toolkit <validate-nvidia-container-toolkit>` on each
    one is working as expected.
 
-#. Pull the official Docker image for PostgreSQL. We recommend using the version listed below.
+#. Pull the official Docker image for the latest PostgreSQL version.
 
    .. code::
 
-      docker pull postgres:10
+      docker pull postgres:14
 
    This image is not provided by Determined AI; visit `its Docker Hub page
    <https://hub.docker.com/_/postgres>`_ for more information.
@@ -53,7 +58,7 @@ Determined uses a PostgreSQL database to store experiment and trial metadata.
           -v determined_db:/var/lib/postgresql/data \
           -e POSTGRES_DB=determined \
           -e POSTGRES_PASSWORD=<Database password> \
-          postgres:10
+          postgres:14
 
    If the master will connect to PostgreSQL via Docker networking, exposing port 5432 via the ``-p``
    argument isn't necessary; however, you may still want to expose it for administrative or
@@ -74,7 +79,7 @@ Determined uses a PostgreSQL database to store experiment and trial metadata.
 Install PostgreSQL using ``apt`` or ``yum``
 ===========================================
 
-#. Install PostgreSQL 10 or greater.
+#. Install PostgreSQL.
 
    **Debian Distributions**
 
@@ -82,13 +87,13 @@ Install PostgreSQL using ``apt`` or ``yum``
 
    .. code::
 
-      sudo apt install postgresql-10
+      sudo apt install postgresql
 
    **Red Hat Distributions**
 
    On Red Hat distributions, you'll need to configure the PostgreSQL yum repository as described in
    the `Red Hat Linux documentation <https://www.postgresql.org/download/linux/redhat>`_. Then,
-   install version 10:
+   install PostgreSQL:
 
    .. code::
 
@@ -122,6 +127,8 @@ Install PostgreSQL using ``apt`` or ``yum``
       postgres=# CREATE DATABASE determined;
       postgres=# CREATE USER determined WITH ENCRYPTED PASSWORD 'determined-password';
       postgres=# GRANT ALL PRIVILEGES ON DATABASE determined TO determined;
+      postgres=# \c determined
+      determined=> GRANT ALL ON SCHEMA public TO determined;
 
 ************
  Next Steps

@@ -3,7 +3,6 @@ package internal
 import (
 	"archive/tar"
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -55,7 +54,7 @@ func (a *apiServer) GetShells(
 		return nil, err
 	}
 
-	workspaceNotFoundErr := api.NotFoundErrs("workspace", fmt.Sprint(req.WorkspaceId), true)
+	workspaceNotFoundErr := api.NotFoundErrs("workspace", strconv.Itoa(int(req.WorkspaceId)), true)
 
 	if req.WorkspaceId != 0 {
 		// check if the workspace exists.
@@ -247,26 +246,13 @@ func (a *apiServer) LaunchShell(
 
 	launchReq.Spec.Base.ExtraEnvVars = map[string]string{"DET_TASK_TYPE": string(model.TaskTypeShell)}
 
-	OIDCPachydermEnvVars, err := a.getOIDCPachydermEnvVars(session)
+	oidcPachydermEnvVars, err := a.getOIDCPachydermEnvVars(session)
 	if err != nil {
 		return nil, err
 	}
-	maps.Copy(launchReq.Spec.Base.ExtraEnvVars, OIDCPachydermEnvVars)
+	maps.Copy(launchReq.Spec.Base.ExtraEnvVars, oidcPachydermEnvVars)
 
-	var passphrase *string
-	if len(req.Data) > 0 {
-		var data map[string]interface{}
-		if err = json.Unmarshal(req.Data, &data); err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to parse data %s: %s", req.Data, err)
-		}
-		if pwd, ok := data["passphrase"]; ok {
-			if typed, typedOK := pwd.(string); typedOK {
-				passphrase = &typed
-			}
-		}
-	}
-
-	keys, err := ssh.GenerateKey(launchReq.Spec.Base.SSHRsaSize, passphrase)
+	keys, err := ssh.GenerateKey(launchReq.Spec.Base.SSHConfig)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

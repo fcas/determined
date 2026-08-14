@@ -27,6 +27,8 @@ enum LocationType {
   LOCATION_TYPE_RUN = 6;
   // Column is located in the hyperparameter of the run
   LOCATION_TYPE_RUN_HYPERPARAMETERS = 7;
+  // Column is located on the run's arbitrary metadata
+  LOCATION_TYPE_RUN_METADATA = 8;
 }
 
 // ColumnType indicates the type of data under the column
@@ -39,6 +41,8 @@ enum ColumnType {
   COLUMN_TYPE_NUMBER = 2;
   // data type is a date
   COLUMN_TYPE_DATE = 3;
+  // data type is an array
+  COLUMN_TYPE_ARRAY = 4;
 }
 
 // Project Column is a description of a column used on experiments in the
@@ -80,10 +84,12 @@ message Project {
         "notes",
         "num_active_experiments",
         "num_experiments",
+        "num_runs",
         "state",
         "user_id",
         "username",
-        "workspace_id"
+        "workspace_id",
+        "key"
       ]
     }
   };
@@ -119,6 +125,10 @@ message Project {
   determined.workspace.v1.WorkspaceState state = 14;
   // Message stored from errors on async-deleting a project.
   string error_message = 15;
+  // The key of the project.
+  string key = 16;
+  // Count of runs associated with this project.
+  int32 num_runs = 17;
 }
 
 // PatchProject is a partial update to a project with all optional fields.
@@ -127,6 +137,8 @@ message PatchProject {
   google.protobuf.StringValue name = 1;
   // The new description for the project.
   google.protobuf.StringValue description = 2;
+  // The new key for the project.
+  google.protobuf.StringValue key = 3;
 }
 
 // MetricsRange represents the range of a metrics. Range is a in the format of

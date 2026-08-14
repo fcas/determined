@@ -1,3 +1,20 @@
+{{- if empty (lookup "v1" "Service" .Release.Namespace (printf "determined-db-service-%s" .Release.Name)) }}
+  {{- $initialPassword := coalesce .Values.initialUserPassword .Values.defaultPassword | required "An initial password for admin and determined users is required!" }}
+  {{- if not (gt (len $initialPassword) 7) }}
+    {{- fail "initialUserPassword must have at least 8 characters" }}
+  {{- end }}
+  {{- if not (regexMatch "[A-Z]" $initialPassword) }}
+    {{- fail "initialUserPassword must include an uppercase letter" }}
+  {{- end }}
+  {{- if not (regexMatch "[a-z]" $initialPassword) }}
+    {{- fail "initialUserPassword must include a lowercase letter" }}
+  {{- end }}
+  {{- if not (regexMatch "[0-9]" $initialPassword) }}
+    {{- fail "initialUserPassword must include a number" }}
+  {{- end }}
+{{- end}}
+
+---
 apiVersion: v1
 kind: Secret
 metadata:
@@ -56,9 +73,9 @@ stringData:
       {{- end }}
 
     security:
-      {{- if empty (lookup "v1" "Service" .Release.Namespace (printf "determined-db-service-%s" .Release.Name)) }}
-      initial_user_password: {{ coalesce .Values.initialUserPassword .Values.defaultPassword | quote | required "An initial password for admin and determined users is required!" }}
-      {{- end}}
+      {{- if $initialPassword := coalesce .Values.initialUserPassword .Values.defaultPassword }}
+      initial_user_password: {{ quote $initialPassword }}
+      {{- end }}
       {{- if .Values.tlsSecret }}
       tls:
         cert: {{ include "determined.secretPath" . }}tls.crt
@@ -102,6 +119,24 @@ stringData:
       {{- if .Values.oidc.displayNameAttributeName }}
       display_name_attribute_name: {{ .Values.oidc.displayNameAttributeName }}
       {{- end }}
+      {{- if .Values.oidc.agentUidAttributeName }}
+      agent_uid_attribute_name: {{ .Values.oidc.agentUidAttributeName }}
+      {{- end }}
+      {{- if .Values.oidc.agentGidAttributeName }}
+      agent_gid_attribute_name: {{ .Values.oidc.agentGidAttributeName }}
+      {{- end }}
+      {{- if .Values.oidc.agentUserNameAttributeName }}
+      agent_user_name_attribute_name: {{ .Values.oidc.agentUserNameAttributeName }}
+      {{- end }}
+      {{- if .Values.oidc.agentGroupNameAttributeName }}
+      agent_group_name_attribute_name: {{ .Values.oidc.agentGroupNameAttributeName }}
+      {{- end }}
+      {{- if .Values.oidc.alwaysRedirect }}
+      always_redirect: {{ .Values.oidc.alwaysRedirect }}
+      {{- end }}
+      {{- if .Values.oidc.excludeGroupsScope }}
+      exclude_groups_scope: {{ .Values.oidc.excludeGroupsScope }}
+      {{- end }}
     {{- end }}
 
     {{- if .Values.scim }}
@@ -132,6 +167,21 @@ stringData:
       {{- if .Values.saml.displayNameAttributeName }}
       display_name_attribute_name: {{ .Values.saml.displayNameAttributeName }}
       {{- end }}
+      {{- if .Values.saml.agentUidAttributeName }}
+      agent_uid_attribute_name: {{ .Values.saml.agentUidAttributeName }}
+      {{- end }}
+      {{- if .Values.saml.agentGidAttributeName }}
+      agent_gid_attribute_name: {{ .Values.saml.agentGidAttributeName }}
+      {{- end }}
+      {{- if .Values.saml.agentUserNameAttributeName }}
+      agent_user_name_attribute_name: {{ .Values.saml.agentUserNameAttributeName }}
+      {{- end }}
+      {{- if .Values.saml.agentGroupNameAttributeName }}
+      agent_group_name_attribute_name: {{ .Values.saml.agentGroupNameAttributeName }}
+      {{- end }}
+      {{- if .Values.saml.alwaysRedirect }}
+      always_redirect: {{ .Values.saml.alwaysRedirect }}
+      {{- end }}
     {{- end }}
     {{- end }}
 
@@ -152,13 +202,17 @@ stringData:
 
     resource_manager:
       type: "kubernetes"
-      namespace: {{ .Release.Namespace }}
+      {{- if $defaultNamespace := coalesce .Values.resourceManager.defaultNamespace .Release.Namespace }}
+      default_namespace: {{ quote $defaultNamespace }}
+      {{- end }}
+      {{- if .Values.resourceManager.clusterName }}
+      cluster_name: {{ .Values.resourceManager.clusterName }}
+      {{- end }}
       max_slots_per_pod: {{ required "A valid Values.maxSlotsPerPod entry is required!" .Values.maxSlotsPerPod }}
       master_service_name: determined-master-service-{{ .Release.Name }}
       {{- if .Values.defaultScheduler}}
-      {{- $schedulerType := .Values.defaultScheduler | trim}}
-      {{- if or (eq $schedulerType "coscheduler") (eq $schedulerType "preemption")}}
-      default_scheduler: {{ $schedulerType }}
+      {{- if eq (.Values.defaultScheduler | trim ) "coscheduler"}}
+      default_scheduler: "coscheduler"
       {{- end }}
       {{- end }}
       {{- if (ne (default "gpu" .Values.slotType) "gpu") }}
@@ -169,6 +223,21 @@ stringData:
       {{- if .Values.fluent }}
       fluent:
         {{- toYaml .Values.fluent | nindent 8}}
+      {{- end }}
+      {{- if .Values.determinedMasterHost }}
+      {{- if .Values.determinedMasterScheme }}
+      determined_master_scheme: {{ .Values.determinedMasterScheme | quote }}
+      {{- else if .Values.tlsSecret }}
+      determined_master_scheme: "https"
+      {{- else }}
+      determined_master_scheme: "http"
+      {{- end }}
+      determined_master_host: {{ .Values.determinedMasterHost | quote }}
+      {{- if .Values.determinedMasterPort }}
+      determined_master_port: {{ .Values.determinedMasterPort }}
+      {{- else }}
+      determined_master_port: {{ .Values.masterPort }}
+      {{- end }}
       {{- end }}
 
       default_aux_resource_pool: {{.Values.defaultAuxResourcePool}}
@@ -208,32 +277,39 @@ stringData:
       {{- if .Values.taskContainerDefaults.gpuPodSpec }}
       gpu_pod_spec: {{ .Values.taskContainerDefaults.gpuPodSpec | toJson }}
       {{- end }}
+      {{- if .Values.taskContainerDefaults.checkpointGcPodSpec }}
+      checkpoint_gc_pod_spec: {{ .Values.taskContainerDefaults.checkpointGcPodSpec | toJson }}
+      {{- end }}
       {{- if .Values.taskContainerDefaults.logPolicies }}
       log_policies:
         {{- toYaml .Values.taskContainerDefaults.logPolicies | nindent 8}}
       {{- end }}
-      {{- if and .Values.taskContainerDefaults.cpuImage .Values.taskContainerDefaults.gpuImage }}
       image:
+        {{- if .Values.taskContainerDefaults.cpuImage }}
          cpu: {{ .Values.taskContainerDefaults.cpuImage | quote }}
-         gpu: {{ .Values.taskContainerDefaults.gpuImage | quote }}
-      {{- else }}
-      image:
+        {{- else }}
          cpu: {{ .Values.defaultImages.cpuImage | quote }}
+        {{- end }}
+        {{- if .Values.taskContainerDefaults.gpuImage }}
+         gpu: {{ .Values.taskContainerDefaults.gpuImage | quote }}
+        {{- else }}
          gpu: {{ .Values.defaultImages.gpuImage | quote }}
-      {{- if or .Values.taskContainerDefaults.cpuImage .Values.taskContainerDefaults.gpuImage }}
-        {{ required "A valid .Values.taskContainerDefaults.cpuImage entry is required if setting .Values.taskContainerDefaults.gpuImage!" .Values.taskContainerDefaults.cpuImage }}
-        {{ required "A valid .Values.taskContainerDefaults.gpuImage entry is required if setting .Values.taskContainerDefaults.cpuImage!" .Values.taskContainerDefaults.gpuImage }}
-      {{- end }}
-      {{- end }}
+        {{- end }}
+        {{- if .Values.taskContainerDefaults.rocmImage }}
+         rocm: {{ .Values.taskContainerDefaults.rocmImage | quote }}
+        {{- else }}
+         rocm: {{ .Values.defaultImages.rocmImage | quote }}
+        {{- end }}
       {{- if .Values.taskContainerDefaults.forcePullImage }}
       force_pull_image: {{ .Values.taskContainerDefaults.forcePullImage }}
       {{- end }}
-    {{ else }}
+    {{- else }}
     task_container_defaults:
       image:
          cpu: {{ .Values.defaultImages.cpuImage | quote }}
          gpu: {{ .Values.defaultImages.gpuImage | quote }}
-    {{ end }}
+         rocm: {{ .Values.defaultImages.rocmImage | quote }}
+    {{- end }}
 
     {{- if .Values.telemetry }}
     telemetry:

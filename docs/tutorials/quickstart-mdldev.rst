@@ -52,14 +52,14 @@ Hardware
 -  Master node:
 
    -  At least 4 CPU cores. The master node does not require GPUs.
-   -  Intel/AMD x86, Arm, and PowerPC architectures are supported.
+   -  Intel/AMD x86 and Arm architectures are supported.
    -  8GB RAM
    -  200GB of free disk space.
 
 -  Agent node:
 
    -  At least 2 CPU cores.
-   -  Intel/AMD x86, Arm, and PowerPC architectures are supported.
+   -  Intel/AMD x86 and Arm architectures are supported.
    -  If you are using GPUs, NVIDIA GPUs with compute capability 3.7 or greater are required: K80,
       P100, V100, A100, GTX 1080, GTX 1080 Ti, TITAN, or TITAN XP.
    -  4GB RAM
@@ -203,18 +203,18 @@ schedules to run.
 #. Enter the cluster address in the browser address bar to view experiment progress in the WebUI. If
    you installed locally using the ``det deploy local`` command, the URL is
    ``http://localhost:8080/``. Accept the default username of ``determined`` and click **Sign In**.
-   After signing in, you'll need to create a :ref:`strong password <strong-password>`.
+   After signing in, create a :ref:`strong password <strong-password>`.
 
    .. image:: /assets/images/qs01c.png
       :width: 704px
       :align: center
       :alt: Dashboard
 
-   The figure shows two experiments. Experiment **11** has **COMPLETED** and experiment **12** is
+   The figure shows all runs. Experiment **55989** has **COMPLETED** and experiment **55990** is
    still **ACTIVE**. Your experiment number and status can differ depending on how many times you
    run the examples.
 
-#. While an experiment is in the ACTIVE, training state, click the experiment name to see the
+#. While an experiment is in the ACTIVE, training state, click the experiment ID to see the
    **Metrics** graph update for your currently defined metrics:
 
    .. image:: /assets/images/qs04.png
@@ -225,11 +225,6 @@ schedules to run.
    In this example, the graph displays the loss.
 
 #. After the experiment completes, click the experiment name to view the trial page:
-
-   .. image:: /assets/images/qs03.png
-      :width: 704px
-      :align: center
-      :alt: Trial page
 
 Now that you have a fundamental understanding of Determined, follow the next example to learn how to
 scale to distributed training.
@@ -277,11 +272,12 @@ the number of GPUs per machine. You can change the value to match your hardware 
       det -m http://<ipAddress>:8080 experiment create distributed.yaml .
 
 #. To view the WebUI dashboard, enter the cluster address in your browser address bar, accept
-   ``determined`` as the default username, and click **Sign In**. A password is not required.
+   ``determined`` as the default username, and click **Sign In**. You'll need to set a :ref:`strong
+   password <strong-password>`.
 
-#. Click the **Experiment** name to view the experiment’s trial display. The loss curve is similar
-   to the single-GPU experiment in the previous exercise but the time to complete the trial is
-   reduced by about half.
+#. Click the experiment's ID to view the experiment’s trial display. The loss curve is similar to
+   the single-GPU experiment in the previous exercise but the time to complete the trial is reduced
+   by about half.
 
 *********************************
  Run a Hyperparameter Tuning Job
@@ -327,8 +323,8 @@ The ``adaptive_asha`` search method and maximum number of trials, max_trials` ar
      metric: validation_loss
      smaller_is_better: true
      max_trials: 16
-     max_length:
-       batches: 937
+     time_metric: batch
+     max_time: 937
 
 This example uses a fixed batch size and searches on dropout size, filters, and learning rate. The
 ``max_trials`` setting of ``16`` indicates how many model configurations to explore.

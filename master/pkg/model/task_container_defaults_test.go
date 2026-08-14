@@ -18,9 +18,12 @@ import (
 func TestEnvironmentVarsDefaultMerging(t *testing.T) {
 	defaultGpuType := "tesla"
 	defaultSlotsPerNode := 99
+	defaultPreemptionTimeout := DefaultPreemptionTimeout
 
 	expGpuType := "a100"
 	expSlurmSlotsPerNode := 8
+	expPreemptionTimeout := 60
+
 	expSlurmConfig := expconf.SlurmConfigV0{
 		RawGpuType:      &expGpuType,
 		RawSlotsPerNode: &expSlurmSlotsPerNode,
@@ -44,6 +47,7 @@ func TestEnvironmentVarsDefaultMerging(t *testing.T) {
 			RawSlotsPerNode: &defaultSlotsPerNode,
 			RawSbatchArgs:   []string{"-WpbsTaskDefault"},
 		},
+		PreemptionTimeout: defaultPreemptionTimeout,
 	}
 	conf := expconf.ExperimentConfig{
 		RawEnvironment: &expconf.EnvironmentConfig{
@@ -52,24 +56,25 @@ func TestEnvironmentVarsDefaultMerging(t *testing.T) {
 				RawCUDA: []string{"extra=expconf"},
 			},
 		},
-		RawSlurmConfig: &expSlurmConfig,
-		RawPbsConfig:   &expPbsConfig,
+		RawSlurmConfig:       &expSlurmConfig,
+		RawPbsConfig:         &expPbsConfig,
+		RawPreemptionTimeout: &expPreemptionTimeout,
 	}
 
 	defaults.MergeIntoExpConfig(&conf)
 
-	require.Equal(t, conf.RawEnvironment.RawEnvironmentVariables,
-		&expconf.EnvironmentVariablesMap{
-			RawCPU:  []string{"cpu=default", "cpu=expconf"},
-			RawCUDA: []string{"cuda=default", "extra=expconf"},
-			RawROCM: []string{"rocm=default"},
-		})
+	require.Equal(t, &expconf.EnvironmentVariablesMap{
+		RawCPU:  []string{"cpu=default", "cpu=expconf"},
+		RawCUDA: []string{"cuda=default", "extra=expconf"},
+		RawROCM: []string{"rocm=default"},
+	}, conf.RawEnvironment.RawEnvironmentVariables)
 
-	require.Equal(t, *conf.RawSlurmConfig.RawGpuType, expGpuType)
-	require.Equal(t, *conf.RawSlurmConfig.RawSlotsPerNode, expSlurmSlotsPerNode)
-	require.Equal(t, conf.RawSlurmConfig.SbatchArgs(), []string{"-SlrumTaskDefault", "-SlrumExpConf"})
-	require.Equal(t, *conf.RawPbsConfig.RawSlotsPerNode, defaultSlotsPerNode)
-	require.Equal(t, conf.RawPbsConfig.SbatchArgs(), []string{"-WpbsTaskDefault", "-PbsExpConf"})
+	require.Equal(t, expGpuType, *conf.RawSlurmConfig.RawGpuType)
+	require.Equal(t, expSlurmSlotsPerNode, *conf.RawSlurmConfig.RawSlotsPerNode)
+	require.Equal(t, []string{"-SlrumTaskDefault", "-SlrumExpConf"}, conf.RawSlurmConfig.SbatchArgs())
+	require.Equal(t, defaultSlotsPerNode, *conf.RawPbsConfig.RawSlotsPerNode)
+	require.Equal(t, []string{"-WpbsTaskDefault", "-PbsExpConf"}, conf.RawPbsConfig.SbatchArgs())
+	require.Equal(t, expPreemptionTimeout, *conf.RawPreemptionTimeout)
 }
 
 func TestTaskContainerDefaultsConfigMerging(t *testing.T) {
@@ -93,6 +98,15 @@ func TestTaskContainerDefaultsConfigMerging(t *testing.T) {
 				Volumes: []k8sV1.Volume{
 					{
 						Name: "some GPU vol",
+					},
+				},
+			},
+		},
+		CheckpointGCPodSpec: &k8sV1.Pod{
+			Spec: k8sV1.PodSpec{
+				Volumes: []k8sV1.Volume{
+					{
+						Name: "some CHECKPOINT GC vol",
 					},
 				},
 			},
@@ -176,6 +190,7 @@ func TestTaskContainerDefaultsConfigMerging(t *testing.T) {
 				GLOOPortRange:          "5-6",
 				ShmSizeBytes:           6789,
 				NetworkMode:            "bridge",
+				PreemptionTimeout:      60,
 				CPUPodSpec: &k8sV1.Pod{
 					Spec: k8sV1.PodSpec{
 						Volumes: []k8sV1.Volume{
@@ -190,6 +205,15 @@ func TestTaskContainerDefaultsConfigMerging(t *testing.T) {
 						Volumes: []k8sV1.Volume{
 							{
 								Name: "some GPU vol 2",
+							},
+						},
+					},
+				},
+				CheckpointGCPodSpec: &k8sV1.Pod{
+					Spec: k8sV1.PodSpec{
+						Volumes: []k8sV1.Volume{
+							{
+								Name: "some CHECKPOINT GC vol 2",
 							},
 						},
 					},
@@ -253,6 +277,7 @@ func TestTaskContainerDefaultsConfigMerging(t *testing.T) {
 				GLOOPortRange:          "5-6",
 				ShmSizeBytes:           6789,
 				NetworkMode:            "bridge",
+				PreemptionTimeout:      60,
 				CPUPodSpec: &k8sV1.Pod{
 					Spec: k8sV1.PodSpec{
 						Volumes: []k8sV1.Volume{
@@ -267,6 +292,15 @@ func TestTaskContainerDefaultsConfigMerging(t *testing.T) {
 						Volumes: []k8sV1.Volume{
 							{
 								Name: "some GPU vol 2",
+							},
+						},
+					},
+				},
+				CheckpointGCPodSpec: &k8sV1.Pod{
+					Spec: k8sV1.PodSpec{
+						Volumes: []k8sV1.Volume{
+							{
+								Name: "some CHECKPOINT GC vol 2",
 							},
 						},
 					},
@@ -402,7 +436,7 @@ func TestTaskContainerDefaultsConfigMerging(t *testing.T) {
 	}
 }
 
-func TestLogPatternUnmarshal(t *testing.T) {
+func TestLegacyLogPatternUnmarshal(t *testing.T) {
 	var tcd TaskContainerDefaultsConfig
 	require.NoError(t, json.Unmarshal([]byte(string(`{
 		    "log_policies": [
@@ -412,64 +446,32 @@ func TestLogPatternUnmarshal(t *testing.T) {
 		}`)), &tcd))
 
 	expected := TaskContainerDefaultsConfig{
-		ShmSizeBytes: 4294967296,
-		NetworkMode:  "bridge",
+		ShmSizeBytes:      4294967296,
+		NetworkMode:       "bridge",
+		PreemptionTimeout: DefaultPreemptionTimeout,
 		LogPolicies: expconf.LogPoliciesConfig{
-			expconf.LogPolicy{RawPattern: "test", RawAction: expconf.LogAction{
-				RawExcludeNode: &expconf.LogActionExcludeNode{},
-			}},
-			expconf.LogPolicy{RawPattern: "test2", RawAction: expconf.LogAction{
-				RawCancelRetries: &expconf.LogActionCancelRetries{},
-			}},
+			expconf.LogPolicy{
+				RawPattern: ptrs.Ptr("test"),
+				RawAction:  &expconf.LogActionV0{Type: expconf.LogActionTypeExcludeNode},
+			},
+			expconf.LogPolicy{
+				RawPattern: ptrs.Ptr("test2"),
+				RawAction:  &expconf.LogActionV0{Type: expconf.LogActionTypeCancelRetries},
+			},
 		},
 	}
 	require.Equal(t, expected, tcd)
 }
 
-func TestLogPatternPoliciesMerging(t *testing.T) {
-	defaults := &TaskContainerDefaultsConfig{
-		LogPolicies: expconf.LogPoliciesConfig{
-			expconf.LogPolicy{RawPattern: "a", RawAction: expconf.LogAction{
-				RawCancelRetries: &expconf.LogActionCancelRetries{},
-			}},
-			expconf.LogPolicy{RawPattern: "b", RawAction: expconf.LogAction{
-				RawExcludeNode: &expconf.LogActionExcludeNode{},
-			}},
-		},
-	}
-
-	conf := expconf.ExperimentConfig{
-		RawLogPolicies: expconf.LogPoliciesConfig{
-			expconf.LogPolicy{RawPattern: "b", RawAction: expconf.LogAction{
-				RawCancelRetries: &expconf.LogActionCancelRetries{},
-			}},
-			expconf.LogPolicy{RawPattern: "b", RawAction: expconf.LogAction{
-				RawExcludeNode: &expconf.LogActionExcludeNode{},
-			}},
-			expconf.LogPolicy{RawPattern: "c", RawAction: expconf.LogAction{
-				RawExcludeNode: &expconf.LogActionExcludeNode{},
-			}},
-		},
-	}
-
-	defaults.MergeIntoExpConfig(&conf)
-
-	expected := expconf.LogPoliciesConfig{
-		expconf.LogPolicy{RawPattern: "a", RawAction: expconf.LogAction{
-			RawCancelRetries: &expconf.LogActionCancelRetries{},
-		}},
-		expconf.LogPolicy{RawPattern: "b", RawAction: expconf.LogAction{
-			RawExcludeNode: &expconf.LogActionExcludeNode{},
-		}},
-		expconf.LogPolicy{RawPattern: "b", RawAction: expconf.LogAction{
-			RawCancelRetries: &expconf.LogActionCancelRetries{},
-		}},
-		expconf.LogPolicy{RawPattern: "c", RawAction: expconf.LogAction{
-			RawExcludeNode: &expconf.LogActionExcludeNode{},
-		}},
-	}
-
-	require.Equal(t, expected, conf.RawLogPolicies)
+func TestLogPatternUnmarshal(t *testing.T) {
+	var tcd TaskContainerDefaultsConfig
+	err := json.Unmarshal([]byte(string(`{
+		    "log_policies": [
+		        {"name": "policy name", "pattern": "a", "action": "exclude_node"},
+		        {"name": "policy name", "pattern": "b", "action": "exclude_node"}
+		    ]
+		}`)), &tcd)
+	require.ErrorContains(t, err, "log_policies have duplicated names \"policy name\"")
 }
 
 func TestPodSpecsDefaultMerging(t *testing.T) {

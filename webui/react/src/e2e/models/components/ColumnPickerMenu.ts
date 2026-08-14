@@ -1,20 +1,28 @@
-import { BaseComponent, CanBeParent, NamedComponent } from 'e2e/models/BaseComponent';
-import { BasePage } from 'e2e/models/BasePage';
-import { DropdownContent } from 'e2e/models/hew/Dropdown';
-import { Message } from 'e2e/models/hew/Message';
-import { Pivot } from 'e2e/models/hew/Pivot';
+import {
+  BaseComponent,
+  ComponentContainer,
+  NamedComponent,
+} from 'playwright-page-model-base/BaseComponent';
+import { BaseList, BaseRow } from 'playwright-page-model-base/BaseList';
+import { BasePage } from 'playwright-page-model-base/BasePage';
+
+import { DropdownContent } from 'e2e/models/common/hew/Dropdown';
+import { Message } from 'e2e/models/common/hew/Message';
+import { Pivot } from 'e2e/models/common/hew/Pivot';
 
 /**
- * Returns a representation of the ColumnPickerMenu component.
- * This constructor represents the contents in src/components/ColumnPickerMenu.tsx.
- * @param {object} obj
- * @param {CanBeParent} obj.parent - The parent used to locate this ColumnPickerMenu
- * @param {string} obj.selector - Used instead of `defaultSelector`
+ * Represents the ColumnPickerMenu component in src/components/ColumnPickerMenu.tsx
  */
 export class ColumnPickerMenu extends DropdownContent {
-  constructor({ parent, root }: { parent: CanBeParent; root: BasePage }) {
+  /**
+   * Constructs a ColumnPickerMenu
+   * @param {object} obj
+   * @param {ComponentContainer} obj.parent - parent component
+   * @param {BasePage} obj.root - root page
+   */
+  constructor({ parent, root }: { parent: ComponentContainer; root: BasePage }) {
     super({
-      childNode: new BaseComponent({
+      clickThisComponentToOpen: new BaseComponent({
         parent,
         selector: '[data-test-component="columnPickerMenu"]',
       }),
@@ -28,31 +36,30 @@ export class ColumnPickerMenu extends DropdownContent {
   readonly columnPickerTab = new ColumnPickerTab({ parent: this.pivot.tabContent });
 }
 
+/**
+ * Represents the ColumnPickerTab in the ColumnPickerMenu component
+ */
 class ColumnPickerTab extends NamedComponent {
-  readonly defaultSelector = '[data-test-component="columnPickerTab"]';
+  readonly defaultSelector = '[data-test-component="columnPickerTab"]:visible';
   readonly search = new BaseComponent({ parent: this, selector: '[data-test="search"]' });
-  readonly columns = new List({ parent: this });
+  readonly columns = new List({ parent: this, rowType: Row });
   readonly noResults = new Message({ parent: this.columns });
   readonly showAll = new BaseComponent({ parent: this, selector: '[data-test="showAll"]' });
   readonly reset = new BaseComponent({ parent: this, selector: '[data-test="reset"]' });
 }
 
-class List extends NamedComponent {
+/**
+ * Represents the List in the ColumnPickerMenu component
+ */
+class List extends BaseList<Row> {
   readonly defaultSelector = '[data-test="columns"]';
-  readonly rows = new Row({ parent: this, selector: '[data-test="row"]' });
-  /**
-   * Returns a representation of a list row with the specified testid.
-   * @param {string} [testid] - the testid of the tab, generally the name
-   */
-  public listItem(testid: string): Row {
-    return new Row({
-      attachment: `[data-test-id="${testid}"]`,
-      parent: this,
-    });
-  }
 }
 
-class Row extends NamedComponent {
+/**
+ * Represents a Row in the ColumnPickerMenu component
+ */
+class Row extends BaseRow {
   readonly defaultSelector = '[data-test="row"]';
+  readonly keyAttribute = 'data-test-id';
   readonly checkbox = new BaseComponent({ parent: this, selector: '[data-test="checkbox"]' });
 }

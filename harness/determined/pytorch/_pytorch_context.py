@@ -897,7 +897,7 @@ class PyTorchTrialContext(pytorch._PyTorchReducerContext):
                 scaler.step(optimizer)  # type: ignore
 
         else:
-            step_fn = optimizer.step  # type: ignore
+            step_fn = optimizer.step
 
         # In the case of PyTorch DDP, losses are synchronized automatically on the backwards() pass
         if self.distributed.size > 1 and self._distributed_backend.use_horovod():
@@ -936,6 +936,9 @@ class PyTorchTrialContext(pytorch._PyTorchReducerContext):
         return self._current_batch_idx % self._epoch_len == self._epoch_len - 1
 
     def current_train_epoch(self) -> int:
+        """
+        Current epoch index.
+        """
         if self._current_batch_idx is None:
             raise det.errors.InternalException("Training hasn't started.")
         if self._epoch_len is None:
@@ -944,7 +947,7 @@ class PyTorchTrialContext(pytorch._PyTorchReducerContext):
 
     def current_train_batch(self) -> int:
         """
-        Current global batch index
+        Current global batch index.
         """
         if self._current_batch_idx is None:
             raise det.errors.InternalException("Training hasn't started.")

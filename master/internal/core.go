@@ -62,6 +62,7 @@ import (
 	"github.com/determined-ai/determined/master/internal/rm/kubernetesrm"
 	"github.com/determined-ai/determined/master/internal/rm/multirm"
 	"github.com/determined-ai/determined/master/internal/rm/tasklist"
+	"github.com/determined-ai/determined/master/internal/saas/saasprovisioner"
 	"github.com/determined-ai/determined/master/internal/sproto"
 	"github.com/determined-ai/determined/master/internal/stream"
 	"github.com/determined-ai/determined/master/internal/task"
@@ -75,7 +76,7 @@ import (
 	"github.com/determined-ai/determined/master/pkg/etc"
 	"github.com/determined-ai/determined/master/pkg/logger"
 	"github.com/determined-ai/determined/master/pkg/model"
-	opentelemetry "github.com/determined-ai/determined/master/pkg/opentelemetry"
+	opentelemetry "github.com/determined-ai/determined/master/pkg/opentelemetry" //nolint:revive
 	"github.com/determined-ai/determined/master/pkg/tasks"
 	"github.com/determined-ai/determined/master/version"
 	"github.com/determined-ai/determined/proto/pkg/apiv1"
@@ -103,10 +104,11 @@ type Master struct {
 	config   *config.Config
 	taskSpec *tasks.TaskSpec
 
-	logs *logger.LogBuffer
-	echo *echo.Echo
-	db   *db.PgDB
-	rm   rm.ResourceManager
+	logs   *logger.LogBuffer
+	echo   *echo.Echo
+	db     *db.PgDB
+	rm     rm.ResourceManager
+	allRms map[string]rm.ResourceManager
 
 	trialLogBackend TrialLogBackend
 	taskLogBackend  TaskLogBackend
@@ -362,12 +364,13 @@ type AllocationMetadata struct {
 	TaskType         model.TaskType
 	Username         string
 	WorkspaceName    string
+	ResourcePool     string
 	ExperimentID     int
 	Slots            int
 	StartTime        time.Time
 	EndTime          time.Time
 	ImagepullingTime float64
-	GPUHours         float64
+	SlotHours        float64
 }
 
 // canGetUsageDetails checks if the user has permission to get cluster usage details.
@@ -438,7 +441,8 @@ func (m *Master) getResourceAllocations(c echo.Context) error {
 		ColumnExpr("a.start_time").
 		ColumnExpr("a.end_time").
 		ColumnExpr("a.slots").
-		ColumnExpr("CASE WHEN a.start_time is NULL THEN 0.0 ELSE extract(epoch FROM (LEAST(GREATEST(coalesce(a.end_time, now()), a.start_time), ? :: timestamptz) - GREATEST(a.start_time, ? :: timestamptz))) * a.slots END AS gpu_seconds", end, start).
+		ColumnExpr("a.resource_pool").
+		ColumnExpr("CASE WHEN a.start_time is NULL THEN 0.0 ELSE extract(epoch FROM (LEAST(GREATEST(coalesce(a.end_time, now()), a.start_time), ? :: timestamptz) - GREATEST(a.start_time, ? :: timestamptz))) * a.slots END AS slot_seconds", end, start).
 		TableExpr("allocations a").
 		Where("tstzrange(start_time - interval '1 microsecond', greatest(start_time, coalesce(end_time, now()))) && tstzrange(? :: timestamptz, ? :: timestamptz)", start, end)
 
@@ -459,39 +463,29 @@ func (m *Master) getResourceAllocations(c echo.Context) error {
 		Where("ts.event_type = 'IMAGEPULL'").
 		Group("a.allocation_id")
 
-	// Get experiment info for tasks within time range
-	taskExperimentInfo := db.Bun().NewSelect().
-		ColumnExpr("t.task_id").
-		ColumnExpr("e.id as experiment_id").
-		ColumnExpr("w.name as workspace_name").
-		TableExpr("tasks_in_range t").
-		Join("INNER JOIN experiments e ON t.job_id = e.job_id").
-		Join("INNER JOIN projects p ON e.project_id = p.id").
-		Join("INNER JOIN workspaces w ON p.workspace_id = w.id")
-
 	// Get task information row-by-row for all tasks in time range
 	rows, err := db.Bun().NewSelect().
 		ColumnExpr("a.allocation_id").
 		ColumnExpr("t.task_type").
 		ColumnExpr("t_o.username").
-		ColumnExpr("tei.workspace_name").
-		ColumnExpr("tei.experiment_id").
+		ColumnExpr("awi.workspace_name").
+		ColumnExpr("awi.experiment_id").
 		ColumnExpr("a.slots").
 		ColumnExpr("a.start_time").
 		ColumnExpr("a.end_time").
 		ColumnExpr("ip.imagepulling_time").
-		ColumnExpr("a.gpu_seconds / 3600.0 AS gpu_hours").
+		ColumnExpr("a.slot_seconds / 3600.0 AS slot_hours").
+		ColumnExpr("a.resource_pool").
 		With("tasks_in_range", tasksInRange).
 		With("allocations_in_range", allocationsInRange).
 		With("task_owners", taskOwners).
 		With("image_pull_times", imagePullTimes).
-		With("task_experiment_info", taskExperimentInfo).
 		With("task_in_range", tasksInRange).
 		TableExpr("allocations_in_range a").
 		Join("LEFT JOIN task_in_range t ON a.task_id = t.task_id").
 		Join("LEFT JOIN task_owners t_o ON a.task_id = t_o.task_id").
-		Join("LEFT JOIN task_experiment_info tei ON a.task_id = tei.task_id").
 		Join("LEFT JOIN image_pull_times ip ON a.allocation_id = ip.allocation_id").
+		Join("LEFT JOIN allocation_workspace_info awi ON a.allocation_id = awi.allocation_id").
 		Order("a.start_time").
 		Rows(c.Request().Context())
 
@@ -511,7 +505,8 @@ func (m *Master) getResourceAllocations(c echo.Context) error {
 		"start_time",
 		"end_time",
 		"imagepulling_time",
-		"gpu_hours",
+		"slot_hours",
+		"resource_pool",
 	}
 
 	formatTimestamp := func(t time.Time) string {
@@ -533,6 +528,13 @@ func (m *Master) getResourceAllocations(c echo.Context) error {
 		return err
 	}
 
+	nullIfZero := func(val int) string {
+		if val == 0 {
+			return ""
+		}
+		return strconv.Itoa(val)
+	}
+
 	// Write each entry to the output CSV
 	for rows.Next() {
 		allocationMetadata := new(AllocationMetadata)
@@ -544,12 +546,13 @@ func (m *Master) getResourceAllocations(c echo.Context) error {
 			string(allocationMetadata.TaskType),
 			allocationMetadata.Username,
 			allocationMetadata.WorkspaceName,
-			strconv.Itoa(allocationMetadata.ExperimentID),
+			nullIfZero(allocationMetadata.ExperimentID),
 			strconv.Itoa(allocationMetadata.Slots),
 			formatTimestamp(allocationMetadata.StartTime),
 			formatTimestamp(allocationMetadata.EndTime),
 			formatDuration(allocationMetadata.ImagepullingTime),
-			formatDuration(allocationMetadata.GPUHours),
+			formatDuration(allocationMetadata.SlotHours),
+			allocationMetadata.ResourcePool,
 		}
 		if err := csvWriter.Write(fields); err != nil {
 			return err
@@ -1061,7 +1064,7 @@ func (m *Master) postTaskLogs(c echo.Context) (interface{}, error) {
 	return "", nil
 }
 
-func buildRM(
+func (m *Master) buildRM(
 	db *db.PgDB,
 	echo *echo.Echo,
 	rmConfigs []*config.ResourceManagerWithPoolsConfig,
@@ -1069,17 +1072,34 @@ func buildRM(
 	opts *aproto.MasterSetAgentOptions,
 	cert *tls.Certificate,
 ) (rm.ResourceManager, error) {
+	m.allRms = make(map[string]rm.ResourceManager)
 	if len(rmConfigs) <= 1 {
 		config := rmConfigs[0]
+		clusterName := config.ResourceManager.ClusterName()
 		switch {
 		case config.ResourceManager.AgentRM != nil:
-			return agentrm.New(db, echo, config, opts, cert)
+			agentRM, err := agentrm.New(db, echo, config, opts, cert)
+			if err != nil {
+				return nil, err
+			}
+			m.allRms[clusterName] = agentRM
+			return agentRM, nil
 		case config.ResourceManager.KubernetesRM != nil:
-			return kubernetesrm.New(db, config, tcd, opts, cert)
+			kubernetesRM, err := kubernetesrm.New(db, config, tcd, opts, cert)
+			if err != nil {
+				return nil, err
+			}
+			m.allRms[clusterName] = kubernetesRM
+			return kubernetesRM, nil
 		case config.ResourceManager.DispatcherRM != nil,
 			config.ResourceManager.PbsRM != nil:
 			license.RequireLicense("dispatcher resource manager")
-			return dispatcherrm.New(db, echo, config, opts, cert)
+			dispatcherRM, err := dispatcherrm.New(db, echo, config, opts, cert)
+			if err != nil {
+				return nil, err
+			}
+			m.allRms[clusterName] = dispatcherRM
+			return dispatcherRM, nil
 		default:
 			return nil, fmt.Errorf("no expected resource manager config is defined")
 		}
@@ -1089,30 +1109,46 @@ func buildRM(
 	license.RequireLicense("multiple resource managers")
 
 	// Set the default RM name for the multi-rm, from the default RM index.
-	defaultRMName := rmConfigs[config.DefaultRMIndex].ResourceManager.Name()
+	defaultClusterName := rmConfigs[config.DefaultRMIndex].ResourceManager.ClusterName()
 	rms := map[string]rm.ResourceManager{}
+	clusterNames := map[string]int{}
 
 	for _, cfg := range rmConfigs {
 		c := cfg.ResourceManager
+		rmClusterName := c.ClusterName()
 		switch {
 		case c.AgentRM != nil:
+			if len(rmClusterName) == 0 {
+				return nil, fmt.Errorf("resource manager must have a cluster name")
+			}
+			clusterNames[rmClusterName] = 0
+
 			agentRM, err := agentrm.New(db, echo, cfg, opts, cert)
 			if err != nil {
-				return nil, fmt.Errorf("resource manager %s: %w", c.Name(), err)
+				return nil, fmt.Errorf("resource manager %s: %w", c.ClusterName(), err)
 			}
-			rms[c.Name()] = agentRM
+			rms[rmClusterName] = agentRM
 		case c.KubernetesRM != nil:
-			k8sRM, err := kubernetesrm.New(db, cfg, tcd, opts, cert)
-			if err != nil {
-				return nil, fmt.Errorf("resource manager %s: %w", c.Name(), err)
+			if len(rmClusterName) == 0 {
+				return nil, fmt.Errorf("resource manager must have a cluster name")
 			}
-			rms[c.Name()] = k8sRM
+			clusterNames[rmClusterName] = 0
+			k8sRM, err := kubernetesrm.New(db, cfg, tcd, opts, cert)
+			rms[rmClusterName] = k8sRM
+			if err != nil {
+				return nil, fmt.Errorf("resource manager %s: %w", c.ClusterName(), err)
+			}
+			rms[rmClusterName] = k8sRM
 		default:
 			return nil, fmt.Errorf("no expected resource manager config is defined")
 		}
 	}
 
-	return multirm.New(defaultRMName, rms), nil
+	if len(clusterNames) != len(rmConfigs) {
+		return nil, fmt.Errorf("resource managers must all have distinct cluster names")
+	}
+	m.allRms = rms
+	return multirm.New(defaultClusterName, rms), nil
 }
 
 // Run causes the Determined master to connect the database and begin listening for HTTP requests.
@@ -1129,31 +1165,50 @@ func (m *Master) Run(ctx context.Context, gRPCLogInitDone chan struct{}) error {
 		return errors.Wrap(err, "could not set static root")
 	}
 
-	var isBrandNewCluster bool
-	m.db, isBrandNewCluster, err = db.Setup(&m.config.DB)
+	var isOldCluster bool
+	newClustersRequirePasswords := func(*db.PgDB) error {
+		isOldCluster, err = db.Bun().NewSelect().Table("pg_tables").
+			Where("schemaname = 'public'").
+			Where("tablename = 'gopg_migrations'").
+			Exists(ctx)
+		if err != nil {
+			return fmt.Errorf("checking if database is fresh: %w", err)
+		}
+
+		if !isOldCluster &&
+			slices.Contains(m.config.FeatureSwitches, "prevent_blank_password") &&
+			m.config.Security.InitialUserPassword == "" {
+			log.Error("This cluster was deployed without an initial password for the built-in `determined` " +
+				"and `admin` users. New clusters can be deployed with initial passwords set using the " +
+				"`security.initial_user_password` setting.")
+			return errors.New("could not deploy without initial password")
+		}
+
+		return nil
+	}
+	m.db, err = db.Setup(&m.config.DB, newClustersRequirePasswords)
 	if err != nil {
 		return err
 	}
 	defer closeWithErrCheck("db", m.db)
 
-	m.ClusterID, err = m.db.GetOrCreateClusterID(m.config.Telemetry.ClusterID)
-	if err != nil {
-		return errors.Wrap(err, "could not fetch cluster id from database")
-	}
-
-	if isBrandNewCluster {
-		if password := m.config.Security.InitialUserPassword; password == "" {
-			log.Warn("This cluster was deployed without a default password for the built-in `determined` " +
-				"and `admin` users. You should set one using `det user change-password`. New clusters can be " +
-				"deployed with default passwords set using the `security.initial_user_password` setting.")
-		} else {
+	if !isOldCluster {
+		// This has to happen after setup, since creating the built-in users without a
+		// password is part of the first migration.
+		password := m.config.Security.InitialUserPassword
+		if password != "" {
 			for _, username := range user.BuiltInUsers {
 				err := user.SetUserPassword(ctx, username, password)
 				if err != nil {
-					return fmt.Errorf("could not update default user password: %w", err)
+					return fmt.Errorf("could not set password for %s: %w", username, err)
 				}
 			}
 		}
+	}
+
+	m.ClusterID, err = m.db.GetOrCreateClusterID(m.config.Telemetry.ClusterID)
+	if err != nil {
+		return errors.Wrap(err, "could not fetch cluster id from database")
 	}
 
 	webhookManager, err := webhooks.New(ctx)
@@ -1187,14 +1242,24 @@ func (m *Master) Run(ctx context.Context, gRPCLogInitDone chan struct{}) error {
 		HarnessPath:           filepath.Join(m.config.Root, "wheels"),
 		TaskContainerDefaults: m.config.TaskContainerDefaults,
 		MasterCert:            config.GetCertPEM(cert),
-		SSHRsaSize:            m.config.Security.SSH.RsaKeySize,
+		SSHConfig:             m.config.Security.SSH,
 		SegmentEnabled:        m.config.Telemetry.Enabled && m.config.Telemetry.SegmentMasterKey != "",
 		SegmentAPIKey:         m.config.Telemetry.SegmentMasterKey,
+		LogRetentionDays:      m.config.RetentionPolicy.LogRetentionDays,
 	}
 	if m.config.RetentionPolicy.Schedule != nil {
-		if err := logretention.Schedule(m.config.RetentionPolicy); err != nil {
-			return errors.Wrap(err, "initializing log retention")
+		lrs, err := logretention.NewScheduler()
+		if err != nil {
+			return fmt.Errorf("initializing log retention scheduler: %w", err)
 		}
+		if err := lrs.Schedule(m.config.RetentionPolicy); err != nil {
+			return fmt.Errorf("scheduling log retention enforcer: %w", err)
+		}
+		defer func() {
+			if err := lrs.Shutdown(); err != nil {
+				log.WithError(err).Warn("shutting down log retention workers")
+			}
+		}()
 	}
 
 	go m.cleanUpExperimentSnapshots()
@@ -1228,7 +1293,7 @@ func (m *Master) Run(ctx context.Context, gRPCLogInitDone chan struct{}) error {
 	m.echo.Use(middleware.Recover())
 
 	// Files that receive a unique hash when bundled and deployed can be cached forever
-	cacheFileLongTerm := regexp.MustCompile(`(-[0-9a-z]{1,}\.(js|css))$|(woff2|woff)$`)
+	cacheFileLongTerm := regexp.MustCompile(`(?i)(-[0-9a-z]{1,}\.(js|css))$|(woff2|woff)$`)
 
 	// Other static files should only be cached for a short period of time
 	cacheFileShortTerm := regexp.MustCompile(`.(antd.\S+(.css)|ico|png|jpe*g|gif|svg)$`)
@@ -1308,7 +1373,7 @@ func (m *Master) Run(ctx context.Context, gRPCLogInitDone chan struct{}) error {
 	}
 
 	// Resource Manager.
-	if m.rm, err = buildRM(m.db, m.echo, m.config.ResourceManagers(),
+	if m.rm, err = m.buildRM(m.db, m.echo, m.config.ResourceManagers(),
 		&m.config.TaskContainerDefaults,
 		&aproto.MasterSetAgentOptions{
 			MasterInfo:     m.Info(),
@@ -1382,6 +1447,14 @@ func (m *Master) Run(ctx context.Context, gRPCLogInitDone chan struct{}) error {
 	m.echo.Static("/docs", filepath.Join(webuiRoot, "docs"))
 
 	webuiGroup := m.echo.Group(webuiBaseRoute)
+	webuiGroup.GET("/customer-assets/logo", func(c echo.Context) error {
+		if !m.config.UICustomization.HasCustomLogo() {
+			return echo.NewHTTPError(http.StatusNotFound)
+		}
+		return c.File(m.config.UICustomization.LogoPaths.PickVariation(
+			c.QueryParam("mode"), c.QueryParam("orientation"),
+		))
+	})
 	webuiGroup.File("/design", designIndex)
 	webuiGroup.File("/design/", designIndex)
 	webuiGroup.File("", reactIndex)
@@ -1438,9 +1511,6 @@ func (m *Master) Run(ctx context.Context, gRPCLogInitDone chan struct{}) error {
 
 	checkpointsGroup := m.echo.Group("/checkpoints")
 	checkpointsGroup.GET("/:checkpoint_uuid", m.getCheckpoint)
-
-	searcherGroup := m.echo.Group("/searcher")
-	searcherGroup.POST("/preview", api.Route(m.getSearcherPreview))
 
 	resourcesGroup := m.echo.Group("/resources", cluster.CanGetUsageDetails())
 	resourcesGroup.GET("/allocation/raw", m.getRawResourceAllocation)
@@ -1517,6 +1587,8 @@ func (m *Master) Run(ctx context.Context, gRPCLogInitDone chan struct{}) error {
 	if err := sso.RegisterAPIHandlers(m.config, m.db, m.echo); err != nil {
 		return err
 	}
+
+	saasprovisioner.Register()
 
 	webhooks.Init()
 	defer webhooks.Deinit()

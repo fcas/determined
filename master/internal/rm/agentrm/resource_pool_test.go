@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 	"gotest.tools/assert"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/determined-ai/determined/master/internal/sproto"
 	"github.com/determined-ai/determined/master/pkg/aproto"
 	"github.com/determined-ai/determined/master/pkg/cproto"
+	"github.com/determined-ai/determined/master/pkg/device"
 	"github.com/determined-ai/determined/master/pkg/model"
 )
 
@@ -231,7 +231,7 @@ func TestSettingGroupPriority(t *testing.T) {
 	rp.mu.Unlock()
 }
 
-func setupRPSamePriority(t *testing.T) *resourcePool {
+func TestGetResourceSummary(t *testing.T) {
 	defaultPriority := 50
 	config := config.ResourcePoolConfig{
 		Scheduler: &config.SchedulerConfig{
@@ -242,222 +242,27 @@ func setupRPSamePriority(t *testing.T) *resourcePool {
 		},
 	}
 
-	rp := setupResourcePool(t, nil, &config, nil, nil, nil)
-
-	rp.queuePositions = map[model.JobID]decimal.Decimal{
-		"job1": decimal.New(100, 1000),
-		"job2": decimal.New(200, 1000),
-		"job3": decimal.New(300, 1000),
+	cases := []struct {
+		name    string
+		devices device.Type
+		agents  []*MockAgent
+	}{
+		{"simple", device.Type(""), nil},
+		{"homogenous agents", device.Type("cuda"), []*MockAgent{
+			{ID: "agent1", SlotType: "cuda", Slots: 1},
+			{ID: "agent2", SlotType: "cuda", Slots: 2},
+		}},
+		{"heterogenous agents", device.Type(""), []*MockAgent{
+			{ID: "agent1", SlotType: "cuda"},
+			{ID: "agent2", SlotType: "cpu"},
+			{ID: "agent2", SlotType: "rocm"},
+		}},
 	}
-
-	rp.groups = map[model.JobID]*tasklist.Group{
-		"job1": {Priority: &defaultPriority},
-		"job2": {Priority: &defaultPriority},
-		"job3": {Priority: &defaultPriority},
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			rp := setupResourcePool(t, nil, &config, nil, nil, tt.agents)
+			summary := rp.resourceSummaryFromAgentStates(rp.agentStatesCache)
+			require.Equal(t, tt.devices, summary.slotType)
+		})
 	}
-
-	rp.taskList.AddTask(&sproto.AllocateRequest{
-		AllocationID: "allocation1",
-		JobID:        "job1",
-	})
-	rp.taskList.AddTask(&sproto.AllocateRequest{
-		AllocationID: "allocation2",
-		JobID:        "job2",
-	})
-	rp.taskList.AddTask(&sproto.AllocateRequest{
-		AllocationID: "allocation3",
-		JobID:        "job3",
-	})
-
-	return rp
-}
-
-func TestMoveMessagesPromote(t *testing.T) {
-	rp := setupRPSamePriority(t)
-
-	// move job3 above job2
-	prioChange, secondAnchor, anchorPriority := tasklist.FindAnchor(
-		"job3",
-		"job2",
-		true,
-		rp.taskList,
-		rp.groups,
-		rp.queuePositions,
-		false,
-	)
-
-	assert.Assert(t, !prioChange)
-	assert.Equal(t, secondAnchor, model.JobID("job1"))
-	assert.Equal(t, anchorPriority, 50)
-}
-
-func TestMoveMessagesPromoteHead(t *testing.T) {
-	rp := setupRPSamePriority(t)
-
-	// move job3 ahead of job1, the first job
-	prioChange, secondAnchor, anchorPriority := tasklist.FindAnchor(
-		"job3",
-		"job1",
-		true,
-		rp.taskList,
-		rp.groups,
-		rp.queuePositions,
-		false,
-	)
-
-	assert.Assert(t, !prioChange)
-	assert.Equal(t, secondAnchor, sproto.HeadAnchor)
-	assert.Equal(t, anchorPriority, 50)
-}
-
-func TestMoveMessagesDemote(t *testing.T) {
-	rp := setupRPSamePriority(t)
-
-	// move job1 behind job2
-	prioChange, secondAnchor, anchorPriority := tasklist.FindAnchor(
-		"job1",
-		"job2",
-		false,
-		rp.taskList,
-		rp.groups,
-		rp.queuePositions,
-		false,
-	)
-
-	assert.Assert(t, !prioChange)
-	assert.Equal(t, secondAnchor, model.JobID("job3"))
-	assert.Equal(t, anchorPriority, 50)
-}
-
-func TestMoveMessagesDemoteTail(t *testing.T) {
-	rp := setupRPSamePriority(t)
-
-	// move job1 behind job3, the last job
-	prioChange, secondAnchor, anchorPriority := tasklist.FindAnchor(
-		"job1",
-		"job3",
-		false,
-		rp.taskList,
-		rp.groups,
-		rp.queuePositions,
-		false,
-	)
-
-	assert.Assert(t, !prioChange)
-	assert.Equal(t, secondAnchor, sproto.TailAnchor)
-	assert.Equal(t, anchorPriority, 50)
-}
-
-func TestMoveMessagesAcrossPrioLanes(t *testing.T) {
-	defaultPriority := 50
-	config := config.ResourcePoolConfig{
-		Scheduler: &config.SchedulerConfig{
-			Priority: &config.PrioritySchedulerConfig{
-				DefaultPriority: &defaultPriority,
-			},
-			FittingPolicy: best,
-		},
-	}
-
-	rp := setupResourcePool(t, nil, &config, nil, nil, nil)
-
-	rp.queuePositions = map[model.JobID]decimal.Decimal{
-		"job1": decimal.New(100, 1000),
-		"job2": decimal.New(100, 1000),
-		"job3": decimal.New(100, 1000),
-	}
-
-	lowPriority := 60
-	highPriority := 40
-
-	rp.groups = map[model.JobID]*tasklist.Group{
-		"job1": {Priority: &highPriority},
-		"job2": {Priority: &defaultPriority},
-		"job3": {Priority: &lowPriority},
-	}
-
-	rp.taskList.AddTask(&sproto.AllocateRequest{
-		AllocationID: "allocation1",
-		JobID:        "job1",
-	})
-	rp.taskList.AddTask(&sproto.AllocateRequest{
-		AllocationID: "allocation2",
-		JobID:        "job2",
-	})
-	rp.taskList.AddTask(&sproto.AllocateRequest{
-		AllocationID: "allocation3",
-		JobID:        "job3",
-	})
-
-	// move job2 ahead of job1
-	prioChange, secondAnchor, anchorPriority := tasklist.FindAnchor(
-		"job2",
-		"job1",
-		true,
-		rp.taskList,
-		rp.groups,
-		rp.queuePositions,
-		false,
-	)
-
-	assert.Assert(t, prioChange)
-	assert.Equal(t, secondAnchor, sproto.HeadAnchor)
-	assert.Equal(t, anchorPriority, 40)
-}
-
-func TestMoveMessagesAcrossPrioLanesBehind(t *testing.T) {
-	defaultPriority := 50
-	config := config.ResourcePoolConfig{
-		Scheduler: &config.SchedulerConfig{
-			Priority: &config.PrioritySchedulerConfig{
-				DefaultPriority: &defaultPriority,
-			},
-			FittingPolicy: best,
-		},
-	}
-
-	rp := setupResourcePool(t, nil, &config, nil, nil, nil)
-
-	rp.queuePositions = map[model.JobID]decimal.Decimal{
-		"job1": decimal.New(100, 1000),
-		"job2": decimal.New(100, 1000),
-		"job3": decimal.New(100, 1000),
-	}
-
-	lowPriority := 60
-	highPriority := 40
-
-	rp.groups = map[model.JobID]*tasklist.Group{
-		"job1": {Priority: &highPriority},
-		"job2": {Priority: &defaultPriority},
-		"job3": {Priority: &lowPriority},
-	}
-
-	rp.taskList.AddTask(&sproto.AllocateRequest{
-		AllocationID: "allocation1",
-		JobID:        "job1",
-	})
-	rp.taskList.AddTask(&sproto.AllocateRequest{
-		AllocationID: "allocation2",
-		JobID:        "job2",
-	})
-	rp.taskList.AddTask(&sproto.AllocateRequest{
-		AllocationID: "allocation3",
-		JobID:        "job3",
-	})
-
-	// move job1 behind job2
-	prioChange, secondAnchor, anchorPriority := tasklist.FindAnchor(
-		"job1",
-		"job2",
-		false,
-		rp.taskList,
-		rp.groups,
-		rp.queuePositions,
-		false,
-	)
-
-	assert.Assert(t, prioChange)
-	assert.Equal(t, secondAnchor, model.JobID("job3"))
-	assert.Equal(t, anchorPriority, 50)
 }

@@ -5,10 +5,10 @@ Mappings:
   RegionMap:
     us-gov-east-1:
       Master: ami-04ef693ebcf519dc3
-      Agent: ami-0f703fc4950620f0d
+      Agent: ami-0063241a8b5802acf
     us-gov-west-1:
       Master: ami-08bd15d820a3c087e
-      Agent: ami-0c6d1e5673cb0e483
+      Agent: ami-0e246347c97b4bd25
 Parameters:
   Keypair:
     Type: AWS::EC2::KeyPair::KeyName
@@ -17,7 +17,7 @@ Parameters:
   MasterInstanceType:
     Type: String
     Description: Instance Type of Master
-    Default: m5.large
+    Default: m6i.large
 
   AuxAgentInstanceType:
     Type: String
@@ -63,11 +63,11 @@ Parameters:
     Type: String
     Description: Docker password to pull images that need authentication
     Default: ""
+    NoEcho: true
 
   Version:
     Type: String
     Description: Determined version or commit for master docker image
-    Default: 0.32.1-dev0
 
   DBPassword:
     Type: String

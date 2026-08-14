@@ -537,7 +537,6 @@ class CheckpointContext:
 
         path = self._storage_manager.pre_store_path(storage_id)
         yield path, storage_id
-
         ckpt_dir = os.fspath(path)
 
         if self._storage_manager.store_path_is_direct_access():
@@ -567,20 +566,19 @@ class CheckpointContext:
             resources = self._storage_manager._list_directory(ckpt_dir)
         else:
             resources = {}
-
         # Merge resources, detect conflicts.
         all_resources = self._dist.allgather(resources)
-
         merged_resources, conflicts = merge_resources(all_resources)
-        self._resolve_conflicts(resources, conflicts, ckpt_dir)
+        resources = self._resolve_conflicts(resources, conflicts, ckpt_dir)
 
         all_metadata = self._merge_metadata(metadata)
         if self._dist.rank == 0:
             self._write_metadata_file(ckpt_dir, all_metadata)
 
         if want_upload:
+            paths = set(resources.keys())
             # Use post_store_path to upload and clean up ckpt_dir after uploading.
-            self._storage_manager.post_store_path(src=ckpt_dir, dst=storage_id)
+            self._storage_manager.post_store_path(src=ckpt_dir, dst=storage_id, paths=paths)
 
         if self._dist.rank == 0:
             self._report_checkpoint(storage_id, merged_resources, all_metadata)
@@ -677,9 +675,31 @@ class CheckpointContext:
 
     def delete(self, storage_id: str) -> None:
         """
-        Delete a checkpoint from the storage backend.
+        Delete a checkpoint from the storage backend and notify the master.
         """
-        self._storage_manager.delete(storage_id, ["**/*"])
+        resources_deleted = self._storage_manager.delete(storage_id, ["**/*"])
+        self._report_checkpoint_deleted(storage_id=storage_id, resources=resources_deleted)
+
+    def _report_checkpoint_deleted(
+        self,
+        storage_id: str,
+        resources: Optional[Dict[str, int]] = None,
+    ) -> None:
+        """
+        After deleting a checkpoint, report deletion to the master.
+        """
+        deleted_checkpoint = [
+            bindings.v1PatchCheckpoint(
+                uuid=storage_id,
+                resources=bindings.PatchCheckpointOptionalResources(
+                    resources=resources,  # type: ignore
+                ),
+            )
+        ]
+
+        bindings.patch_PatchCheckpoints(
+            self._session, body=bindings.v1PatchCheckpointsRequest(checkpoints=deleted_checkpoint)
+        )
 
     def _write_metadata_file(self, ckpt_dir: str, metadata: Dict[str, Any]) -> None:
         metadata_path = pathlib.Path(ckpt_dir).joinpath("metadata.json")
@@ -741,6 +761,14 @@ class DummyCheckpointContext(CheckpointContext):
     ) -> None:
         # No master to report to; just log the event.
         logger.info(f"saved checkpoint {storage_id}")
+
+    def _report_checkpoint_deleted(
+        self,
+        storage_id: str,
+        resources: Optional[Dict[str, int]] = None,
+    ) -> None:
+        # No master to report to; just log the event.
+        logger.info(f"deleted checkpoint {storage_id}")
 
     def get_metadata(self, storage_id: str) -> Dict[str, Any]:
         # TODO: when the StorageManager supports downloading with a file filter, we should attempt

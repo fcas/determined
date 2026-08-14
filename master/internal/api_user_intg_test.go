@@ -11,36 +11,35 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-
-	"github.com/determined-ai/determined/master/internal/job/jobservice"
-	"github.com/determined-ai/determined/master/internal/rm"
-	"github.com/determined-ai/determined/master/internal/rm/rmevents"
-	"github.com/determined-ai/determined/master/internal/sproto"
-
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/guregu/null.v3"
-
-	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+	"gopkg.in/guregu/null.v3"
 
 	apiPkg "github.com/determined-ai/determined/master/internal/api"
 	authz2 "github.com/determined-ai/determined/master/internal/authz"
 	"github.com/determined-ai/determined/master/internal/config"
 	"github.com/determined-ai/determined/master/internal/db"
 	"github.com/determined-ai/determined/master/internal/grpcutil"
+	"github.com/determined-ai/determined/master/internal/job/jobservice"
 	"github.com/determined-ai/determined/master/internal/logpattern"
 	"github.com/determined-ai/determined/master/internal/mocks"
+	"github.com/determined-ai/determined/master/internal/rbac"
+	"github.com/determined-ai/determined/master/internal/rm"
+	"github.com/determined-ai/determined/master/internal/rm/rmevents"
+	"github.com/determined-ai/determined/master/internal/sproto"
 	"github.com/determined-ai/determined/master/internal/user"
 	"github.com/determined-ai/determined/master/pkg/etc"
 	"github.com/determined-ai/determined/master/pkg/model"
 	"github.com/determined-ai/determined/master/pkg/ptrs"
 	"github.com/determined-ai/determined/master/pkg/tasks"
 	"github.com/determined-ai/determined/proto/pkg/apiv1"
+	"github.com/determined-ai/determined/proto/pkg/rbacv1"
 	"github.com/determined-ai/determined/proto/pkg/userv1"
 )
 
@@ -75,6 +74,10 @@ func MockRM() *mocks.ResourceManager {
 	mockRM.On("Allocate", mock.Anything).Return(func(msg sproto.AllocateRequest) *sproto.ResourcesSubscription {
 		return rmevents.Subscribe(msg.AllocationID)
 	}, nil)
+
+	mockRM.On("SmallerValueIsHigherPriority").Return(true, nil)
+	mockRM.On("SetGroupPriority", mock.Anything).Return(nil)
+
 	return &mockRM
 }
 
@@ -116,8 +119,15 @@ func setupAPITest(t *testing.T, pgdb *db.PgDB,
 				},
 				TaskContainerDefaults: model.TaskContainerDefaultsConfig{},
 				ResourceConfig:        *config.DefaultResourceConfig(),
+				Security: config.SecurityConfig{
+					Token: config.TokenConfig{
+						MaxLifespanDays:     config.MaxAllowedTokenLifespanDays,
+						DefaultLifespanDays: config.DefaultTokenLifespanDays,
+					},
+				},
 			},
-			taskSpec: &tasks.TaskSpec{SSHRsaSize: 1024},
+			taskSpec: &tasks.TaskSpec{SSHConfig: config.SSHConfig{KeyType: "ED25519"}},
+			allRms:   map[string]rm.ResourceManager{config.DefaultClusterName: mockRM},
 		},
 	}
 	config.GetMasterConfig().Security.AuthZ = config.AuthZConfig{Type: "basic"}
@@ -137,7 +147,6 @@ func setupAPITest(t *testing.T, pgdb *db.PgDB,
 	require.NoError(t, err, "Couldn't get admin user")
 	ctx := metadata.NewIncomingContext(context.TODO(),
 		metadata.Pairs("x-user-token", fmt.Sprintf("Bearer %s", resp.Token)))
-
 	return api, *userModel, ctx
 }
 
@@ -235,11 +244,11 @@ func TestAuthMiddleware(t *testing.T) {
 			allocationHeader: fmt.Sprintf("Bearer %s", allocationToken),
 		}},
 		{proxiedSubRoute, http.StatusSeeOther, redirectedSubRoute, map[string]string{
-			allocationHeader: fmt.Sprintf("Bearer %s", "invalid-token"),
+			allocationHeader: "Bearer invalid-token",
 		}},
 		{proxiedSubRoute, http.StatusUnauthorized, "", map[string]string{
 			"Accept":         "application/json",
-			allocationHeader: fmt.Sprintf("Bearer %s", "invalid-token"),
+			allocationHeader: "Bearer invalid-token",
 		}},
 		{"/non-proxied-path", http.StatusUnauthorized, "", map[string]string{}},
 		{"/non-proxied-path", http.StatusUnauthorized, "", map[string]string{
@@ -397,7 +406,7 @@ func TestLoginRemote(t *testing.T) {
 			Where("username = ?", username).
 			Scan(ctx, &expectedUser)
 		require.NoError(t, err)
-		require.Equal(t, model.NoPasswordLogin, expectedUser.PasswordHash)
+		require.Equal(t, expectedUser.PasswordHash, model.NoPasswordLogin)
 
 		// Changing back to unremote unsets password to blank.
 		_, err = api.PatchUser(ctx, &apiv1.PatchUserRequest{
@@ -630,7 +639,7 @@ func TestPatchUsers(t *testing.T) {
 		UserId: int32(userID),
 	})
 	require.NoError(t, err)
-	require.Equal(t, resp2.User.Active, true)
+	require.True(t, resp2.User.Active)
 }
 
 func TestRenameUserThenReuseName(t *testing.T) {
@@ -909,7 +918,7 @@ func TestPostUserActivity(t *testing.T) {
 
 	activityCount, err := getActivityEntry(ctx, curUser.ID, 1)
 	require.NoError(t, err)
-	require.Equal(t, activityCount, 1, ctx)
+	require.Equal(t, 1, activityCount, ctx)
 
 	_, err = api.PostUserActivity(ctx, &apiv1.PostUserActivityRequest{
 		ActivityType: userv1.ActivityType_ACTIVITY_TYPE_GET,
@@ -921,7 +930,63 @@ func TestPostUserActivity(t *testing.T) {
 
 	activityCount, err = getActivityEntry(ctx, curUser.ID, 1)
 	require.NoError(t, err)
-	require.Equal(t, activityCount, 1, ctx)
+	require.Equal(t, 1, activityCount, ctx)
+}
+
+func TestFilterUserByRoleId(t *testing.T) {
+	api, _, ctx := setupAPITest(t, nil)
+	config.GetMasterConfig().Security.AuthZ = config.AuthZConfig{Type: "rbac"}
+	defer func() {
+		config.GetMasterConfig().Security.AuthZ = config.AuthZConfig{Type: "basic"}
+	}()
+	testRole := rbac.Role{
+		ID:   10002,
+		Name: uuid.New().String(),
+	}
+	_, err := db.Bun().NewInsert().Model(&testRole).Exec(ctx)
+	require.NoError(t, err, "failure creating role in setup")
+
+	user0 := model.User{Username: uuid.New().String()}
+	_, err = db.HackAddUser(context.TODO(), &user0)
+	require.NoError(t, err)
+	user1 := model.User{Username: uuid.New().String()}
+	_, err = db.HackAddUser(context.TODO(), &user1)
+	require.NoError(t, err)
+
+	err = rbac.AddRoleAssignments(ctx, nil,
+		[]*rbacv1.UserRoleAssignment{
+			{
+				UserId: int32(user0.ID),
+				RoleAssignment: &rbacv1.RoleAssignment{
+					Role: &rbacv1.Role{
+						RoleId: int32(testRole.ID),
+					},
+					ScopeWorkspaceId: nil,
+				},
+			},
+			{
+				UserId: int32(user1.ID),
+				RoleAssignment: &rbacv1.RoleAssignment{
+					Role: &rbacv1.Role{
+						RoleId: int32(testRole.ID),
+					},
+					ScopeWorkspaceId: ptrs.Ptr(int32(1)),
+				},
+			},
+		},
+	)
+	require.NoError(t, err, "error adding role assignment")
+	resp, err := api.GetUsers(ctx, &apiv1.GetUsersRequest{
+		RoleIdAssignedDirectlyToUser: []int32{int32(testRole.ID)},
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Users, 1)
+	require.Equal(t, int32(user0.ID), resp.Users[0].Id)
+
+	_, err = db.Bun().NewDelete().Table("roles").Where("id = ?", testRole.ID).Exec(ctx)
+	if err != nil {
+		t.Logf("Error cleaning up role")
+	}
 }
 
 func getActivityEntry(ctx context.Context, userID model.UserID, entityID int32) (int, error) {

@@ -5,7 +5,11 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     app: determined-master-{{ .Release.Name }}
+    determined.ai/master-service: "true"
     release: {{ .Release.Name }}
+  {{- if (.Values.masterService).annotations }}
+  annotations: {{- toYaml .Values.masterService.annotations | nindent 4 }}
+  {{- end }}
 spec:
   ports:
   - port: {{ required "A valid Values.masterPort entry required!" .Values.masterPort }}

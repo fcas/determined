@@ -12,10 +12,12 @@ import { V1ProjectColumn } from 'services/api-ts-sdk';
 
 interface Props {
   loadableColumns: Loadable<V1ProjectColumn[]>;
-  bannedFilterColumns: Set<string>;
+  bannedFilterColumns?: Set<string>;
   formStore: FilterFormStore;
   isMobile?: boolean;
   isOpenFilter: boolean;
+  projectId?: number;
+  entityCopy?: string;
   onIsOpenFilterChange?: (value: boolean) => void;
 }
 
@@ -25,10 +27,12 @@ const TableFilter = ({
   formStore,
   isMobile = false,
   isOpenFilter,
+  projectId,
+  entityCopy,
   onIsOpenFilterChange,
 }: Props): JSX.Element => {
   const columns: V1ProjectColumn[] = Loadable.getOrElse([], loadableColumns).filter(
-    (column) => !bannedFilterColumns.has(column.column),
+    (column) => !bannedFilterColumns?.has(column.column),
   );
   const fieldCount = useObservable(formStore.fieldCount);
   const formset = useObservable(formStore.formset);
@@ -66,12 +70,21 @@ const TableFilter = ({
               }
             }}
             onMouseMove={(e) => e.stopPropagation()}>
-            <FilterForm columns={columns} formStore={formStore} onHidePopOver={onHidePopOver} />
+            <FilterForm
+              columns={columns}
+              entityCopy={entityCopy}
+              formStore={formStore}
+              projectId={projectId}
+              onHidePopOver={onHidePopOver}
+            />
           </div>
         }
         open={isOpenFilter}
         onOpenChange={handleIsOpenFilterChange}>
-        <Button hideChildren={isMobile} icon={<Icon decorative name="filter" />}>
+        <Button
+          data-test-component="tableFilter"
+          hideChildren={isMobile}
+          icon={<Icon decorative name="filter" />}>
           Filter {fieldCount > 0 && `(${fieldCount})`}
         </Button>
       </Dropdown>

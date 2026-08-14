@@ -171,8 +171,8 @@ func TestGetResourcePools(t *testing.T) {
 	cfg := &config.ResourceConfig{
 		RootManagerInternal: &config.ResourceManagerConfig{
 			AgentRM: &config.AgentResourceManagerConfig{
-				Name:     expectedName,
-				Metadata: expectedMetadata,
+				ClusterName: expectedName,
+				Metadata:    expectedMetadata,
 				Scheduler: &config.SchedulerConfig{
 					FairShare:     &config.FairShareSchedulerConfig{},
 					FittingPolicy: best,
@@ -220,7 +220,7 @@ func TestGetResourcePools(t *testing.T) {
 			Location:                "on-prem",
 			Details:                 &resourcepoolv1.ResourcePoolDetail{},
 			Stats:                   &jobv1.QueueStats{},
-			ResourceManagerName:     expectedName,
+			ClusterName:             expectedName,
 			ResourceManagerMetadata: expectedMetadata,
 		},
 		{
@@ -233,7 +233,7 @@ func TestGetResourcePools(t *testing.T) {
 			Location:                "on-prem",
 			Details:                 &resourcepoolv1.ResourcePoolDetail{},
 			Stats:                   &jobv1.QueueStats{},
-			ResourceManagerName:     expectedName,
+			ClusterName:             expectedName,
 			ResourceManagerMetadata: expectedMetadata,
 		},
 	}
@@ -271,7 +271,7 @@ func TestGetJobQueueStatsRequest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			res, err := agentRM.GetJobQueueStatsRequest(&apiv1.GetJobQueueStatsRequest{ResourcePools: tt.filteredRPs})
 			require.NoError(t, err)
-			require.Equal(t, tt.expected, len(res.Results))
+			require.Len(t, res.Results, tt.expected)
 		})
 	}
 }

@@ -1,4 +1,5 @@
 import { Loadable } from 'hew/utils/loadable';
+import { flatten } from 'lodash';
 import { useObservable } from 'micro-observables';
 import { useMemo } from 'react';
 
@@ -9,6 +10,8 @@ import userStore from 'stores/users';
 import {
   DetailedUser,
   ExperimentPermissionsArgs,
+  FlatRun,
+  FlatRunPermissionsArgs,
   ModelItem,
   ModelVersion,
   Permission,
@@ -18,6 +21,8 @@ import {
   Template,
   UserAssignment,
   UserRole,
+  Webhook,
+  Workspace,
   WorkspacePermissionsArgs,
 } from 'types';
 
@@ -53,10 +58,11 @@ interface MovePermissionsArgs {
   destination?: PermissionWorkspace;
 }
 
-interface PermissionsHook {
+export interface PermissionsHook {
   canAdministrateUsers: boolean;
   canAssignRoles: (arg0: WorkspacePermissionsArgs) => boolean;
   canCreateExperiment: (arg0: WorkspacePermissionsArgs) => boolean;
+  canCreateFlatRun: (arg0: WorkspacePermissionsArgs) => boolean;
   canCreateModelVersion: (arg0: ModelPermissionsArgs) => boolean;
   canCreateModelWorkspace: (arg0: ModelWorkspacePermissionsArgs) => boolean;
   canCreateModels: boolean;
@@ -67,15 +73,18 @@ interface PermissionsHook {
   canCreateWorkspace: boolean;
   canCreateWorkspaceNSC(arg0: WorkspacePermissionsArgs): boolean;
   canDeleteExperiment: (arg0: ExperimentPermissionsArgs) => boolean;
+  canDeleteFlatRun: (arg0: FlatRunPermissionsArgs) => boolean;
   canDeleteModel: (arg0: ModelPermissionsArgs) => boolean;
   canDeleteModelVersion: (arg0: ModelVersionPermissionsArgs) => boolean;
   canDeleteProjects: (arg0: ProjectPermissionsArgs) => boolean;
   canDeleteWorkspace: (arg0: WorkspacePermissionsArgs) => boolean;
   canDeleteTemplate: (arg0: TemplatePermissionArgs) => boolean;
   canModifyTemplate: (arg0: TemplatePermissionArgs) => boolean;
-  canEditWebhooks: boolean;
+  canEditWebhooks: (args0: Workspace[], args1: Webhook) => boolean;
+  canCreateWebhooks: (args0: Workspace[]) => Workspace[];
   canManageResourcePoolBindings: boolean;
   canModifyExperiment: (arg0: WorkspacePermissionsArgs) => boolean;
+  canModifyFlatRun: (arg0: WorkspacePermissionsArgs) => boolean;
   canModifyExperimentMetadata: (arg0: WorkspacePermissionsArgs) => boolean;
   canModifyGroups: boolean;
   canModifyModel: (arg0: ModelPermissionsArgs) => boolean;
@@ -86,8 +95,11 @@ interface PermissionsHook {
   canModifyWorkspace: (arg0: WorkspacePermissionsArgs) => boolean;
   canModifyWorkspaceAgentUserGroup: (arg0: WorkspacePermissionsArgs) => boolean;
   canModifyWorkspaceCheckpointStorage: (arg0: WorkspacePermissionsArgs) => boolean;
+  canSetWorkspaceNamespaceBindings: boolean;
+  canSetResourceQuotas: boolean;
   canModifyWorkspaceNSC(arg0: WorkspacePermissionsArgs): boolean;
   canMoveExperiment: (arg0: ExperimentPermissionsArgs) => boolean;
+  canMoveFlatRun: (arg0: FlatRunPermissionsArgs) => boolean;
   canMoveExperimentsTo: (arg0: MovePermissionsArgs) => boolean;
   canMoveModel: (arg0: MovePermissionsArgs) => boolean;
   canMoveProjects: (arg0: ProjectPermissionsArgs) => boolean;
@@ -98,6 +110,11 @@ interface PermissionsHook {
   canViewModelRegistry: (arg0: WorkspacePermissionsArgs) => boolean;
   canViewWorkspace: (arg0: WorkspacePermissionsArgs) => boolean;
   canViewWorkspaces: boolean;
+  canViewResourceQuotas: boolean;
+  canViewWorkspaceConfigPolicies: boolean;
+  canModifyWorkspaceConfigPolicies: boolean;
+  canViewGlobalConfigPolicies: boolean;
+  canModifyGlobalConfigPolicies: boolean;
   loading: boolean;
 }
 
@@ -128,6 +145,8 @@ const usePermissions = (): PermissionsHook => {
       canAssignRoles: (args: WorkspacePermissionsArgs) => canAssignRoles(rbacOpts, args.workspace),
       canCreateExperiment: (args: WorkspacePermissionsArgs) =>
         canCreateExperiment(rbacOpts, args.workspace),
+      canCreateFlatRun: (args: WorkspacePermissionsArgs) =>
+        canCreateFlatRun(rbacOpts, args.workspace),
       canCreateModels: canCreateModels(rbacOpts),
       canCreateModelVersion: (args: ModelPermissionsArgs) =>
         canCreateModelVersion(rbacOpts, args.model),
@@ -139,11 +158,13 @@ const usePermissions = (): PermissionsHook => {
       canCreateTemplate: canCreateTemplate(rbacOpts),
       canCreateTemplateWorkspace: (args: WorkspacePermissionsArgs) =>
         canCreateTemplateWorkspace(rbacOpts, args.workspace!.id),
+      canCreateWebhooks: (args: Workspace[]) => canCreateWebhooks(rbacOpts, args),
       canCreateWorkspace: canCreateWorkspace(rbacOpts),
       canCreateWorkspaceNSC: (args: WorkspacePermissionsArgs) =>
         canCreateWorkspaceNSC(rbacOpts, args.workspace),
       canDeleteExperiment: (args: ExperimentPermissionsArgs) =>
         canDeleteExperiment(rbacOpts, args.experiment),
+      canDeleteFlatRun: (args: FlatRunPermissionsArgs) => canDeleteFlatRun(rbacOpts, args.flatRun),
       canDeleteModel: (args: ModelPermissionsArgs) => canDeleteModel(rbacOpts, args.model),
       canDeleteModelVersion: (args: ModelVersionPermissionsArgs) =>
         canDeleteModelVersion(rbacOpts, args.modelVersion),
@@ -153,12 +174,16 @@ const usePermissions = (): PermissionsHook => {
         canDeleteTemplate(rbacOpts, args.template),
       canDeleteWorkspace: (args: WorkspacePermissionsArgs) =>
         canDeleteWorkspace(rbacOpts, args.workspace),
-      canEditWebhooks: canEditWebhooks(rbacOpts),
+      canEditWebhooks: (args: Workspace[], args1: Webhook) =>
+        canEditWebhooks(rbacOpts, args, args1),
       canManageResourcePoolBindings: canManageResourcePoolBindings(rbacOpts),
       canModifyExperiment: (args: WorkspacePermissionsArgs) =>
         canModifyExperiment(rbacOpts, args.workspace),
       canModifyExperimentMetadata: (args: WorkspacePermissionsArgs) =>
         canModifyExperimentMetadata(rbacOpts, args.workspace),
+      canModifyFlatRun: (args: WorkspacePermissionsArgs) =>
+        canModifyFlatRun(rbacOpts, args.workspace),
+      canModifyGlobalConfigPolicies: canModifyGlobalConfigPolicies(rbacOpts),
       canModifyGroups: canModifyGroups(rbacOpts),
       canModifyModel: (args: ModelPermissionsArgs) => canModifyModel(rbacOpts, args.model),
       canModifyModelVersion: (args: ModelVersionPermissionsArgs) =>
@@ -175,25 +200,32 @@ const usePermissions = (): PermissionsHook => {
         canModifyWorkspaceAgentUserGroup(rbacOpts, args.workspace),
       canModifyWorkspaceCheckpointStorage: (args: WorkspacePermissionsArgs) =>
         canModifyWorkspaceCheckpointStorage(rbacOpts, args.workspace),
+      canModifyWorkspaceConfigPolicies: canModifyWorkspaceConfigPolicies(rbacOpts),
       canModifyWorkspaceNSC: (args: WorkspacePermissionsArgs) =>
         canModifyWorkspaceNSC(rbacOpts, args.workspace),
       canMoveExperiment: (args: ExperimentPermissionsArgs) =>
         canMoveExperiment(rbacOpts, args.experiment),
       canMoveExperimentsTo: (args: MovePermissionsArgs) =>
         canMoveExperimentsTo(rbacOpts, args.destination),
+      canMoveFlatRun: (args: FlatRunPermissionsArgs) => canMoveFlatRun(rbacOpts, args.flatRun),
       canMoveModel: (args: MovePermissionsArgs) => canMoveModel(rbacOpts, args.destination),
       canMoveProjects: (args: ProjectPermissionsArgs) =>
         canMoveWorkspaceProjects(rbacOpts, args.project),
       canMoveProjectsTo: (args: MovePermissionsArgs) =>
         canMoveProjectsTo(rbacOpts, args.destination),
+      canSetResourceQuotas: canSetResourceQuotas(rbacOpts),
+      canSetWorkspaceNamespaceBindings: canSetWorkspaceNamespaceBindings(rbacOpts),
       canUpdateRoles: (args: WorkspacePermissionsArgs) => canUpdateRoles(rbacOpts, args.workspace),
       canViewExperimentArtifacts: (args: WorkspacePermissionsArgs) =>
         canViewExperimentArtifacts(rbacOpts, args.workspace),
+      canViewGlobalConfigPolicies: canViewGlobalConfigPolicies(rbacOpts),
       canViewGroups: canViewGroups(rbacOpts),
       canViewModelRegistry: (args: WorkspacePermissionsArgs) =>
         canViewModelRegistry(rbacOpts, args.workspace),
+      canViewResourceQuotas: canViewResourceQuotas(rbacOpts),
       canViewWorkspace: (args: WorkspacePermissionsArgs) =>
         canViewWorkspace(rbacOpts, args.workspace),
+      canViewWorkspaceConfigPolicies: canViewWorkspaceConfigPolicies(rbacOpts),
       canViewWorkspaces: canViewWorkspaces(rbacOpts),
       loading:
         rbacOpts.rbacEnabled &&
@@ -584,6 +616,42 @@ const canModifyWorkspaceCheckpointStorage = (
   );
 };
 
+const canSetWorkspaceNamespaceBindings = (
+  { currentUser, rbacEnabled, userAssignments, userRoles }: RbacOptsProps,
+  workspace?: PermissionWorkspace,
+): boolean => {
+  const permitted = relevantPermissions(userAssignments, userRoles, workspace?.id);
+  return (
+    !!currentUser &&
+    (rbacEnabled
+      ? permitted.has(V1PermissionType.SETWORKSPACENAMESPACEBINDINGS)
+      : currentUser.isAdmin)
+  );
+};
+
+const canSetResourceQuotas = ({
+  currentUser,
+  rbacEnabled,
+  userAssignments,
+  userRoles,
+}: RbacOptsProps): boolean => {
+  const permitted = relevantPermissions(userAssignments, userRoles);
+  return (
+    !!currentUser &&
+    (rbacEnabled ? permitted.has(V1PermissionType.SETRESOURCEQUOTAS) : currentUser.isAdmin)
+  );
+};
+
+const canViewResourceQuotas = ({
+  currentUser,
+  rbacEnabled,
+  userAssignments,
+  userRoles,
+}: RbacOptsProps): boolean => {
+  const permitted = relevantPermissions(userAssignments, userRoles);
+  return !!currentUser && (!rbacEnabled || permitted.has(V1PermissionType.VIEWRESOURCEQUOTAS));
+};
+
 const canViewWorkspace = (
   { rbacEnabled, userAssignments, userRoles }: RbacOptsProps,
   workspace?: PermissionWorkspace,
@@ -652,16 +720,44 @@ const canModifyWorkspaceNSC = (
 
 /* Webhooks */
 
-const canEditWebhooks = ({
-  currentUser,
-  rbacEnabled,
-  userAssignments,
-  userRoles,
-}: RbacOptsProps): boolean => {
-  const permitted = relevantPermissions(userAssignments, userRoles);
+const canEditWebhooks = (
+  { currentUser, rbacEnabled, userAssignments, userRoles }: RbacOptsProps,
+  workspaces: Workspace[],
+  webhook: Webhook,
+): boolean => {
+  const permitted = relevantPermissions(
+    userAssignments,
+    userRoles,
+    webhook.workspaceId || undefined,
+  );
   return rbacEnabled
     ? permitted.has(V1PermissionType.EDITWEBHOOKS)
-    : !!currentUser && currentUser.isAdmin;
+    : !!currentUser &&
+        (currentUser.isAdmin ||
+          workspaces.find((w) => w.id === webhook.workspaceId)?.userId === currentUser.id);
+};
+
+const canCreateWebhooks = (
+  { currentUser, rbacEnabled, userAssignments, userRoles }: RbacOptsProps,
+  workspaces: Workspace[],
+): Workspace[] => {
+  const permitted = relevantPermissions(userAssignments, userRoles);
+  const roles = userRoles
+    ?.filter((r) => r.permissions.find((p) => p.id === V1PermissionType.EDITWEBHOOKS))
+    ?.map((r) => r.id);
+  // workspaces user with edit webhook permission
+  const permWorkspaceIds = flatten(
+    userAssignments?.filter((a) => roles?.includes(a.roleId)).map((a) => a.workspaces),
+  );
+  return rbacEnabled
+    ? permitted.has(V1PermissionType.EDITWEBHOOKS) // user has the permission globally
+      ? workspaces
+      : workspaces.filter((w) => permWorkspaceIds.includes(w.id))
+    : currentUser
+      ? currentUser.isAdmin
+        ? workspaces
+        : workspaces.filter((w) => w.userId === currentUser.id)
+      : [];
 };
 
 /* Resource Pools */
@@ -676,6 +772,93 @@ const canManageResourcePoolBindings = ({
   return rbacEnabled
     ? permitted.has(V1PermissionType.UPDATEMASTERCONFIG) ||
         permitted.has(V1PermissionType.UPDATEWORKSPACE)
+    : !!currentUser && currentUser.isAdmin;
+};
+
+// Flat Runs
+
+// alias of canCreateExperiment
+const canCreateFlatRun = (
+  { rbacEnabled, userAssignments, userRoles }: RbacOptsProps,
+  workspace?: PermissionWorkspace,
+): boolean => {
+  return canCreateExperiment({ rbacEnabled, userAssignments, userRoles }, workspace);
+};
+
+// alias of canModifyExperiment
+const canModifyFlatRun = (
+  { rbacEnabled, userAssignments, userRoles }: RbacOptsProps,
+  workspace?: PermissionWorkspace,
+): boolean => {
+  return canModifyExperiment({ rbacEnabled, userAssignments, userRoles }, workspace);
+};
+
+const canDeleteFlatRun = (
+  { currentUser, rbacEnabled, userAssignments, userRoles }: RbacOptsProps,
+  run: FlatRun,
+): boolean => {
+  const permitted = relevantPermissions(userAssignments, userRoles, run.workspaceId);
+  return (
+    !!currentUser &&
+    (rbacEnabled
+      ? permitted.has(V1PermissionType.DELETEEXPERIMENT)
+      : currentUser.isAdmin || currentUser.id === run.userId)
+  );
+};
+
+const canMoveFlatRun = (
+  { currentUser, rbacEnabled, userAssignments, userRoles }: RbacOptsProps,
+  run: FlatRun,
+): boolean => {
+  const srcPermit = relevantPermissions(userAssignments, userRoles, run.workspaceId);
+  return (
+    !!currentUser &&
+    (rbacEnabled
+      ? srcPermit.has(V1PermissionType.DELETEEXPERIMENT)
+      : currentUser.isAdmin || currentUser.id === run.userId)
+  );
+};
+
+// Config Policies:
+const canViewWorkspaceConfigPolicies = ({
+  rbacEnabled,
+  userAssignments,
+  userRoles,
+}: RbacOptsProps): boolean => {
+  const permitted = relevantPermissions(userAssignments, userRoles);
+  return !rbacEnabled || permitted.has(V1PermissionType.VIEWWORKSPACECONFIGPOLICIES);
+};
+
+const canModifyWorkspaceConfigPolicies = ({
+  currentUser,
+  rbacEnabled,
+  userAssignments,
+  userRoles,
+}: RbacOptsProps): boolean => {
+  const permitted = relevantPermissions(userAssignments, userRoles);
+  return rbacEnabled
+    ? permitted.has(V1PermissionType.MODIFYWORKSPACECONFIGPOLICIES)
+    : !!currentUser && currentUser.isAdmin;
+};
+
+const canViewGlobalConfigPolicies = ({
+  rbacEnabled,
+  userAssignments,
+  userRoles,
+}: RbacOptsProps): boolean => {
+  const permitted = relevantPermissions(userAssignments, userRoles);
+  return !rbacEnabled || permitted.has(V1PermissionType.VIEWGLOBALCONFIGPOLICIES);
+};
+
+const canModifyGlobalConfigPolicies = ({
+  currentUser,
+  rbacEnabled,
+  userAssignments,
+  userRoles,
+}: RbacOptsProps): boolean => {
+  const permitted = relevantPermissions(userAssignments, userRoles);
+  return rbacEnabled
+    ? permitted.has(V1PermissionType.MODIFYGLOBALCONFIGPOLICIES)
     : !!currentUser && currentUser.isAdmin;
 };
 

@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import Breadcrumb from 'hew/Breadcrumb';
 import Button from 'hew/Button';
 import Glossary, { InfoRow } from 'hew/Glossary';
@@ -5,6 +6,7 @@ import { Modal, ModalCloseReason } from 'hew/Modal';
 import useConfirm from 'hew/useConfirm';
 import React, { useCallback, useMemo } from 'react';
 
+import useFeature from 'hooks/useFeature';
 import { paths } from 'routes/utils';
 import { deleteCheckpoints } from 'services/api';
 import {
@@ -14,8 +16,10 @@ import {
   CoreApiGenericCheckpoint,
   ExperimentConfig,
 } from 'types';
-import { formatDatetime } from 'utils/datetime';
+import { DEFAULT_DATETIME_FORMAT } from 'utils/datetime';
 import handleError, { DetError, ErrorType } from 'utils/error';
+import { createPachydermLineageLink } from 'utils/integrations';
+import { isAbsolutePath } from 'utils/routes';
 import { humanReadableBytes } from 'utils/string';
 import { checkpointSize } from 'utils/workload';
 
@@ -39,6 +43,7 @@ const getStorageLocation = (
 ): string => {
   const hostPath = config.checkpointStorage?.hostPath;
   const storagePath = config.checkpointStorage?.storagePath;
+  const containerPath = config.checkpointStorage?.containerPath;
   let location = '';
   switch (config.checkpointStorage?.type) {
     case CheckpointStorageType.AWS:
@@ -51,14 +56,18 @@ const getStorageLocation = (
     case CheckpointStorageType.SharedFS:
       if (hostPath && storagePath) {
         location = storagePath.startsWith('/')
-          ? `file://${storagePath}`
+          ? `file:/${storagePath}`
           : `file://${hostPath}/${storagePath}`;
       } else if (hostPath) {
-        location = `file://${hostPath}`;
+        location = `file:${isAbsolutePath(hostPath.replace(' ', '')) ? '/' : '//'}${hostPath}`;
       }
       break;
     case CheckpointStorageType.DIRECTORY:
-      // unsupported, natch
+      if (containerPath) {
+        location = `file:${
+          isAbsolutePath(containerPath.replace(' ', '')) ? '/' : '//'
+        }${containerPath}`;
+      }
       break;
     case CheckpointStorageType.AZURE:
       // type from api doesn't have azure-specific props
@@ -82,6 +91,7 @@ const CheckpointModalComponent: React.FC<Props> = ({
   const handleCancel = useCallback(() => onClose?.('Cancel'), [onClose]);
 
   const handleOk = useCallback(() => onClose?.('Ok'), [onClose]);
+  const f_flat_runs = useFeature().isOn('flat_runs');
 
   const handleDelete = useCallback(async () => {
     if (!checkpoint?.uuid) return;
@@ -129,13 +139,13 @@ ${checkpoint?.totalBatches}? This action may complete or fail without further no
           <Breadcrumb>
             <Breadcrumb.Item>
               <Link path={paths.experimentDetails(checkpoint.experimentId)}>
-                Experiment {checkpoint.experimentId}
+                {f_flat_runs ? 'Search' : 'Experiment'} {checkpoint.experimentId}
               </Link>
             </Breadcrumb.Item>
             {checkpoint.trialId && (
               <Breadcrumb.Item>
                 <Link path={paths.trialDetails(checkpoint.trialId, checkpoint.experimentId)}>
-                  Trial {checkpoint.trialId}
+                  {f_flat_runs ? 'Run' : 'Trial'} {checkpoint.trialId}
                 </Link>
               </Breadcrumb.Item>
             )}
@@ -145,6 +155,16 @@ ${checkpoint?.totalBatches}? This action may complete or fail without further no
       },
       { label: 'State', value: <Badge state={state} type={BadgeType.State} /> },
     ];
+
+    if (config.integrations?.pachyderm !== undefined) {
+      const pachydermData = config.integrations.pachyderm;
+      const url = createPachydermLineageLink(pachydermData);
+
+      glossaryContent.splice(1, 0, {
+        label: 'Data Input',
+        value: <Link path={url}>{pachydermData.dataset.repo}</Link>,
+      });
+    }
 
     if (checkpoint.uuid) glossaryContent.push({ label: 'UUID', value: checkpoint.uuid });
     glossaryContent.push({ label: 'Location', value: getStorageLocation(config, checkpoint) });
@@ -159,7 +179,10 @@ ${checkpoint?.totalBatches}? This action may complete or fail without further no
         ),
       });
     if ('endTime' in checkpoint && checkpoint?.endTime)
-      glossaryContent.push({ label: 'Ended', value: formatDatetime(checkpoint.endTime) });
+      glossaryContent.push({
+        label: 'Ended',
+        value: dayjs.utc(checkpoint.endTime).format(DEFAULT_DATETIME_FORMAT),
+      });
     glossaryContent.push({
       label: 'Total Size',
       value: (
@@ -181,7 +204,7 @@ ${checkpoint?.totalBatches}? This action may complete or fail without further no
         ),
       });
     return glossaryContent;
-  }, [checkpoint, config, props.searcherValidation, onClickDelete]);
+  }, [checkpoint, config, f_flat_runs, props.searcherValidation, onClickDelete]);
 
   return (
     <Modal

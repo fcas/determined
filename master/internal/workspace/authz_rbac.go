@@ -3,6 +3,7 @@ package workspace
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -22,7 +23,7 @@ func init() {
 }
 
 // ErrLookup is the error returned when a user's permissions couldn't be looked up.
-var ErrLookup = errors.New("error looking up user's permissions")
+var ErrLookup = fmt.Errorf("error looking up user's permissions")
 
 // WorkspaceAuthZRBAC is the RBAC implementation of WorkspaceAuthZ.
 type WorkspaceAuthZRBAC struct{}
@@ -163,7 +164,7 @@ func (r *WorkspaceAuthZRBAC) CanGetWorkspaceID(
 		{
 			PermissionTypes: []rbacv1.PermissionType{workspacePermission},
 			SubjectType:     "workspace",
-			SubjectIDs:      []string{fmt.Sprint(workspaceID)},
+			SubjectIDs:      []string{strconv.Itoa(int(workspaceID))},
 		},
 	}
 	defer func() {
@@ -366,6 +367,51 @@ func (r *WorkspaceAuthZRBAC) CanSetWorkspacesDefaultPools(
 		rbacv1.PermissionType_PERMISSION_TYPE_SET_WORKSPACE_DEFAULT_RESOURCE_POOL)
 }
 
+// CanSetWorkspaceNamespaceBindings determines whether a user can set a workspace namespace bindng.
+func (r *WorkspaceAuthZRBAC) CanSetWorkspaceNamespaceBindings(ctx context.Context,
+	curUser model.User,
+) (err error) {
+	fields := audit.ExtractLogFields(ctx)
+	addInfoWithoutWorkspace(curUser, fields,
+		rbacv1.PermissionType_PERMISSION_TYPE_SET_WORKSPACE_NAMESPACE_BINDINGS)
+	defer func() {
+		audit.LogFromErr(fields, err)
+	}()
+
+	return db.DoesPermissionMatch(ctx, curUser.ID, nil,
+		rbacv1.PermissionType_PERMISSION_TYPE_SET_WORKSPACE_NAMESPACE_BINDINGS)
+}
+
+// CanSetResourceQuotas determines whether a user can set a resource quota on a workspace.
+func (r *WorkspaceAuthZRBAC) CanSetResourceQuotas(ctx context.Context,
+	curUser model.User,
+) (err error) {
+	fields := audit.ExtractLogFields(ctx)
+	addInfoWithoutWorkspace(curUser, fields,
+		rbacv1.PermissionType_PERMISSION_TYPE_SET_RESOURCE_QUOTAS)
+	defer func() {
+		audit.LogFromErr(fields, err)
+	}()
+
+	return db.DoesPermissionMatch(ctx, curUser.ID, nil,
+		rbacv1.PermissionType_PERMISSION_TYPE_SET_RESOURCE_QUOTAS)
+}
+
+// CanViewResourceQuotas determines whether a user can view resource quotas on a workspace.
+func (r *WorkspaceAuthZRBAC) CanViewResourceQuotas(ctx context.Context,
+	curUser model.User,
+) (err error) {
+	fields := audit.ExtractLogFields(ctx)
+	addInfoWithoutWorkspace(curUser, fields,
+		rbacv1.PermissionType_PERMISSION_TYPE_VIEW_RESOURCE_QUOTAS)
+	defer func() {
+		audit.LogFromErr(fields, err)
+	}()
+
+	return db.DoesPermissionMatch(ctx, curUser.ID, nil,
+		rbacv1.PermissionType_PERMISSION_TYPE_VIEW_RESOURCE_QUOTAS)
+}
+
 func hasPermissionOnWorkspace(ctx context.Context, uid model.UserID,
 	workspace *workspacev1.Workspace, permID rbacv1.PermissionType,
 ) error {
@@ -462,7 +508,7 @@ func addWorkspaceInfo(
 		{
 			PermissionTypes: permissions,
 			SubjectType:     "workspace",
-			SubjectIDs:      []string{fmt.Sprint(workspace.Id)},
+			SubjectIDs:      []string{strconv.Itoa(int(workspace.Id))},
 		},
 	}
 }

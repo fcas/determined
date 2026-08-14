@@ -4,6 +4,7 @@ package determined.webhook.v1;
 option go_package = "github.com/determined-ai/determined/proto/pkg/webhookv1";
 import "protoc-gen-swagger/options/annotations.proto";
 import "google/protobuf/struct.proto";
+import "determined/log/v1/log.proto";
 
 // Enum values for expected webhook types.
 enum WebhookType {
@@ -13,6 +14,17 @@ enum WebhookType {
   WEBHOOK_TYPE_DEFAULT = 1;
   // For a slack webhook.
   WEBHOOK_TYPE_SLACK = 2;
+}
+
+// Enum values for webhook mode.
+enum WebhookMode {
+  // Default value
+  WEBHOOK_MODE_UNSPECIFIED = 0;
+  // Webhook will be triggered by all experiment in the workspace
+  WEBHOOK_MODE_WORKSPACE = 1;
+  // Webhook will only be triggered by experiment with matching configuration in
+  // the same workspace as the web hook
+  WEBHOOK_MODE_SPECIFIC = 2;
 }
 
 // Enum values for expected trigger types.
@@ -25,12 +37,24 @@ enum TriggerType {
   TRIGGER_TYPE_METRIC_THRESHOLD_EXCEEDED = 2;
   // For task logs.
   TRIGGER_TYPE_TASK_LOG = 3;
+  // For custom alert.
+  TRIGGER_TYPE_CUSTOM = 4;
+}
+
+// Event data for custom trigger.
+message CustomWebhookEventData {
+  // The level at which the event data is logged.
+  determined.log.v1.LogLevel level = 1;
+  // The title for the event data.
+  string title = 2;
+  // The description for the event data.
+  string description = 3;
 }
 
 // Representation of a Webhook
 message Webhook {
   option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
-    json_schema: { required: [ "url", "webhook_type" ] }
+    json_schema: { required: [ "url", "webhook_type", "name", "mode" ] }
   };
   // The id of the webhook.
   int32 id = 1;
@@ -40,6 +64,12 @@ message Webhook {
   repeated Trigger triggers = 3;
   // The type of the webhook.
   WebhookType webhook_type = 4;
+  // The name of the webhook.
+  string name = 5;
+  // The workspace of the webhook.
+  int32 workspace_id = 6;
+  // The mode of the webhook.
+  WebhookMode mode = 7;
 }
 
 // Representation for a Trigger for a Webhook
@@ -59,4 +89,13 @@ message Trigger {
   google.protobuf.Struct condition = 3;
   // The parent webhook of the trigger.
   int32 webhook_id = 4;
+}
+
+// PatchWebhook is a partial update to a webhook
+message PatchWebhook {
+  option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
+    json_schema: { required: [ "url" ] }
+  };
+  // The new url of the webhook.
+  string url = 1;
 }

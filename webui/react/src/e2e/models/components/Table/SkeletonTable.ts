@@ -1,12 +1,9 @@
-import { BaseComponent } from 'e2e/models/BaseComponent';
+import { BaseComponent } from 'playwright-page-model-base/BaseComponent';
+
 import { SkeletonSection } from 'e2e/models/components/SkeletonSection';
 
 /**
- * Returns a representation of the SkeletonTable component.
- * This constructor represents the contents in src/components/Table/SkeletonTable.tsx.
- * @param {object} obj
- * @param {CanBeParent} obj.parent - The parent used to locate this SkeletonTable
- * @param {string} [obj.selector] - Used instead of `defaultSelector`
+ * Represents the SkeletonTable component in src/components/Table/SkeletonTable.tsx
  */
 export class SkeletonTable extends SkeletonSection {
   readonly table = new BaseComponent({

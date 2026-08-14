@@ -5,7 +5,7 @@ import sys
 import threading
 import traceback
 import types
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Literal, Optional, Union
 
 import appdirs
 
@@ -58,7 +58,7 @@ class Context:
         self.preempt = preempt or core.DummyPreemptContext(self.distributed)
         self.train = train or core.DummyTrainContext()
         self._metrics = _metrics or core._DummyMetricsContext()
-        self.searcher = searcher or core.DummySearcherContext(self.distributed)
+        self.searcher = searcher or core.SearcherContextMissing()
         self.info = info
         self.experimental = experimental or core.DummyExperimentalCoreContext()
         self.profiler = profiler or core.DummyProfilerContext()
@@ -82,6 +82,37 @@ class Context:
     def __enter__(self) -> "Context":
         self.start()
         return self
+
+    def alert(
+        self,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        level: Optional[Literal["warn", "info", "debug", "error"]] = "info",
+    ) -> None:
+        if not isinstance(self._session, api.BaseSession):
+            raise ValueError("init() needs to be called before sending alert.")
+        if self.info is None:
+            raise ValueError("Workload alerting only works on determined-managed experiment.")
+        if self.info.trial is None:
+            raise ValueError("alert() only works for trial type of task.")
+        log_level: bindings.v1LogLevel = bindings.v1LogLevel.INFO
+        if level == "warn":
+            log_level = bindings.v1LogLevel.WARNING
+        elif level == "debug":
+            log_level = bindings.v1LogLevel.DEBUG
+        elif level == "error":
+            log_level = bindings.v1LogLevel.ERROR
+
+        bindings.post_PostWebhookEventData(
+            session=self._session,
+            body=bindings.v1PostWebhookEventDataRequest(
+                data=bindings.v1CustomWebhookEventData(
+                    title=title or "", description=description or "", level=log_level
+                ),
+                experimentId=self.info.trial.experiment_id,
+                trialId=self.info.trial.trial_id,
+            ),
+        )
 
     def close(
         self,
@@ -242,9 +273,10 @@ def init(
 
     # We are on the cluster.
     cert = certs.default_load(info.master_url)
-    session = authentication.login_with_cache(info.master_url, cert=cert).with_retry(
-        util.get_max_retries_config()
-    )
+    session = authentication.login_from_task(
+        master_address=info.master_url,
+        cert=cert,
+    ).with_retry(util.get_max_retries_config())
 
     if distributed is None:
         if len(info.container_addrs) > 1 or len(info.slot_ids) > 1:
@@ -295,15 +327,19 @@ def init(
             tbd_writer,
         )
 
-        units = core._parse_searcher_units(info.trial._config)
-        searcher = core.SearcherContext(
-            session,
-            distributed,
-            info.trial.trial_id,
-            info.trial._trial_run_id,
-            info.allocation_id,
-            units,
-        )
+        # only provide a .searcher if max_length appears in the experiment config
+        max_length = core._parse_searcher_max_length(info.trial._config)
+        if not max_length:
+            searcher = None
+        else:
+            units = core._parse_searcher_units(info.trial._config)
+            searcher = core.SearcherContext(
+                session,
+                distributed,
+                info.trial.trial_id,
+                max_length,
+                units,
+            )
 
         if storage_manager is None:
             storage_manager = storage.build(
@@ -358,6 +394,7 @@ def init(
         _metrics=metrics,
         _tensorboard_manager=tensorboard_manager,
         _session=session,
+        info=info,
     )
 
 

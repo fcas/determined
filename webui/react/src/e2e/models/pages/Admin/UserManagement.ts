@@ -1,6 +1,10 @@
-import { expect, Page } from '@playwright/test';
+import { Page } from '@playwright/test';
+import { BaseComponent } from 'playwright-page-model-base/BaseComponent';
 
-import { BaseComponent } from 'e2e/models/BaseComponent';
+import { expect } from 'e2e/fixtures/global-fixtures';
+import { DropdownMenu } from 'e2e/models/common/hew/Dropdown';
+import { Select } from 'e2e/models/common/hew/Select';
+import { Toast } from 'e2e/models/common/hew/Toast';
 import { AddUsersToGroupsModal } from 'e2e/models/components/AddUsersToGroupsModal';
 import { ChangeUserStatusModal } from 'e2e/models/components/ChangeUserStatusModal';
 import { CreateUserModal } from 'e2e/models/components/CreateUserModal';
@@ -8,19 +12,13 @@ import { SetUserRolesModal } from 'e2e/models/components/SetUserRolesModal';
 import { HeadRow, InteractiveTable, Row } from 'e2e/models/components/Table/InteractiveTable';
 import { SkeletonTable } from 'e2e/models/components/Table/SkeletonTable';
 import { UserBadge } from 'e2e/models/components/UserBadge';
-import { DropdownMenu } from 'e2e/models/hew/Dropdown';
-import { Select } from 'e2e/models/hew/Select';
-import { Toast } from 'e2e/models/hew/Toast';
 import { AdminPage } from 'e2e/models/pages/Admin/index';
 
 /**
- * Returns a representation of the admin User Management page.
- * This constructor represents the contents in src/pages/Admin/UserManagement.tsx.
- * @param {Page} page - The '@playwright/test' Page being used by a test
+ * Represents the UserManagement page from src/pages/Admin/UserManagement.tsx
  */
 export class UserManagement extends AdminPage {
-  readonly title: string = UserManagement.getTitle();
-  readonly url: string = 'admin/user-management';
+  readonly url = 'admin/user-management';
   readonly getRowById: (value: string) => UserRow;
 
   readonly #actionRow = new BaseComponent({
@@ -39,32 +37,35 @@ export class UserManagement extends AdminPage {
     parent: this.#actionRow,
     selector: '[data-testid="statusSelect"]',
   });
-  readonly addUser = new BaseComponent({
-    parent: this.#actionRow,
-    selector: '[data-testid="addUser"]',
-  });
   readonly actions = new ActionDropdownMenu({
-    childNode: new BaseComponent({
+    clickThisComponentToOpen: new BaseComponent({
       parent: this.#actionRow,
       selector: '[data-testid="actions"]',
     }),
     root: this,
   });
+  readonly addUser = new BaseComponent({
+    parent: this.#actionRow,
+    selector: '[data-testid="addUser"]',
+  });
 
   readonly table = new InteractiveTable({
-    headRowType: UserHeadRow,
     parent: this.pivot.tabContent,
-    rowType: UserRow,
+    tableArgs: {
+      attachment: '[data-testid="table"]',
+      headRowType: UserHeadRow,
+      rowType: UserRow,
+    },
   });
   readonly skeletonTable = new SkeletonTable({ parent: this.pivot.tabContent });
 
-  readonly createUserModal = new CreateUserModal({ parent: this });
+  readonly createUserModal = new CreateUserModal({ root: this });
   readonly changeUserStatusModal = new ChangeUserStatusModal({
-    parent: this,
+    root: this,
   });
-  readonly setUserRolesModal = new SetUserRolesModal({ parent: this });
+  readonly setUserRolesModal = new SetUserRolesModal({ root: this });
   readonly addUsersToGroupsModal = new AddUsersToGroupsModal({
-    parent: this,
+    root: this,
   });
   readonly toast = new Toast({
     attachment: Toast.selectorTopRight,
@@ -96,7 +97,7 @@ export class UserManagement extends AdminPage {
   }
 
   /**
-   * Returns a row that matches a given username
+   * Searches for a user and returns a row that matches
    * @param {string} name - The username to filter UserTable rows by
    */
   async getRowByUsernameSearch(name: string): Promise<UserRow> {
@@ -112,11 +113,7 @@ export class UserManagement extends AdminPage {
 }
 
 /**
- * Returns the representation of the InteractiveTable header row defined by the User Admin page.
- * This constructor represents the InteractiveTable in src/pages/Admin/UserManagement.tsx.
- * @param {object} obj
- * @param {CanBeParent} obj.parent - The parent used to locate this UserHeadRow
- * @param {string} obj.selector - Used as a selector uesd to locate this object
+ * Represents the head row from the table in src/pages/Admin/UserManagement.tsx
  */
 class UserHeadRow extends HeadRow {
   readonly user = new BaseComponent({
@@ -146,15 +143,9 @@ class UserHeadRow extends HeadRow {
 }
 
 /**
- * Returns the representation of the InteractiveTable row defined by the User Admin page.
- * This constructor represents the InteractiveTable in src/pages/Admin/UserManagement.tsx.
- * @param {object} obj
- * @param {CanBeParent} obj.parent - The parent used to locate this UserRow
- * @param {string} obj.selector - Used as a selector uesd to locate this object
+ * Represents a row from the table in src/pages/Admin/UserManagement.tsx
  */
 class UserRow extends Row {
-  // If you're wondering where (1) is, it's the checkbox column (smelly)
-  // TODO consider nameplate component
   readonly user = new UserBadge({
     parent: this,
     selector: '[data-testid="user"]',
@@ -180,7 +171,7 @@ class UserRow extends Row {
     selector: '[data-testid="modified"]',
   });
   readonly actions = new UserActionDropdown({
-    childNode: new BaseComponent({
+    clickThisComponentToOpen: new BaseComponent({
       parent: this,
       selector: '[data-testid="actions"]',
     }),
@@ -189,11 +180,7 @@ class UserRow extends Row {
 }
 
 /**
- * Returns the representation of the ActionDropdown menu defined by the User Admin page.
- * This constructor represents the InteractiveTable in src/pages/Admin/UserManagement.tsx.
- * @param {object} obj
- * @param {CanBeParent} obj.parent - The parent used to locate this UserActionDropdown
- * @param {string} obj.selector - Used as a selector uesd to locate this object
+ * Represents the UserActionDropdown from src/pages/Admin/UserManagement.tsx
  */
 class UserActionDropdown extends DropdownMenu {
   readonly edit = this.menuItem('edit');
@@ -202,11 +189,7 @@ class UserActionDropdown extends DropdownMenu {
 }
 
 /**
- * Returns the representation of the ActionDropdownMenu defined by the User Admin page.
- * This constructor represents the InteractiveTable in src/pages/Admin/UserManagement.tsx.
- * @param {object} obj
- * @param {CanBeParent} obj.parent - The parent used to locate this ActionDropdownMenu
- * @param {string} obj.selector - Used as a selector uesd to locate this object
+ * Represents the ActionDropdownMenu from src/pages/Admin/UserManagement.tsx
  */
 class ActionDropdownMenu extends DropdownMenu {
   readonly status = this.menuItem('change-status');
@@ -215,11 +198,7 @@ class ActionDropdownMenu extends DropdownMenu {
 }
 
 /**
- * Returns the representation of the RoleSelect component defined by the User Admin page.
- * This constructor represents the RoleSelect in src/pages/Admin/UserManagement.tsx.
- * @param {object} obj
- * @param {CanBeParent} obj.parent - The parent used to locate this RoleSelect
- * @param {string} obj.selector - Used as a selector used to locate this object
+ * Represents the role Select from src/pages/Admin/UserManagement.tsx
  */
 class RoleSelect extends Select {
   readonly allRoles = this.menuItem('All Roles');
@@ -228,11 +207,7 @@ class RoleSelect extends Select {
 }
 
 /**
- * Returns the representation of the StatusSelect component defined by the User Admin page.
- * This constructor represents the StatusSelect in src/pages/Admin/UserManagement.tsx.
- * @param {object} obj
- * @param {CanBeParent} obj.parent - The parent used to locate this StatusSelect
- * @param {string} obj.selector - Used as a selector used to locate this object
+ * Represents the status Select from src/pages/Admin/UserManagement.tsx
  */
 class StatusSelect extends Select {
   readonly allStatuses = this.menuItem('All Statuses');

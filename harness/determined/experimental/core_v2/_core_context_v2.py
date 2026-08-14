@@ -6,7 +6,7 @@ import appdirs
 
 import determined as det
 from determined import core, experimental, tensorboard
-from determined.common import constants, storage, util
+from determined.common import api, constants, storage, util
 from determined.common.api import authentication, certs
 
 logger = logging.getLogger("determined.core")
@@ -43,9 +43,9 @@ def _make_v2_context(
 
         # We are on the cluster.
         cert = certs.default_load(info.master_url)
-        session = authentication.login_with_cache(info.master_url, cert=cert).with_retry(
-            util.get_max_retries_config()
-        )
+        session: api.Session = authentication.login_from_task(
+            info.master_url, cert=cert
+        ).with_retry(util.get_max_retries_config())
     else:
         unmanaged = True
 
@@ -72,7 +72,7 @@ def _make_v2_context(
 
     storage_manager = core._get_storage_manager(checkpoint_storage)
 
-    if checkpoint_storage is None:
+    if checkpoint_storage is None and not unmanaged:
         checkpoint_storage = info.trial._config.get("checkpoint_storage")
     # TODO(ilia): When checkpoint_storage is not specified, do this instead:
     # - if on-cluster: try using cluster storage, then appdirs
@@ -120,15 +120,19 @@ def _make_v2_context(
             tensorboard_manager,
             tbd_writer,
         )
-        units = core._parse_searcher_units(info.trial._config)
-        searcher = core.SearcherContext(
-            session,
-            distributed,
-            info.trial.trial_id,
-            info.trial._trial_run_id,
-            info.allocation_id,
-            units,
-        )
+        # only provide a .searcher if max_length appears in the experiment config
+        max_length = core._parse_searcher_max_length(info.trial._config)
+        if not max_length:
+            searcher = None
+        else:
+            units = core._parse_searcher_units(info.trial._config)
+            searcher = core.SearcherContext(
+                session,
+                distributed,
+                info.trial.trial_id,
+                max_length,
+                units,
+            )
 
         if storage_manager is None:
             if has_storage:

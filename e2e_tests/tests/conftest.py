@@ -3,7 +3,8 @@ import os
 import pathlib
 import subprocess
 import time
-from typing import Any, Dict, Iterator, Optional, cast
+import uuid
+from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
 
 import _pytest.config.argparsing
 import _pytest.fixtures
@@ -28,25 +29,21 @@ _INTEG_MARKERS = {
     "e2e_cpu_rbac",
     "e2e_gpu",
     "e2e_multi_k8s",
+    "e2e_single_k8s",
     "e2e_k8s",
     "e2e_pbs",
     "e2e_saml",
     "e2e_slurm",
-    "e2e_slurm_restart",
-    "e2e_slurm_preemption",
     "e2e_slurm_internet_connected_cluster",
-    "e2e_slurm_misconfigured",
     "det_deploy_local",
     "test_oauth",
     "test_model_registry_rbac",
     "distributed",
     "parallel",
     "nightly",
-    "model_hub_transformers",
-    "model_hub_transformers_amp",
-    "model_hub_mmdetection",
     "deepspeed",
     "managed_devcluster",
+    "managed_devcluster_resource_pools",
     "port_registry",
     "distributed_quarantine",
     "det_deploy_local_quarantine",
@@ -206,3 +203,82 @@ def test_start_timer(request: _pytest.fixtures.SubRequest) -> Iterator[None]:
         # This ends up concatenated to the line pytest prints containing the test file and name.
         print("starting at", time.strftime("%Y-%m-%d %H:%M:%S"))
     yield
+
+
+@pytest.fixture(scope="session")
+def is_multirm_cluster() -> bool:
+    sess = api_utils.admin_session()
+    multi_rm = True
+    try:
+        multi_rm = detproc.check_json(sess, ["det", "master", "config", "show", "--json"])[
+            "additional_resource_managers"
+        ]
+    except KeyError:
+        multi_rm = False
+    return multi_rm
+
+
+@pytest.fixture(scope="session")
+def namespaces_created(is_multirm_cluster: bool) -> Iterator[Tuple[str, str]]:
+    defaultrm_namespace = uuid.uuid4().hex[:8]
+    additionalrm_namespace = uuid.uuid4().hex[:8]
+
+    # Create a namespace in Kubernetes in the each resource manager's Kubernetes cluster.
+    create_namespace_defaultrm_cmd = ["kubectl", "create", "namespace", defaultrm_namespace]
+
+    if is_multirm_cluster:
+        create_namespace_defaultrm_cmd += ["--kubeconfig", conf.DEFAULT_RM_KUBECONFIG]
+        create_namespace_additionalrm_cmd = [
+            "kubectl",
+            "create",
+            "namespace",
+            additionalrm_namespace,
+            "--kubeconfig",
+            conf.ADDITIONAL_RM_KUBECONFIG,
+        ]
+        subprocess.run(create_namespace_additionalrm_cmd, check=True)
+
+    subprocess.run(create_namespace_defaultrm_cmd, check=True)
+
+    default_kubeconfig = []
+    additionalrm_kubeconfig = ["--kubeconfig", conf.ADDITIONAL_RM_KUBECONFIG]
+    if is_multirm_cluster:
+        get_namespace(additionalrm_namespace, additionalrm_kubeconfig)
+        default_kubeconfig += ["--kubeconfig", conf.DEFAULT_RM_KUBECONFIG]
+
+    get_namespace(defaultrm_namespace, default_kubeconfig)
+
+    # Make sure that we can successfully retrieve both namespaces.
+    namespaces = [defaultrm_namespace]
+    if is_multirm_cluster:
+        namespaces.append(additionalrm_namespace)
+
+    yield defaultrm_namespace, additionalrm_namespace
+
+    delete_namespace(defaultrm_namespace, kubeconfig=default_kubeconfig)
+    if is_multirm_cluster:
+        delete_namespace(additionalrm_namespace, kubeconfig=additionalrm_kubeconfig)
+
+
+def get_namespace(namespace: str, kubeconfig: List[str]) -> None:
+    for _ in range(150):
+        try:
+            p = subprocess.run(["kubectl", "get", "namespace", namespace] + kubeconfig, check=True)
+            if not p.returncode:
+                break
+        except subprocess.CalledProcessError:
+            pass
+        time.sleep(2)
+
+
+def delete_namespace(namespace: str, kubeconfig: List[str]) -> None:
+    for _ in range(150):
+        try:
+            p = subprocess.run(
+                ["kubectl", "delete", "namespace", namespace] + kubeconfig, check=True
+            )
+            if not p.returncode:
+                break
+        except subprocess.CalledProcessError:
+            pass
+        time.sleep(2)

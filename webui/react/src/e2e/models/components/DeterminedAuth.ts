@@ -1,17 +1,13 @@
-import { BaseComponent, NamedComponent } from 'e2e/models/BaseComponent';
+import { BaseComponent, NamedComponent } from 'playwright-page-model-base/BaseComponent';
+
 import { ErrorComponent } from 'e2e/models/utils/error';
 
 /**
- * Returns a representation of the DeterminedAuth component.
- * This constructor represents the contents in src/components/DeterminedAuth.tsx.
- * @param {object} obj
- * @param {CanBeParent} obj.parent - The parent used to locate this DeterminedAuth
- * @param {string} [obj.selector] - Used instead of `defaultSelector`
+ * Represents the DeterminedAuth component in src/components/DeterminedAuth.tsx
  */
-
 export class DeterminedAuth extends NamedComponent {
   readonly defaultSelector = 'div[data-test-component="detAuth"]';
-  readonly #form: BaseComponent = new BaseComponent({ parent: this, selector: 'form' });
+  readonly #form = new BaseComponent({ parent: this, selector: 'form' });
   readonly username = new BaseComponent({
     parent: this.#form,
     selector: 'input[data-testid="username"]',

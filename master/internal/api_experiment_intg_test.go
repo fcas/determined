@@ -8,13 +8,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
 	"unsafe"
-
-	"github.com/pkg/errors"
 
 	"github.com/determined-ai/determined/proto/pkg/checkpointv1"
 
@@ -36,6 +36,7 @@ import (
 
 	apiPkg "github.com/determined-ai/determined/master/internal/api"
 	authz2 "github.com/determined-ai/determined/master/internal/authz"
+	"github.com/determined-ai/determined/master/internal/configpolicy"
 	"github.com/determined-ai/determined/master/internal/db"
 	expauth "github.com/determined-ai/determined/master/internal/experiment"
 	"github.com/determined-ai/determined/master/internal/mocks"
@@ -47,6 +48,7 @@ import (
 	"github.com/determined-ai/determined/master/pkg/schemas"
 	"github.com/determined-ai/determined/master/pkg/schemas/expconf"
 	"github.com/determined-ai/determined/master/test/olddata"
+	"github.com/determined-ai/determined/master/test/testutils"
 	"github.com/determined-ai/determined/proto/pkg/apiv1"
 	"github.com/determined-ai/determined/proto/pkg/commonv1"
 	"github.com/determined-ai/determined/proto/pkg/experimentv1"
@@ -342,9 +344,9 @@ func TestMoveExperiments(t *testing.T) {
 			Filters:              nil,
 		})
 		for _, v := range result.Results {
-			require.Equal(t, v.Error, "")
+			require.Empty(t, v.Error)
 		}
-		require.Equal(t, len(result.Results), 1)
+		require.Len(t, result.Results, 1)
 		require.NoError(t, err)
 	})
 
@@ -358,9 +360,9 @@ func TestMoveExperiments(t *testing.T) {
 			Filters:              nil,
 		})
 		for _, v := range result.Results {
-			require.Equal(t, v.Error, "")
+			require.Empty(t, v.Error)
 		}
-		require.Equal(t, len(result.Results), 2)
+		require.Len(t, result.Results, 2)
 		require.NoError(t, err)
 	})
 	t.Run("Move no experiments with filters (no filter match)", func(t *testing.T) {
@@ -376,7 +378,7 @@ func TestMoveExperiments(t *testing.T) {
 				Archived: &wrappers.BoolValue{Value: true},
 			},
 		})
-		require.Equal(t, len(result.Results), 0)
+		require.Empty(t, result.Results)
 		require.NoError(t, err)
 	})
 
@@ -400,7 +402,7 @@ func TestMoveExperiments(t *testing.T) {
 			DestinationProjectId: int32(projectID),
 			Filters:              nil,
 		})
-		require.Equal(t, len(result.Results), 0)
+		require.Empty(t, result.Results)
 		require.NoError(t, err)
 	})
 
@@ -411,7 +413,7 @@ func TestMoveExperiments(t *testing.T) {
 			DestinationProjectId: int32(projectID),
 			Filters:              nil,
 		})
-		require.Equal(t, len(result.Results), 2)
+		require.Len(t, result.Results, 2)
 		require.NoError(t, err)
 	})
 
@@ -428,7 +430,7 @@ func TestMoveExperiments(t *testing.T) {
 		errorIDList := make([]int32, 0)
 		for _, v := range result.Results {
 			if v.Error == "" {
-				require.Equal(t, v.Error, "")
+				require.Empty(t, v.Error)
 				successIDList = append(successIDList, v.Id)
 			} else {
 				require.Equal(
@@ -439,10 +441,10 @@ func TestMoveExperiments(t *testing.T) {
 				errorIDList = append(errorIDList, v.Id)
 			}
 		}
-		require.Equal(t, len(successIDList), 1)
-		require.Equal(t, len(errorIDList), 2)
+		require.Len(t, successIDList, 1)
+		require.Len(t, errorIDList, 2)
 		require.Equal(t, successIDList[0], int32(exp.ID))
-		require.Equal(t, len(result.Results), len(expIds))
+		require.Len(t, result.Results, len(expIds))
 		require.NoError(t, err)
 	})
 }
@@ -462,7 +464,7 @@ func TestDeleteExperimentWithoutCheckpoints(t *testing.T) {
 	for i := 0; i < 60; i++ {
 		e, err := api.GetExperiment(ctx, &apiv1.GetExperimentRequest{ExperimentId: int32(exp.ID)})
 		if err != nil {
-			require.Equal(t, apiPkg.NotFoundErrs("experiment", fmt.Sprint(exp.ID), true), err)
+			require.Equal(t, apiPkg.NotFoundErrs("experiment", strconv.Itoa(exp.ID), true), err)
 			return
 		}
 		require.NotEqual(t, experimentv1.State_STATE_DELETE_FAILED, e.Experiment.State)
@@ -478,7 +480,7 @@ func TestHPSearchContinueProvideConfigError(t *testing.T) {
 	_, err := db.Bun().NewUpdate().Table("experiments").
 		Set("state = ?", model.CompletedState).
 		Set("config = jsonb_set(config, '{searcher}', "+
-			`'{"name": "random", "metric": "loss", "max_trials": 5, "max_length": 5}', false)`).
+			`'{"name": "random", "metric": "loss", "max_trials": 5}', false)`).
 		Where("id = ?", trial.ExperimentID).
 		Exec(ctx)
 	require.NoError(t, err)
@@ -497,7 +499,7 @@ func TestHPSearchContinueCompletedError(t *testing.T) {
 	_, err := db.Bun().NewUpdate().Table("experiments").
 		Set("state = ?", model.CompletedState).
 		Set("config = jsonb_set(config, '{searcher}', "+
-			`'{"name": "random", "metric": "loss", "max_trials": 5, "max_length": 5}', false)`).
+			`'{"name": "random", "metric": "loss", "max_trials": 5}', false)`).
 		Where("id = ?", trial.ExperimentID).
 		Exec(ctx)
 	require.NoError(t, err)
@@ -583,7 +585,8 @@ func TestPutExperimentsRetainLogs(t *testing.T) {
 
 func TestParseAndMergeContinueConfig(t *testing.T) {
 	// Blank config.
-	api, curUser, ctx := setupAPITest(t, nil)
+	mockRM := MockRM()
+	api, curUser, ctx := setupAPITest(t, nil, mockRM)
 	exp := createTestExp(t, api, curUser)
 
 	_, _, err := api.parseAndMergeContinueConfig(exp.ID, ``)
@@ -604,26 +607,9 @@ workspace: test
 
 	_, _, err = api.parseAndMergeContinueConfig(exp.ID, `
 searcher:
-    max_length:
-        batches: 10
-`)
-	require.ErrorContains(t, err, "you might also need to specify searcher.name=single")
-
-	_, _, err = api.parseAndMergeContinueConfig(exp.ID, `
-searcher:
-  max_length:
-    batches: 10
-  name: single
-`)
-	require.NoError(t, err)
-
-	_, _, err = api.parseAndMergeContinueConfig(exp.ID, `
-searcher:
   name: random
   metric: accuracy
   max_trials: 5
-  max_length:
-    batches: 1000
 `)
 	require.ErrorContains(t, err,
 		"override config must have single searcher type got 'random' instead")
@@ -639,8 +625,6 @@ searcher:
   smaller_is_better: true
   name: random
   max_trials: 3
-  max_length:
-    batches: 10
 resources:
   resource_pool: kubernetes`
 	createReq := &apiv1.CreateExperimentRequest{
@@ -652,6 +636,7 @@ resources:
 	}
 
 	// No checkpoint specified anywhere.
+	mockRM.On("SmallerValueIsHigherPriority", mock.Anything).Return(true, nil)
 	resp, err := api.CreateExperiment(ctx, createReq)
 	require.NoError(t, err)
 	_, _, err = api.parseAndMergeContinueConfig(int(resp.Experiment.Id), `{}`)
@@ -662,8 +647,6 @@ searcher:
   name: random
   metric: accuracy
   max_trials: 5
-  max_length:
-    batches: 1000
 `)
 	require.ErrorContains(t, err,
 		"override config is provided and experiment is not single searcher, got 'random' instead")
@@ -671,7 +654,8 @@ searcher:
 
 // nolint: exhaustruct
 func TestCreateExperimentCheckpointStorage(t *testing.T) {
-	api, _, ctx := setupAPITest(t, nil)
+	mockRM := MockRM()
+	api, _, ctx := setupAPITest(t, nil, mockRM)
 	api.m.config.CheckpointStorage = expconf.CheckpointStorageConfig{}
 	defer func() {
 		api.m.config.CheckpointStorage = expconf.CheckpointStorageConfig{}
@@ -682,7 +666,6 @@ entrypoint: test
 searcher:
   metric: loss
   name: single
-  max_length: 10
 resources:
   resource_pool: kubernetes`
 	createReq := &apiv1.CreateExperimentRequest{
@@ -694,6 +677,7 @@ resources:
 	}
 
 	// No checkpoint specified anywhere.
+	mockRM.On("SmallerValueIsHigherPriority", mock.Anything).Return(true, nil)
 	_, err := api.CreateExperiment(ctx, createReq)
 	require.ErrorContains(t, err, "checkpoint_storage: type is a required property")
 
@@ -785,7 +769,7 @@ func TestGetExperimentsShowTrialData(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.Experiments, 2)
 	require.NotNil(t, resp.Experiments[0].BestTrialSearcherMetric)
-	require.Equal(t, 0.0, *resp.Experiments[0].BestTrialSearcherMetric) // 0.0 is the best metric.
+	require.Zero(t, *resp.Experiments[0].BestTrialSearcherMetric) // 0.0 is the best metric.
 	require.Nil(t, resp.Experiments[1].BestTrialSearcherMetric)
 }
 
@@ -926,84 +910,84 @@ func TestGetExperiments(t *testing.T) {
 	}
 
 	// Filtering tests.
-	getExperimentsTest(ctx, t, api, pid, &apiv1.GetExperimentsRequest{}, exp0Expected, exp1Expected)
+	testGetExperiments(ctx, t, api, pid, &apiv1.GetExperimentsRequest{}, exp0Expected, exp1Expected)
 
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{Description: "12345"}, exp0Expected)
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{Description: "234"}, exp0Expected, exp1Expected)
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{Description: "123456"})
 
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{Name: "longername"}, exp1Expected)
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{Name: "name"}, exp0Expected, exp1Expected)
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{Name: "longlongername"})
 
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{Labels: []string{"l0", "l1"}}, exp0Expected)
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{Labels: []string{"l0"}}, exp0Expected, exp1Expected)
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{Labels: []string{"l0", "l1", "l3"}})
 
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{Archived: wrapperspb.Bool(false)}, exp0Expected)
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{Archived: wrapperspb.Bool(true)}, exp1Expected)
 
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{
 			States: []experimentv1.State{experimentv1.State_STATE_PAUSED},
 		}, exp0Expected)
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{
 			States: []experimentv1.State{experimentv1.State_STATE_ERROR},
 		}, exp1Expected)
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{
 			States: []experimentv1.State{
 				experimentv1.State_STATE_PAUSED,
 				experimentv1.State_STATE_ERROR,
 			},
 		}, exp0Expected, exp1Expected)
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{
 			States: []experimentv1.State{experimentv1.State_STATE_CANCELED},
 		})
 
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{Users: []string{"admin"}}, exp0Expected)
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{Users: []string{userResp.User.Username}}, exp1Expected)
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{Users: []string{"admin", userResp.User.Username}},
 		exp0Expected, exp1Expected)
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{Users: []string{"notarealuser"}})
 
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{UserIds: []int32{1}}, exp0Expected)
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{UserIds: []int32{userResp.User.Id}}, exp1Expected)
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{UserIds: []int32{1, userResp.User.Id}},
 		exp0Expected, exp1Expected)
-	getExperimentsTest(ctx, t, api, pid, &apiv1.GetExperimentsRequest{UserIds: []int32{-999}})
+	testGetExperiments(ctx, t, api, pid, &apiv1.GetExperimentsRequest{UserIds: []int32{-999}})
 
 	// Sort and order by tests.
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{
 			SortBy: apiv1.GetExperimentsRequest_SORT_BY_NUM_TRIALS,
 		}, exp1Expected, exp0Expected)
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{
 			SortBy:  apiv1.GetExperimentsRequest_SORT_BY_NUM_TRIALS,
 			OrderBy: apiv1.OrderBy_ORDER_BY_ASC,
 		}, exp1Expected, exp0Expected)
-	getExperimentsTest(ctx, t, api, pid,
+	testGetExperiments(ctx, t, api, pid,
 		&apiv1.GetExperimentsRequest{
 			SortBy:  apiv1.GetExperimentsRequest_SORT_BY_NUM_TRIALS,
 			OrderBy: apiv1.OrderBy_ORDER_BY_DESC,
@@ -1011,21 +995,21 @@ func TestGetExperiments(t *testing.T) {
 
 	// Pagination tests.
 	// No experiments should be returned for Limit -2.
-	getExperimentsTest(ctx, t, api, pid, &apiv1.GetExperimentsRequest{Limit: -2})
-	getExperimentsPageTest(ctx, t, api, pid, &apiv1.GetExperimentsRequest{Offset: 1},
+	testGetExperiments(ctx, t, api, pid, &apiv1.GetExperimentsRequest{Limit: -2})
+	testGetExperimentsPage(ctx, t, api, pid, &apiv1.GetExperimentsRequest{Offset: 1},
 		&apiv1.Pagination{Offset: 1, Limit: 0, StartIndex: 1, EndIndex: 2, Total: 2})
-	getExperimentsPageTest(ctx, t, api, pid, &apiv1.GetExperimentsRequest{Limit: 1},
+	testGetExperimentsPage(ctx, t, api, pid, &apiv1.GetExperimentsRequest{Limit: 1},
 		&apiv1.Pagination{Offset: 0, Limit: 1, StartIndex: 0, EndIndex: 1, Total: 2})
-	getExperimentsPageTest(ctx, t, api, pid, &apiv1.GetExperimentsRequest{Limit: 1, Offset: 1},
+	testGetExperimentsPage(ctx, t, api, pid, &apiv1.GetExperimentsRequest{Limit: 1, Offset: 1},
 		&apiv1.Pagination{Offset: 1, Limit: 1, StartIndex: 1, EndIndex: 2, Total: 2})
-	getExperimentsPageTest(ctx, t, api, pid, &apiv1.GetExperimentsRequest{Offset: 2},
+	testGetExperimentsPage(ctx, t, api, pid, &apiv1.GetExperimentsRequest{Offset: 2},
 		&apiv1.Pagination{Offset: 2, Limit: 0, StartIndex: 2, EndIndex: 2, Total: 2})
 
-	getExperimentsPageTest(ctx, t, api, pid, &apiv1.GetExperimentsRequest{Limit: -1},
+	testGetExperimentsPage(ctx, t, api, pid, &apiv1.GetExperimentsRequest{Limit: -1},
 		&apiv1.Pagination{Offset: 0, Limit: -1, StartIndex: 0, EndIndex: 2, Total: 2})
 }
 
-func getExperimentsPageTest(ctx context.Context, t *testing.T, api *apiServer, pid int32,
+func testGetExperimentsPage(ctx context.Context, t *testing.T, api *apiServer, pid int32,
 	req *apiv1.GetExperimentsRequest, expected *apiv1.Pagination,
 ) {
 	req.ProjectId = pid
@@ -1035,13 +1019,13 @@ func getExperimentsPageTest(ctx context.Context, t *testing.T, api *apiServer, p
 	require.Equal(t, expected, res.Pagination)
 }
 
-func getExperimentsTest(ctx context.Context, t *testing.T, api *apiServer, pid int32,
+func testGetExperiments(ctx context.Context, t *testing.T, api *apiServer, pid int32,
 	req *apiv1.GetExperimentsRequest, expected ...*experimentv1.Experiment,
 ) {
 	req.ProjectId = pid
 	res, err := api.GetExperiments(ctx, req)
 	require.NoError(t, err)
-	require.Equal(t, len(expected), len(res.Experiments),
+	require.Len(t, res.Experiments, len(expected),
 		fmt.Sprintf("wrong length of result set with request %+v", req))
 
 	for i := range expected {
@@ -1085,7 +1069,7 @@ func TestSearchExperiments(t *testing.T) {
 	}
 	resp, err := api.SearchExperiments(ctx, req)
 	require.NoError(t, err)
-	require.Len(t, resp.Experiments, 0)
+	require.Empty(t, resp.Experiments)
 
 	// No trial doesn't cause errors.
 	exp := createTestExpWithProjectID(t, api, curUser, projectIDInt)
@@ -1112,7 +1096,7 @@ func TestSearchExperiments(t *testing.T) {
 	require.Nil(t, resp.Experiments[0].BestTrial)
 	require.Equal(t, int32(exp.ID), resp.Experiments[0].Experiment.Id)
 
-	require.Nil(t, resp.Experiments[1].BestTrial) // Still nil since no validations reported.
+	require.NotNil(t, resp.Experiments[1].BestTrial) // Now has a best trial, since it's the only one.
 	require.Equal(t, int32(noValidationsExp.ID), resp.Experiments[1].Experiment.Id)
 
 	// Validations returned properly.
@@ -1147,7 +1131,7 @@ func TestSearchExperiments(t *testing.T) {
 	require.Nil(t, resp.Experiments[0].BestTrial)
 	require.Equal(t, int32(exp.ID), resp.Experiments[0].Experiment.Id)
 
-	require.Nil(t, resp.Experiments[1].BestTrial)
+	require.NotNil(t, resp.Experiments[1].BestTrial)
 	require.Equal(t, int32(noValidationsExp.ID), resp.Experiments[1].Experiment.Id)
 
 	require.NotNil(t, resp.Experiments[2].BestTrial)
@@ -1159,16 +1143,68 @@ func TestSearchExperiments(t *testing.T) {
 	require.NoError(t, err)
 	bestExpected, err := json.Marshal(valMetrics[0])
 	require.NoError(t, err)
-	require.Equal(t, string(bestActual), string(bestExpected))
+	require.Equal(t, string(bestExpected), string(bestActual))
 
 	require.Equal(t, int32(9), resp.Experiments[2].BestTrial.LatestValidation.TotalBatches)
 	latestActual, err := json.Marshal(resp.Experiments[2].BestTrial.LatestValidation.Metrics)
 	require.NoError(t, err)
 	latestExpected, err := json.Marshal(valMetrics[len(valMetrics)-1])
 	require.NoError(t, err)
-	require.Equal(t, string(latestActual), string(latestExpected))
+	require.Equal(t, string(latestExpected), string(latestActual))
 
 	require.Equal(t, int32(5), resp.Experiments[2].BestTrial.Restarts)
+
+	// when single-trial experiment with no validation metrics completes
+	// ensure that the only trial is the best trial.
+	_, err = db.Bun().NewUpdate().Table("experiments").
+		Set("state = ?", model.CompletedState).
+		Where("id = ?", noValidationsExp.ID).
+		Exec(ctx)
+	require.NoError(t, err)
+	resp, err = api.SearchExperiments(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Experiments[1].BestTrial)
+	require.Equal(t, int32(noValidationsExp.ID), resp.Experiments[1].Experiment.Id)
+}
+
+func TestSearchExperimentsFilters(t *testing.T) {
+	api, curUser, ctx := setupAPITest(t, nil)
+	_, projectIDInt := createProjectAndWorkspace(ctx, t, api)
+	projectID := int32(projectIDInt)
+
+	// RequireMockExperimentParams expects to be run in the db folder.
+	err := os.Chdir("./db")
+	require.NoError(t, err)
+	paramNames := []string{"foo"}
+	db.RequireMockExperimentParams(t, api.m.db, curUser, db.MockExperimentParams{
+		HParamNames: &paramNames,
+	}, projectIDInt)
+	err = os.Chdir("./..")
+	require.NoError(t, err)
+
+	tests := map[string]struct {
+		expectedNumExperiments int
+		filter                 string
+	}{
+		"ExpHPNotContains": {
+			expectedNumExperiments: 0,
+			filter: `{"filterGroup":{"children":[{"columnName":"hp.foo","kind":"field",` +
+				`"location":"LOCATION_TYPE_HYPERPARAMETERS","operator":"notContains","type":"COLUMN_TYPE_NUMBER","value":1}],` +
+				`"conjunction":"and","kind":"group"},"showArchived":false}`,
+		},
+	}
+
+	for testCase, testVars := range tests {
+		t.Run(testCase, func(t *testing.T) {
+			resp, requestError := api.SearchExperiments(ctx, &apiv1.SearchExperimentsRequest{
+				ProjectId: &projectID,
+				Filter:    ptrs.Ptr(testVars.filter),
+			})
+
+			require.NoError(t, requestError)
+			require.Len(t, resp.Experiments, testVars.expectedNumExperiments)
+		})
+	}
 }
 
 func TestSearchExperimentsMalformed(t *testing.T) {
@@ -1198,6 +1234,46 @@ func TestSearchExperimentsMalformed(t *testing.T) {
 	require.Len(t, resp.Experiments, 1)
 	require.Nil(t, resp.Experiments[0].BestTrial)
 	require.Equal(t, int32(exp.ID), resp.Experiments[0].Experiment.Id)
+}
+
+func TestSearchExperimentsNoDeleting(t *testing.T) {
+	api, curUser, ctx := setupAPITest(t, nil)
+	_, projectIDInt := createProjectAndWorkspace(ctx, t, api)
+
+	shownExp := createTestExpWithProjectID(t, api, curUser, projectIDInt)
+
+	// Add deleting experiment
+	experimentConfig := expconf.ExperimentConfig{
+		RawDescription: ptrs.Ptr("desc"),
+		RawName:        expconf.Name{RawString: ptrs.Ptr("name")},
+	}
+
+	activeConfig := schemas.WithDefaults(schemas.Merge(minExpConfig, experimentConfig))
+
+	hiddenExp := &model.Experiment{
+		JobID:     model.JobID(uuid.New().String()),
+		State:     model.DeletingState,
+		OwnerID:   &curUser.ID,
+		ProjectID: projectIDInt,
+		StartTime: time.Now(),
+		Config:    activeConfig.AsLegacy(),
+	}
+	require.NoError(t, api.m.db.AddExperiment(hiddenExp, []byte{10, 11, 12}, activeConfig))
+
+	projectID := int32(projectIDInt)
+
+	// Empty response causes no errors.
+	req := &apiv1.SearchExperimentsRequest{
+		ProjectId: &projectID,
+		Sort:      ptrs.Ptr("id=asc"),
+	}
+
+	resp, err := api.SearchExperiments(ctx, req)
+	require.NoError(t, err)
+	// Deleting experiment should not be in the response
+	require.Len(t, resp.Experiments, 1)
+	require.Nil(t, resp.Experiments[0].BestTrial)
+	require.Equal(t, int32(shownExp.ID), resp.Experiments[0].Experiment.Id)
 }
 
 // Test that endpoints don't puke when running against old experiments.
@@ -1347,7 +1423,6 @@ func createTestExpWithActiveConfig(
 		Config:    activeConfig.AsLegacy(),
 	}
 	require.NoError(t, api.m.db.AddExperiment(exp, []byte{10, 11, 12}, activeConfig))
-
 	// Get experiment as our API mostly will to make it easier to mock.
 	exp, err := db.ExperimentByID(context.TODO(), exp.ID)
 	require.NoError(t, err)
@@ -1388,7 +1463,7 @@ func TestAuthZGetExperiment(t *testing.T) {
 	authZExp.On("CanGetExperiment", mock.Anything, mockUserArg, mock.Anything).
 		Return(authz2.PermissionDeniedError{}).Once()
 	_, err = api.GetExperiment(ctx, &apiv1.GetExperimentRequest{ExperimentId: int32(exp.ID)})
-	require.Equal(t, apiPkg.NotFoundErrs("experiment", fmt.Sprint(exp.ID), true).Error(),
+	require.Equal(t, apiPkg.NotFoundErrs("experiment", strconv.Itoa(exp.ID), true).Error(),
 		err.Error())
 
 	// Error returns error unmodified.
@@ -1418,7 +1493,7 @@ func TestAuthZGetExperiments(t *testing.T) {
 	authZProject.On("CanGetProject", mock.Anything, mockUserArg,
 		mock.Anything).Return(authz2.PermissionDeniedError{}).Once()
 	_, err := api.GetExperiments(ctx, &apiv1.GetExperimentsRequest{ProjectId: int32(projectID)})
-	require.Equal(t, apiPkg.NotFoundErrs("project", fmt.Sprint(projectID), true).Error(),
+	require.Equal(t, apiPkg.NotFoundErrs("project", strconv.Itoa(projectID), true).Error(),
 		err.Error())
 
 	// Error from FilterExperimentsQuery passes through.
@@ -1470,7 +1545,7 @@ func TestAuthZGetExperimentLabels(t *testing.T) {
 	_, err := api.GetExperimentLabels(ctx, &apiv1.GetExperimentLabelsRequest{
 		ProjectId: int32(projectID),
 	})
-	require.Equal(t, apiPkg.NotFoundErrs("project", fmt.Sprint(projectID), true).Error(),
+	require.Equal(t, apiPkg.NotFoundErrs("project", strconv.Itoa(projectID), true).Error(),
 		err.Error())
 
 	// Error from FilterExperimentsLabelsQuery passes through.
@@ -1497,7 +1572,8 @@ func TestAuthZGetExperimentLabels(t *testing.T) {
 }
 
 func TestAuthZCreateExperiment(t *testing.T) {
-	api, authZExp, _, curUser, ctx := setupExpAuthTest(t, nil)
+	mockRM := MockRM()
+	api, authZExp, _, curUser, ctx := setupExpAuthTest(t, nil, mockRM)
 	forkFrom := createTestExp(t, api, curUser)
 	workspaceID, projectID := createProjectAndWorkspace(ctx, t, api)
 
@@ -1513,7 +1589,7 @@ func TestAuthZCreateExperiment(t *testing.T) {
 			ParentId: int32(forkFrom.ID),
 		})
 		require.Equal(t, apiPkg.NotFoundErrs("experiment",
-			fmt.Sprint(forkFrom.ID), true), err)
+			strconv.Itoa(forkFrom.ID), true), err)
 	})
 
 	t.Run("can't fork from experiment", func(t *testing.T) {
@@ -1534,7 +1610,7 @@ func TestAuthZCreateExperiment(t *testing.T) {
 			ProjectId: int32(projectID),
 			Config:    minExpConfToYaml(t),
 		})
-		require.Equal(t, apiPkg.NotFoundErrs("project", fmt.Sprint(projectID), true), err)
+		require.Equal(t, apiPkg.NotFoundErrs("project", strconv.Itoa(projectID), true), err)
 	})
 
 	t.Run("can't view project passed in from config", func(t *testing.T) {
@@ -1590,6 +1666,7 @@ func TestAuthZCreateExperiment(t *testing.T) {
 			Return(nil).Once()
 		authZExp.On("CanEditExperiment", mock.Anything, mockUserArg, mock.Anything, mock.Anything).Return(
 			fmt.Errorf("canActivateExperimentError")).Once()
+		mockRM.On("SmallerValueIsHigherPriority", mock.Anything).Return(true, nil)
 		_, err := api.CreateExperiment(ctx, &apiv1.CreateExperimentRequest{
 			Activate:        true,
 			Config:          minExpConfToYaml(t),
@@ -1741,6 +1818,9 @@ func TestAuthZGetExperimentAndCanDoActions(t *testing.T) {
 				mock.Anything).Return(nil).Once()
 			workspaceAuthZ.On("CanGetWorkspace", mock.Anything, mock.Anything, mock.Anything).
 				Return(nil).Once()
+			mockRM := MockRM()
+			mockRM.On("SmallerValueIsHigherPriority", mock.Anything).Return(true, nil)
+			api.m.rm = mockRM
 			_, err := api.LaunchTensorboard(ctx, &apiv1.LaunchTensorboardRequest{
 				ExperimentIds: []int32{int32(id)},
 			})
@@ -1754,7 +1834,7 @@ func TestAuthZGetExperimentAndCanDoActions(t *testing.T) {
 
 		authZExp.On("CanGetExperiment", mock.Anything, mockUserArg, mock.Anything).
 			Return(authz2.PermissionDeniedError{}).Once()
-		require.Equal(t, apiPkg.NotFoundErrs("experiment", fmt.Sprint(exp.ID), true),
+		require.Equal(t, apiPkg.NotFoundErrs("experiment", strconv.Itoa(exp.ID), true),
 			curCase.IDToReqCall(exp.ID))
 
 		// CanGetExperiment error returns unmodified.
@@ -1817,7 +1897,7 @@ func TestAuthZGetExperimentAndCanDoActions(t *testing.T) {
 			q := args.Get(3).(*bun.SelectQuery).Where("0 = 1")
 			*resQuery = *q
 		})
-		require.Equal(t, apiPkg.NotFoundErrs("experiment", fmt.Sprint(exp.ID), true),
+		require.Equal(t, apiPkg.NotFoundErrs("experiment", strconv.Itoa(exp.ID), true),
 			curCase.IDToReqCall(exp.ID))
 
 		// FilterExperimentsQuery error returned unmodified.
@@ -1907,7 +1987,7 @@ func TestAuthZGetExperimentAndCanDoActions(t *testing.T) {
 		})
 		results, _ := curCase.IDToReqCall(exp.ID)
 		require.Equal(t, apiPkg.NotFoundErrs("experiment",
-			fmt.Sprint(exp.ID), true).Error(), results[0].Error)
+			strconv.Itoa(exp.ID), true).Error(), results[0].Error)
 
 		// FilterExperimentsQuery error returned unmodified.
 		expectedErr := fmt.Errorf("canGetExperimentError")
@@ -2064,7 +2144,7 @@ func TestExperimentSearchApiFilterParsing(t *testing.T) {
 			`{"filterGroup":{"children":[{"type":"COLUMN_TYPE_TEXT","location":"LOCATION_TYPE_HYPERPARAMETERS", "columnName":"hp.clip_grad.clip.grad","kind":"field","operator":"notContains", "value":"some_string"}],"conjunction":"and","kind":"group"},"showArchived":true}`,
 			`((((CASE
 				WHEN config->'hyperparameters'->'clip_grad'->'clip'->'grad'->>'type' = 'const' THEN config->'hyperparameters'->'clip_grad'->'clip'->'grad'->>'val' NOT LIKE '%some_string%'
-				WHEN config->'hyperparameters'->'clip_grad'->'clip'->'grad'->>'type' = 'categorical' THEN (config->'hyperparameters'->'clip_grad'->'clip'->'grad'->>'vals')::jsonb ? 'some_string') IS NOT TRUE
+				WHEN config->'hyperparameters'->'clip_grad'->'clip'->'grad'->>'type' = 'categorical' THEN (config->'hyperparameters'->'clip_grad'->'clip'->'grad'->>'vals')::jsonb ? 'some_string' IS NOT TRUE
 				ELSE false
 			 END))))`,
 		},
@@ -2102,7 +2182,7 @@ func TestDeleteExperiments(t *testing.T) {
 	// still after that.
 	mockRM.On("DeleteJob", mock.Anything).Return(func(sproto.DeleteJob) sproto.DeleteJobResponse {
 		errC := make(chan error, 1)
-		errC <- errors.New("something real bad")
+		errC <- fmt.Errorf("something real bad")
 		return sproto.DeleteJobResponse{Err: errC}
 	}, nil)
 
@@ -2156,7 +2236,7 @@ func TestDeleteExperiments(t *testing.T) {
 		for _, expID := range expIDs {
 			e, err := api.GetExperiment(ctx, &apiv1.GetExperimentRequest{ExperimentId: expID})
 			if err != nil {
-				require.Equal(t, apiPkg.NotFoundErrs("experiment", fmt.Sprint(expID), true), err)
+				require.Equal(t, apiPkg.NotFoundErrs("experiment", strconv.Itoa(int(expID)), true), err)
 				deleted++
 				continue
 			}
@@ -2176,7 +2256,7 @@ func TestDeleteExperimentsFiltered(t *testing.T) {
 	// still after that.
 	mockRM.On("DeleteJob", mock.Anything).Return(func(sproto.DeleteJob) sproto.DeleteJobResponse {
 		errC := make(chan error, 1)
-		errC <- errors.New("something real bad")
+		errC <- fmt.Errorf("something real bad")
 		return sproto.DeleteJobResponse{Err: errC}
 	}, nil)
 
@@ -2233,7 +2313,7 @@ func TestDeleteExperimentsFiltered(t *testing.T) {
 		for _, expID := range expIDs {
 			e, err := api.GetExperiment(ctx, &apiv1.GetExperimentRequest{ExperimentId: expID})
 			if err != nil {
-				require.Equal(t, apiPkg.NotFoundErrs("experiment", fmt.Sprint(expID), true), err)
+				require.Equal(t, apiPkg.NotFoundErrs("experiment", strconv.Itoa(int(expID)), true), err)
 				deleted++
 				continue
 			}
@@ -2245,4 +2325,259 @@ func TestDeleteExperimentsFiltered(t *testing.T) {
 		time.Sleep(1 * time.Second)
 	}
 	t.Error("expected experiments to delete after 15 seconds and they did not")
+}
+
+func TestGetWorkspaceByConfig(t *testing.T) {
+	api, _, ctx := setupAPITest(t, nil)
+	resp, err := api.PostWorkspace(ctx, &apiv1.PostWorkspaceRequest{
+		Name: uuid.New().String(),
+	})
+	require.NoError(t, err)
+	wkspName := &resp.Workspace.Name
+
+	t.Run("no workspace name", func(t *testing.T) {
+		w, err := getWorkspaceByConfig(expconf.ExperimentConfig{RawWorkspace: ptrs.Ptr("")})
+		require.NoError(t, err)
+
+		// Verify we get the Uncategorized workspace.
+		require.Equal(t, 1, w.ID)
+	})
+	t.Run("has workspace name", func(t *testing.T) {
+		w, err := getWorkspaceByConfig(expconf.ExperimentConfig{
+			RawWorkspace: wkspName,
+		})
+		require.NoError(t, err)
+		require.Equal(t, *wkspName, w.Name)
+	})
+}
+
+func TestPatchExperiment(t *testing.T) {
+	mockRM := MockRM()
+	testutils.MustLoadLicenseAndKeyFromFilesystem("../../")
+
+	api, _, ctx := setupAPITest(t, nil, mockRM)
+	conf := `
+entrypoint: test
+searcher:
+  metric: loss
+  name: single
+  max_length: 10
+resources:
+  resource_pool: kubernetes
+checkpoint_storage:
+  type: shared_fs
+  host_path: /etc
+  storage_path: determined-integration-checkpoints
+`
+	createReq := &apiv1.CreateExperimentRequest{
+		ModelDefinition: []*utilv1.File{{Content: []byte{1}}},
+		Config:          conf,
+		ParentId:        0,
+		Activate:        false,
+		ProjectId:       1,
+	}
+
+	mockRM.On("SmallerValueIsHigherPriority", mock.Anything).Return(true, nil)
+	expResp, err := api.CreateExperiment(ctx, createReq)
+	require.NoError(t, err)
+
+	// Create global invariant config policy with checkpoint storage.
+	_, err = api.PutGlobalConfigPolicies(ctx, &apiv1.PutGlobalConfigPoliciesRequest{
+		WorkloadType: model.ExperimentType,
+		ConfigPolicies: `
+invariant_config:
+  checkpoint_storage:
+    type: shared_fs
+    host_path: /tmp
+    storage_path: determined-integration-checkpoints
+
+    save_experiment_best: 10
+    save_trial_best: 11
+    save_trial_latest: 12
+`,
+	})
+	require.NoError(t, err)
+
+	t.Run("save exp best config differs", func(t *testing.T) {
+		_, err = api.PatchExperiment(ctx, &apiv1.PatchExperimentRequest{
+			Experiment: &experimentv1.PatchExperiment{
+				Id: expResp.Experiment.Id,
+				CheckpointStorage: &experimentv1.PatchExperiment_PatchCheckpointStorage{
+					SaveExperimentBest: 1,
+					SaveTrialBest:      11,
+					SaveTrialLatest:    12,
+				},
+			},
+		})
+		require.ErrorContains(t, err, "invariant config policy")
+	})
+
+	t.Run("save trial best config differs", func(t *testing.T) {
+		_, err = api.PatchExperiment(ctx, &apiv1.PatchExperimentRequest{
+			Experiment: &experimentv1.PatchExperiment{
+				Id: expResp.Experiment.Id,
+				CheckpointStorage: &experimentv1.PatchExperiment_PatchCheckpointStorage{
+					SaveExperimentBest: 10,
+					SaveTrialBest:      1,
+					SaveTrialLatest:    12,
+				},
+			},
+		})
+		require.ErrorContains(t, err, "invariant config policy")
+	})
+
+	t.Run("save trial latest config differs", func(t *testing.T) {
+		_, err = api.PatchExperiment(ctx, &apiv1.PatchExperimentRequest{
+			Experiment: &experimentv1.PatchExperiment{
+				Id: expResp.Experiment.Id,
+				CheckpointStorage: &experimentv1.PatchExperiment_PatchCheckpointStorage{
+					SaveExperimentBest: 10,
+					SaveTrialBest:      11,
+					SaveTrialLatest:    1,
+				},
+			},
+		})
+		require.ErrorContains(t, err, "invariant config policy")
+	})
+
+	t.Run("chkpt config matches invariant config", func(t *testing.T) {
+		_, err = api.PatchExperiment(ctx, &apiv1.PatchExperimentRequest{
+			Experiment: &experimentv1.PatchExperiment{
+				Id: expResp.Experiment.Id,
+				CheckpointStorage: &experimentv1.PatchExperiment_PatchCheckpointStorage{
+					SaveExperimentBest: 10,
+					SaveTrialBest:      11,
+					SaveTrialLatest:    12,
+				},
+			},
+		})
+		require.NoError(t, err)
+	})
+
+	// Set global invariant config policy with resources.max_slots.
+	_, err = api.PutGlobalConfigPolicies(ctx, &apiv1.PutGlobalConfigPoliciesRequest{
+		WorkloadType: model.ExperimentType,
+		ConfigPolicies: `
+invariant_config:
+  resources:
+    max_slots: 23
+`,
+	})
+	require.NoError(t, err)
+	t.Run("max slots differs", func(t *testing.T) {
+		_, err = api.PatchExperiment(ctx, &apiv1.PatchExperimentRequest{
+			Experiment: &experimentv1.PatchExperiment{
+				Id: expResp.Experiment.Id,
+				Resources: &experimentv1.PatchExperiment_PatchResources{
+					MaxSlots: ptrs.Ptr[int32](20),
+				},
+			},
+		})
+		require.ErrorContains(t, err, configpolicy.SlotsAlreadySetErr)
+	})
+
+	t.Run("max slots matches", func(t *testing.T) {
+		_, err = api.PatchExperiment(ctx, &apiv1.PatchExperimentRequest{
+			Experiment: &experimentv1.PatchExperiment{
+				Id: expResp.Experiment.Id,
+				Resources: &experimentv1.PatchExperiment_PatchResources{
+					MaxSlots: ptrs.Ptr[int32](23),
+				},
+			},
+		})
+		require.NoError(t, err)
+	})
+
+	// Set global constraints policy with resources.max_slots.
+	_, err = api.PutGlobalConfigPolicies(ctx, &apiv1.PutGlobalConfigPoliciesRequest{
+		WorkloadType: model.ExperimentType,
+		ConfigPolicies: `
+constraints:
+  resources:
+    max_slots: 23
+`,
+	})
+	require.NoError(t, err)
+
+	t.Run("max slots violates constraint", func(t *testing.T) {
+		_, err = api.PatchExperiment(ctx, &apiv1.PatchExperimentRequest{
+			Experiment: &experimentv1.PatchExperiment{
+				Id: expResp.Experiment.Id,
+				Resources: &experimentv1.PatchExperiment_PatchResources{
+					MaxSlots: ptrs.Ptr[int32](30),
+				},
+			},
+		})
+		require.ErrorContains(t, err, configpolicy.SlotsReqTooHighErr)
+	})
+
+	t.Run("max slots complies with constraint", func(t *testing.T) {
+		_, err = api.PatchExperiment(ctx, &apiv1.PatchExperimentRequest{
+			Experiment: &experimentv1.PatchExperiment{
+				Id: expResp.Experiment.Id,
+				Resources: &experimentv1.PatchExperiment_PatchResources{
+					MaxSlots: ptrs.Ptr[int32](10),
+				},
+			},
+		})
+		require.NoError(t, err)
+	})
+
+	// Set global invariant config policy with resources.weight.
+	_, err = api.PutGlobalConfigPolicies(ctx, &apiv1.PutGlobalConfigPoliciesRequest{
+		WorkloadType: model.ExperimentType,
+		ConfigPolicies: `
+invariant_config:
+  resources:
+    weight: 23
+`,
+	})
+	require.NoError(t, err)
+
+	t.Run("weight config differs", func(t *testing.T) {
+		_, err = api.PatchExperiment(ctx, &apiv1.PatchExperimentRequest{
+			Experiment: &experimentv1.PatchExperiment{
+				Id: expResp.Experiment.Id,
+				Resources: &experimentv1.PatchExperiment_PatchResources{
+					Weight: ptrs.Ptr[float64](30),
+				},
+			},
+		})
+		require.ErrorContains(t, err, "invariant config policy")
+	})
+
+	t.Run("weight config matches", func(t *testing.T) {
+		_, err = api.PatchExperiment(ctx, &apiv1.PatchExperimentRequest{
+			Experiment: &experimentv1.PatchExperiment{
+				Id: expResp.Experiment.Id,
+				Resources: &experimentv1.PatchExperiment_PatchResources{
+					Weight: ptrs.Ptr[float64](23),
+				},
+			},
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("no config policies", func(t *testing.T) {
+		_, err = api.DeleteGlobalConfigPolicies(ctx, &apiv1.DeleteGlobalConfigPoliciesRequest{
+			WorkloadType: model.ExperimentType,
+		})
+		require.NoError(t, err)
+
+		_, err = api.PatchExperiment(ctx, &apiv1.PatchExperimentRequest{
+			Experiment: &experimentv1.PatchExperiment{
+				Id: expResp.Experiment.Id,
+				Resources: &experimentv1.PatchExperiment_PatchResources{
+					MaxSlots: ptrs.Ptr[int32](5),
+					Weight:   ptrs.Ptr[float64](20),
+				},
+				CheckpointStorage: &experimentv1.PatchExperiment_PatchCheckpointStorage{
+					SaveExperimentBest: 1,
+					SaveTrialBest:      2,
+					SaveTrialLatest:    3,
+				},
+			},
+		})
+		require.NoError(t, err)
+	})
 }

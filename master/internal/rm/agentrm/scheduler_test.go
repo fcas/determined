@@ -43,8 +43,10 @@ func setupResourcePool(
 
 	agentsRef, _ := newAgentService([]config.ResourcePoolConfig{*conf}, &aproto.MasterSetAgentOptions{})
 
+	scheduler, err := MakeScheduler(conf.Scheduler)
+	require.NoError(t, err)
 	rp, err := newResourcePool(
-		conf, db, nil, MakeScheduler(conf.Scheduler),
+		conf, db, nil, scheduler,
 		MakeFitFunction(conf.Scheduler.FittingPolicy), agentsRef)
 	require.NoError(t, err)
 	rp.taskList, rp.groups, rp.agentStatesCache = setupSchedulerStates(
@@ -103,7 +105,9 @@ func newFakeAgentState(
 	if slotsUsed > 0 {
 		req := &sproto.AllocateRequest{
 			SlotsNeeded: slotsUsed,
-			Preemptible: true,
+			Preemption: sproto.PreemptionConfig{
+				Preemptible: true,
+			},
 		}
 		if _, err := state.allocateFreeDevices(req.SlotsNeeded, cproto.NewID()); err != nil {
 			panic(err)
@@ -464,7 +468,14 @@ func setupSchedulerStates(
 		state.handler = &agent{}
 
 		for i := 0; i < mockAgent.Slots; i++ {
-			state.Devices[device.Device{ID: device.ID(i)}] = nil
+			switch mockAgent.SlotType {
+			case "cuda":
+				state.Devices[device.Device{ID: device.ID(i), Type: device.CUDA}] = nil
+			case "cpu":
+				state.Devices[device.Device{ID: device.ID(i), Type: device.CPU}] = nil
+			default:
+				state.Devices[device.Device{ID: device.ID(i)}] = nil
+			}
 		}
 		agents[aproto.ID(mockAgent.ID)] = state
 	}
@@ -541,4 +552,15 @@ func setupSchedulerStates(
 	}
 
 	return taskList, groups, agents
+}
+
+func TestRoundRobinResourcePoolDeprecation(t *testing.T) {
+	conf := &config.ResourcePoolConfig{PoolName: "pool"}
+	conf.Scheduler = &config.SchedulerConfig{
+		RoundRobin:    &config.RoundRobinSchedulerConfig{},
+		FittingPolicy: best,
+	}
+
+	_, err := MakeScheduler(conf.Scheduler)
+	require.Error(t, err)
 }

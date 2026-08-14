@@ -55,12 +55,14 @@ func MockTaskToAllocateRequest(mockTask *MockTask) *sproto.AllocateRequest {
 	}
 
 	req := &sproto.AllocateRequest{
-		TaskID:            mockTask.TaskID,
-		AllocationID:      mockTask.ID,
-		JobID:             model.JobID(jobID),
-		SlotsNeeded:       mockTask.SlotsNeeded,
-		IsUserVisible:     true,
-		Preemptible:       !mockTask.NonPreemptible,
+		TaskID:        mockTask.TaskID,
+		AllocationID:  mockTask.ID,
+		JobID:         model.JobID(jobID),
+		SlotsNeeded:   mockTask.SlotsNeeded,
+		IsUserVisible: true,
+		Preemption: sproto.PreemptionConfig{
+			Preemptible: !mockTask.NonPreemptible,
+		},
 		JobSubmissionTime: jobSubmissionTime,
 		BlockedNodes:      mockTask.BlockedNodes,
 	}
@@ -69,6 +71,7 @@ func MockTaskToAllocateRequest(mockTask *MockTask) *sproto.AllocateRequest {
 
 type MockAgent struct {
 	ID                    string
+	SlotType              string
 	Slots                 int
 	SlotsUsed             int
 	MaxZeroSlotContainers int

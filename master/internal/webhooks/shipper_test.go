@@ -57,8 +57,8 @@ func TestShipper(t *testing.T) {
 		key := []byte("testsigningkey")
 		signedPayload := generateSignedPayload(req, ts, key)
 
-		require.Equal(t, signedPayload,
-			"899cc042278415da7d91605ffefe81376d64a4d842aa5663cd614f497f88910f")
+		require.Equal(t, "899cc042278415da7d91605ffefe81376d64a4d842aa5663cd614f497f88910f",
+			signedPayload)
 	})
 
 	t.Log("setup test webhook receiver")
@@ -99,6 +99,7 @@ func TestShipper(t *testing.T) {
 			},
 		},
 		WebhookType: WebhookTypeDefault,
+		Mode:        WebhookModeWorkspace,
 	}))
 	// And one that just fires once.
 	require.NoError(t, AddWebhook(ctx, &Webhook{
@@ -118,6 +119,7 @@ func TestShipper(t *testing.T) {
 			},
 		},
 		WebhookType: WebhookTypeDefault,
+		Mode:        WebhookModeWorkspace,
 	}))
 
 	t.Log("build shipper")
@@ -139,6 +141,10 @@ func TestShipper(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		workspaceName := uuid.New().String()
+		workspaceID, _ := db.RequireMockWorkspaceID(t, pgDB, workspaceName)
+		projectID, _ := db.RequireMockProjectID(t, pgDB, workspaceID, false)
+
 		var config expconf.ExperimentConfig
 		config = schemas.WithDefaults(config)
 		for id, delay := range schedule {
@@ -146,8 +152,9 @@ func TestShipper(t *testing.T) {
 			expected[id] = 3 // 3 sends, one for each trigger.
 			shipperInitLock.Lock()
 			err := ReportExperimentStateChanged(ctx, model.Experiment{
-				ID:    id,
-				State: model.CompletedState,
+				ID:        id,
+				ProjectID: projectID,
+				State:     model.CompletedState,
 			}, config)
 			shipperInitLock.Unlock()
 			require.NoError(t, err)
@@ -201,7 +208,7 @@ func TestShipper(t *testing.T) {
 		t.Log("waitgroup closed, checking results")
 		require.ElementsMatch(t, maps.Keys(expected), maps.Keys(actual), "missing events for exps")
 		for expID, events := range actual {
-			require.Equalf(t, 3, len(events), "missing events for exp %d", expID)
+			require.Len(t, events, 3, "missing events for exp %d", expID)
 			for _, sends := range events {
 				require.GreaterOrEqual(t, sends, 1, "event was not sent at least once")
 				require.LessOrEqual(t, sends, 3, "event was not sent an excessive number of times")

@@ -1,6 +1,8 @@
 import Button from 'hew/Button';
+import CodeSample from 'hew/CodeSample';
 import Divider from 'hew/Divider';
 import Form from 'hew/Form';
+import { useTheme } from 'hew/Theme';
 import { notification } from 'hew/Toast';
 import { useObservable } from 'micro-observables';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -8,13 +10,13 @@ import { useLocation } from 'react-router-dom';
 
 import LogoGoogle from 'assets/images/logo-sso-google-white.svg?url';
 import LogoOkta from 'assets/images/logo-sso-okta-white.svg?url';
-import AuthToken from 'components/AuthToken';
 import DeterminedAuth from 'components/DeterminedAuth';
 import Logo from 'components/Logo';
 import Page from 'components/Page';
 import PageMessage from 'components/PageMessage';
 import useUI from 'components/ThemeProvider';
 import { handleRelayState, samlUrl } from 'ee/SamlAuth';
+import { globalStorage, sessionStorage } from 'globalStorage';
 import useAuthCheck from 'hooks/useAuthCheck';
 import usePolling from 'hooks/usePolling';
 import { defaultRoute, rbacDefaultRoute } from 'routes';
@@ -40,7 +42,9 @@ const SignIn: React.FC = () => {
   const info = useObservable(determinedStore.info);
   const [canceler] = useState(new AbortController());
   const { rbacEnabled } = useObservable(determinedStore.info);
-
+  const {
+    themeSettings: { className: themeClass },
+  } = useTheme();
   const queries = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const ssoQueries = handleRelayState(queries);
 
@@ -62,6 +66,10 @@ const SignIn: React.FC = () => {
    * the user to the most recent requested page.
    */
   useEffect(() => {
+    if (location.state != null) {
+      sessionStorage.landingRedirect = locationToPath(location.state) ?? '';
+    }
+
     if (isAuthenticated) {
       // Stop the spinner, prepping for user redirect.
       uiActions.hideSpinner();
@@ -69,24 +77,28 @@ const SignIn: React.FC = () => {
       // Show auth token via notification if requested via query parameters.
       if (queries.get('cli') === 'true')
         notification.open({
-          description: <AuthToken />,
+          className: themeClass,
+          description: <CodeSample text={globalStorage.authToken || 'Auth token not found.'} />,
           duration: 0,
-          message: '',
+          message: 'Your Determined Authentication Token',
         });
 
       // Reroute the authenticated user to the app.
       if (!queries.has('redirect')) {
-        routeToReactUrl(
-          locationToPath(location.state) ||
-            (rbacEnabled ? rbacDefaultRoute.path : defaultRoute.path),
-        );
+        let path = sessionStorage.landingRedirect;
+        sessionStorage.removeLandingRedirect();
+        if (path === '') {
+          path = globalStorage.landingRedirect;
+          globalStorage.removeLandingRedirect();
+        }
+        routeToReactUrl(path || (rbacEnabled ? rbacDefaultRoute.path : defaultRoute.path));
       } else {
         routeAll(queries.get('redirect') || '');
       }
     } else if (isAuthChecked) {
       uiActions.hideSpinner();
     }
-  }, [isAuthenticated, isAuthChecked, info, location, queries, uiActions, rbacEnabled]);
+  }, [isAuthenticated, isAuthChecked, info, location, queries, uiActions, rbacEnabled, themeClass]);
 
   useEffect(() => {
     uiActions.hideChrome();
@@ -103,10 +115,17 @@ const SignIn: React.FC = () => {
    *   1. jwt query param detected
    *   2. cluster has `externalLoginUri` defined
    *   3. authentication hasn't occurred yet
+   *   4. a remote user token has expired
+   *   5. an SSO providers is set to always redirect
    * This will prevent the form from showing for a split second when
    * accessing a page from the browser when the user is already verified.
    */
-  if (queries.has('jwt') || info.externalLoginUri || !isAuthChecked) return null;
+  const redirectToSSO =
+    !queries.get('hard_logout') &&
+    (queries.get('remote_expired') ||
+      info.ssoProviders?.some((ssoProvider) => ssoProvider.alwaysRedirect));
+
+  if (queries.has('jwt') || info.externalLoginUri || !isAuthChecked || redirectToSSO) return null;
 
   /*
    * An external auth error occurs when there are external auth urls,
@@ -123,7 +142,11 @@ const SignIn: React.FC = () => {
     <Page breadcrumb={[]} docTitle="Sign In" ignorePermissions noScroll>
       <div className={css.base}>
         <div className={css.content}>
-          <Logo branding={info.branding} orientation="vertical" />
+          <Logo
+            branding={info.branding}
+            hasCustomLogo={info.hasCustomLogo}
+            orientation="vertical"
+          />
           <DeterminedAuth canceler={canceler} />
           {info.ssoProviders && info.ssoProviders.length > 0 && (
             <>

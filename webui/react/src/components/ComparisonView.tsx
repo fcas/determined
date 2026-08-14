@@ -2,64 +2,85 @@ import Alert from 'hew/Alert';
 import { MIN_COLUMN_WIDTH } from 'hew/DataGrid/columns';
 import Message from 'hew/Message';
 import Pivot, { PivotProps } from 'hew/Pivot';
+import Spinner from 'hew/Spinner';
 import SplitPane, { Pane } from 'hew/SplitPane';
-import React, { useMemo } from 'react';
+import { Loadable, NotLoaded } from 'hew/utils/loadable';
+import React, { useMemo, useState } from 'react';
 
+import CompareHyperparameters from 'components/CompareHyperparameters';
+import { useAsync } from 'hooks/useAsync';
+import { MapOfIdsToColors } from 'hooks/useGlasbey';
+import { useMetrics } from 'hooks/useMetrics';
 import useMobile from 'hooks/useMobile';
 import useScrollbarWidth from 'hooks/useScrollbarWidth';
 import { TrialsComparisonTable } from 'pages/ExperimentDetails/TrialsComparisonModal';
-import { useTrialMetrics } from 'pages/TrialDetails/useTrialMetrics';
-import { ExperimentWithTrial, TrialItem } from 'types';
+import { searchExperiments, searchRuns } from 'services/api';
+import { ExperimentWithTrial, FlatRun, SelectionType, XOR } from 'types';
+import handleError from 'utils/error';
+import { getIdsFilter as getExperimentIdsFilter } from 'utils/experiment';
+import { getIdsFilter as getRunIdsFilter } from 'utils/flatRun';
 
 import CompareMetrics from './CompareMetrics';
-import CompareParallelCoordinates from './CompareParallelCoordinates';
+import { INIT_FORMSET } from './FilterForm/components/FilterFormStore';
 
-interface Props {
+export const EMPTY_MESSAGE = 'No items selected.';
+
+interface BaseProps {
   children: React.ReactElement;
+  colorMap: MapOfIdsToColors;
   open: boolean;
   initialWidth: number;
   onWidthChange: (width: number) => void;
   fixedColumnsCount: number;
   projectId: number;
-  selectedExperiments: ExperimentWithTrial[];
 }
-const ComparisonView: React.FC<Props> = ({
-  children,
-  open,
-  initialWidth,
-  onWidthChange,
-  fixedColumnsCount,
+
+type Props = XOR<{ experimentSelection: SelectionType }, { runSelection: SelectionType }> &
+  BaseProps;
+
+const SELECTION_LIMIT = 50;
+
+interface TabsProps {
+  colorMap: MapOfIdsToColors;
+  loadableSelectedExperiments: Loadable<ExperimentWithTrial[]>;
+  loadableSelectedRuns: Loadable<FlatRun[]>;
+  projectId: number;
+}
+
+const Tabs = ({
+  colorMap,
+  loadableSelectedExperiments,
+  loadableSelectedRuns,
   projectId,
-  selectedExperiments,
-}) => {
-  const scrollbarWidth = useScrollbarWidth();
-  const hasPinnedColumns = fixedColumnsCount > 1;
-  const isMobile = useMobile();
-
-  const minWidths: [number, number] = useMemo(() => {
-    return [fixedColumnsCount * MIN_COLUMN_WIDTH + scrollbarWidth, 100];
-  }, [fixedColumnsCount, scrollbarWidth]);
-
-  const trials = useMemo(
-    () =>
-      selectedExperiments.filter((exp) => !!exp.bestTrial).map((exp) => exp.bestTrial as TrialItem),
-    [selectedExperiments],
+}: TabsProps) => {
+  const selectedExperiments: ExperimentWithTrial[] | undefined = Loadable.getOrElse(
+    undefined,
+    loadableSelectedExperiments,
   );
+
+  const selectedRuns: FlatRun[] | undefined = Loadable.getOrElse(undefined, loadableSelectedRuns);
+
+  const trials = useMemo(() => {
+    return selectedExperiments?.flatMap((exp) => (exp.bestTrial ? [exp.bestTrial] : [])) ?? [];
+  }, [selectedExperiments]);
 
   const experiments = useMemo(
-    () => selectedExperiments.map((exp) => exp.experiment),
+    () => selectedExperiments?.map((exp) => exp.experiment) ?? [],
     [selectedExperiments],
   );
 
-  const metricData = useTrialMetrics(trials);
+  const metricData = useMetrics(selectedRuns ?? trials ?? []);
 
   const tabs: PivotProps['items'] = useMemo(() => {
     return [
       {
-        children: (
+        children: selectedRuns ? (
+          <CompareMetrics colorMap={colorMap} metricData={metricData} selectedRuns={selectedRuns} />
+        ) : (
           <CompareMetrics
+            colorMap={colorMap}
             metricData={metricData}
-            selectedExperiments={selectedExperiments}
+            selectedExperiments={selectedExperiments ?? []}
             trials={trials}
           />
         ),
@@ -67,11 +88,19 @@ const ComparisonView: React.FC<Props> = ({
         label: 'Metrics',
       },
       {
-        children: (
-          <CompareParallelCoordinates
+        children: selectedRuns ? (
+          <CompareHyperparameters
+            colorMap={colorMap}
             metricData={metricData}
             projectId={projectId}
-            selectedExperiments={selectedExperiments}
+            selectedRuns={selectedRuns}
+          />
+        ) : (
+          <CompareHyperparameters
+            colorMap={colorMap}
+            metricData={metricData}
+            projectId={projectId}
+            selectedExperiments={selectedExperiments ?? []}
             trials={trials}
           />
         ),
@@ -79,12 +108,90 @@ const ComparisonView: React.FC<Props> = ({
         label: 'Hyperparameters',
       },
       {
-        children: <TrialsComparisonTable experiment={experiments} trials={trials} />,
+        children: selectedRuns ? (
+          <TrialsComparisonTable runs={selectedRuns} />
+        ) : (
+          <TrialsComparisonTable experiment={experiments} trials={trials} />
+        ),
         key: 'details',
         label: 'Details',
       },
     ];
-  }, [selectedExperiments, projectId, experiments, trials, metricData]);
+  }, [selectedRuns, metricData, selectedExperiments, trials, colorMap, projectId, experiments]);
+
+  return <Pivot items={tabs} />;
+};
+
+const ComparisonView: React.FC<Props> = ({
+  children,
+  colorMap,
+  open,
+  initialWidth,
+  onWidthChange,
+  fixedColumnsCount,
+  projectId,
+  experimentSelection,
+  runSelection,
+}) => {
+  const scrollbarWidth = useScrollbarWidth();
+  const hasPinnedColumns = fixedColumnsCount > 1;
+  const isMobile = useMobile();
+
+  const [isSelectionLimitReached, setIsSelectionLimitReached] = useState(false);
+
+  const loadableSelectedExperiments = useAsync(async () => {
+    if (
+      !open ||
+      !experimentSelection ||
+      (experimentSelection.type === 'ONLY_IN' && experimentSelection.selections.length === 0)
+    ) {
+      return NotLoaded;
+    }
+    try {
+      const filterFormSet = INIT_FORMSET;
+      const filter = getExperimentIdsFilter(filterFormSet, experimentSelection);
+      const response = await searchExperiments({
+        filter: JSON.stringify(filter),
+        limit: SELECTION_LIMIT,
+      });
+      setIsSelectionLimitReached(
+        !!response?.pagination?.total && response?.pagination?.total > SELECTION_LIMIT,
+      );
+      return response.experiments;
+    } catch (e) {
+      handleError(e, { publicSubject: 'Unable to fetch experiments for comparison' });
+      return NotLoaded;
+    }
+  }, [experimentSelection, open]);
+
+  const loadableSelectedRuns = useAsync(async () => {
+    if (
+      !open ||
+      !runSelection ||
+      (runSelection.type === 'ONLY_IN' && runSelection.selections.length === 0)
+    ) {
+      return NotLoaded;
+    }
+    const filterFormSet = INIT_FORMSET;
+    try {
+      const filter = getRunIdsFilter(filterFormSet, runSelection);
+      const response = await searchRuns({
+        filter: JSON.stringify(filter),
+        limit: SELECTION_LIMIT,
+      });
+      setIsSelectionLimitReached(
+        !!response?.pagination?.total && response?.pagination?.total > SELECTION_LIMIT,
+      );
+      return response.runs;
+    } catch (e) {
+      handleError(e, { publicSubject: 'Unable to fetch runs for comparison' });
+      return NotLoaded;
+    }
+  }, [open, runSelection]);
+
+  const minWidths: [number, number] = useMemo(() => {
+    return [fixedColumnsCount * MIN_COLUMN_WIDTH + scrollbarWidth, 100];
+  }, [fixedColumnsCount, scrollbarWidth]);
 
   const leftPane =
     open && !hasPinnedColumns ? (
@@ -93,15 +200,41 @@ const ComparisonView: React.FC<Props> = ({
       children
     );
 
-  const rightPane =
-    selectedExperiments.length === 0 ? (
-      <Alert
-        description="Select experiments you would like to compare."
-        message="No experiments selected."
-      />
-    ) : (
-      <Pivot items={tabs} />
+  const getRightPaneContent = () => {
+    if (experimentSelection) {
+      if (experimentSelection.type === 'ONLY_IN' && experimentSelection.selections.length === 0) {
+        return (
+          <Alert description="Select records you would like to compare." message={EMPTY_MESSAGE} />
+        );
+      }
+      if (loadableSelectedExperiments.isNotLoaded) {
+        return <Spinner spinning />;
+      }
+    }
+    if (runSelection) {
+      if (runSelection.type === 'ONLY_IN' && runSelection.selections.length === 0) {
+        return (
+          <Alert description="Select records you would like to compare." message={EMPTY_MESSAGE} />
+        );
+      }
+      if (loadableSelectedRuns.isNotLoaded) {
+        return <Spinner spinning />;
+      }
+    }
+    return (
+      <>
+        {isSelectionLimitReached && (
+          <Alert message={`Only up to ${SELECTION_LIMIT} records can be compared`} />
+        )}
+        <Tabs
+          colorMap={colorMap}
+          loadableSelectedExperiments={loadableSelectedExperiments}
+          loadableSelectedRuns={loadableSelectedRuns}
+          projectId={projectId}
+        />
+      </>
     );
+  };
 
   return (
     <SplitPane
@@ -109,7 +242,7 @@ const ComparisonView: React.FC<Props> = ({
       initialWidth={initialWidth}
       leftPane={leftPane}
       minimumWidths={{ left: minWidths[0], right: minWidths[1] }}
-      rightPane={rightPane}
+      rightPane={getRightPaneContent()}
       onChange={onWidthChange}
     />
   );

@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/o1egl/paseto"
+
 	log "github.com/sirupsen/logrus"
 
 	"github.com/labstack/echo/v4"
@@ -156,6 +158,37 @@ func (s *Service) UserAndSessionFromRequest(
 		return nil, nil, err
 	}
 	return ByToken(context.TODO(), token, s.extConfig)
+}
+
+// UserAndNotebookSessionFromToken gets the user and notebook session for a given token.
+func (s *Service) UserAndNotebookSessionFromToken(
+	token string,
+) (*model.User, *model.NotebookSession, error) {
+	var notebookSession model.NotebookSession
+	ctx := context.TODO()
+	v2 := paseto.NewV2()
+	if err := v2.Verify(token, db.GetTokenKeys().PublicKey, &notebookSession, nil); err != nil {
+		return nil, nil, db.ErrNotFound
+	}
+	var user model.User
+
+	// Check if the user session ID exists; some notebooks launched before the change to use
+	// user IDs may still have the session ID on the token.
+	if notebookSession.SessionID != nil {
+		user, err := BySessionID(context.TODO(), *notebookSession.SessionID)
+		if err != nil {
+			return nil, nil, err
+		}
+		return user, &notebookSession, nil
+	}
+
+	err := db.Bun().NewSelect().
+		Table("users").
+		Where("id = ?", notebookSession.UserID).Scan(ctx, &user)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &user, &notebookSession, nil
 }
 
 // getAuthLevel returns what level of authentication a request needs.

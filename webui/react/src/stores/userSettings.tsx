@@ -4,28 +4,19 @@ import { Loadable, Loaded, NotLoaded } from 'hew/utils/loadable';
 import { Map } from 'immutable';
 import * as t from 'io-ts';
 import { isEqual } from 'lodash';
-import { debounce } from 'throttle-debounce';
 
 import { getUserSetting, resetUserSetting, updateUserSetting } from 'services/api';
 import { V1GetUserSettingResponse, V1UserWebSetting } from 'services/api-ts-sdk';
 import { Json, JsonObject } from 'types';
 import { isJsonObject, isObject } from 'utils/data';
 import handleError, { DetError, ErrorType } from 'utils/error';
+import { getProps } from 'utils/iotsHelpers';
 import { observable, Observable, WritableObservable } from 'utils/observable';
+import { isRemoteUserTokenExpired } from 'utils/service';
 
 import PollingStore from './polling';
 
-const debounceFunc = debounce(200, (func: () => void) => {
-  func();
-});
-
 type State = Map<string, Json>;
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function isTypeC(codec: t.Encoder<any, any>): codec is t.TypeC<t.Props> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (codec as any)._tag === 'InterfaceType';
-}
 
 /**
  * This stores per-user settings. These are values that affect how the UI functions
@@ -121,9 +112,7 @@ export class UserSettingsStore extends PollingStore {
     // the user from interacting, just let them know that their settings
     // are not persisting. It's also important to update the value immediately
     // for good rendering performance.
-    debounceFunc(() => {
-      this.updateUserSetting(key, encodedValue);
-    });
+    this.updateUserSetting(key, encodedValue);
 
     this.#settings.update((settings) => {
       return Loadable.flatMap(settings, (settingsMap) => {
@@ -141,37 +130,20 @@ export class UserSettingsStore extends PollingStore {
    * @param key Unique key to store and retrieve the settings
    * @param value New value of the setting
    */
-  public setPartial<T extends t.Props>(
-    type: t.TypeC<T>,
+  public setPartial<T extends t.HasProps | t.ExactC<t.HasProps>>(
+    type: T,
     key: string,
-    value: t.TypeOfPartialProps<T>,
-  ): void;
-  public setPartial<T extends t.Props, U extends t.Props>(
-    type: t.IntersectionType<[t.TypeC<T>, t.PartialC<U>]>,
-    key: string,
-    value: t.TypeOfPartialProps<T> & t.TypeOfPartialProps<U>,
-  ): void;
-  public setPartial<T>(type: t.Type<T>, key: string, value: T): void {
+    value: Partial<t.TypeOf<T>>,
+  ): void {
     const encodedValue = (() => {
-      if (isTypeC(type)) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return t.partial(type.props).encode(value as any);
-      }
-      // by exclusion the type must be this specific intersection
-      // if any new overloads are added this next line is no longer valid
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const i = type as t.IntersectionType<[t.TypeC<any>, t.PartialC<any>]>;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return t.intersection([t.partial(i.types[0].props), i.types[1]]).encode(value as any);
+      const props = getProps(type);
+      return t.partial(props).encode(value);
     })();
     // This is non-blocking. If the API call fails we don't want to block
     // the user from interacting, just let them know that their settings
     // are not persisting. It's also important to update the value immediately
     // for good rendering performance.
-    debounceFunc(() => {
-      this.updateUserSetting(key, encodedValue);
-    });
-
+    this.updateUserSetting(key, encodedValue);
     this.#settings.update((settings) => {
       return Loadable.flatMap(settings, (settingsMap) => {
         const newValue = settingsMap.update(key, (oldValue) => {
@@ -261,11 +233,17 @@ export class UserSettingsStore extends PollingStore {
       const response = await getUserSetting({ signal: this.canceler?.signal });
       this.updateSettingsFromResponse(response);
     } catch (error) {
-      handleError(error, {
-        isUserTriggered: false,
-        publicMessage: 'Unable to fetch user settings, try refreshing.',
-        type: ErrorType.Api,
-      });
+      if (isRemoteUserTokenExpired(error)) {
+        // ensure a redirect to the SSO providers is triggered,
+        // by not hiding the public message.
+        handleError(error);
+      } else {
+        handleError(error, {
+          isUserTriggered: false,
+          publicMessage: 'Unable to fetch user settings, try refreshing.',
+          type: ErrorType.Api,
+        });
+      }
     } finally {
       this.#settings.update((settings) =>
         // If we are unable to load settings just notify the user and unblock them.

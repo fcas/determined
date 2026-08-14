@@ -50,16 +50,16 @@ type AWSClusterConfig struct {
 }
 
 var defaultAWSImageID = map[string]string{
-	"ap-northeast-1": "ami-0d17768c113bc7053",
-	"ap-northeast-2": "ami-06542874b4ab6003d",
-	"ap-southeast-1": "ami-03d1fba6f5c61a233",
-	"ap-southeast-2": "ami-0a662e555f59bc56f",
-	"us-east-2":      "ami-01168798b1af4c386",
-	"us-east-1":      "ami-0f49364aa77da45f2",
-	"us-west-2":      "ami-03081ca9dd5286010",
-	"eu-central-1":   "ami-0a510a21bcbb901a1",
-	"eu-west-2":      "ami-08b973d39f7eee569",
-	"eu-west-1":      "ami-0287a5461ed8dbf38",
+	"ap-northeast-1": "ami-0e199a4564d2bb8c5",
+	"ap-northeast-2": "ami-09043281c2988de23",
+	"ap-southeast-1": "ami-026791eca219c5cc0",
+	"ap-southeast-2": "ami-09fcadc6e05761b30",
+	"us-east-2":      "ami-0dca1adfc8c152c7a",
+	"us-east-1":      "ami-07329961c2a161c61",
+	"us-west-2":      "ami-015aabd7d10854b76",
+	"eu-central-1":   "ami-0a6a509944baa9c38",
+	"eu-west-2":      "ami-02248e5d563fb4017",
+	"eu-west-1":      "ami-0870dc8c1081c2ed0",
 }
 
 var defaultAWSClusterConfig = AWSClusterConfig{
@@ -108,11 +108,11 @@ func (c *AWSClusterConfig) InitDefaultValues() error {
 	}
 
 	if len(c.ImageID) == 0 {
-		if v, ok := defaultAWSImageID[c.Region]; ok {
-			c.ImageID = v
-		} else {
+		v, ok := defaultAWSImageID[c.Region]
+		if !ok {
 			return errors.Errorf("cannot find default image ID in the region %s", c.Region)
 		}
+		c.ImageID = v
 	}
 
 	// One common reason that metadata.GetInstanceIdentityDocument() fails is that the master is not
@@ -394,6 +394,13 @@ var ec2InstanceSlots = map[Ec2InstanceType]int{
 	"m5zn.3xlarge":  0,
 	"m5zn.6xlarge":  0,
 	"m5zn.12xlarge": 0,
+	"m6i.large":     0,
+	"m6i.xlarge":    0,
+	"m6i.2xlarge":   0,
+	"m6i.4xlarge":   0,
+	"m6i.8xlarge":   0,
+	"m6i.12xlarge":  0,
+	"m6i.16xlarge":  0,
 }
 
 func getEC2MetadataSess() (*ec2metadata.EC2Metadata, error) {

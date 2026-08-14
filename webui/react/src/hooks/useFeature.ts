@@ -13,12 +13,14 @@ export type ValidFeature =
   | 'genai'
   | 'flat_runs'
   | 'streaming_updates'
-  | 'task_templates';
+  | 'task_templates'
+  | 'webhook_improvement';
 
 type FeatureDescription = {
   friendlyName: string;
   description: string;
   defaultValue: boolean;
+  noUserControl?: boolean;
 };
 
 export const FEATURES: Record<ValidFeature, FeatureDescription> = {
@@ -28,7 +30,7 @@ export const FEATURES: Record<ValidFeature, FeatureDescription> = {
     friendlyName: 'New Experiment List',
   },
   flat_runs: {
-    defaultValue: false,
+    defaultValue: true,
     description:
       'Presents all runs in a project in a single view, rather than grouped into experiments',
     friendlyName: 'Flat Runs View',
@@ -37,6 +39,7 @@ export const FEATURES: Record<ValidFeature, FeatureDescription> = {
     defaultValue: false,
     description: 'Enable links to Generative AI Studio',
     friendlyName: 'Generative AI Studio (genai)',
+    noUserControl: true,
   },
   rp_binding: {
     defaultValue: true,
@@ -49,9 +52,14 @@ export const FEATURES: Record<ValidFeature, FeatureDescription> = {
     friendlyName: 'Streaming Updates',
   },
   task_templates: {
-    defaultValue: false,
+    defaultValue: true,
     description: 'Manage tempaltes through WebUI',
     friendlyName: 'Manage Templates',
+  },
+  webhook_improvement: {
+    defaultValue: true,
+    description: 'Allow webhooks to monitor experiments by workspace',
+    friendlyName: 'Webhook Improvement',
   },
 } as const;
 export const FEATURE_SETTINGS_PATH = 'global-features';
@@ -89,6 +97,8 @@ const IsOn = (
   // Read from config settings
   featureSwitches.includes(feature) && (isOn = true);
   featureSwitches.includes(`-${feature}`) && (isOn = false);
+
+  if (FEATURES[feature]?.noUserControl) return isOn;
 
   // Read from user settings
   if (settings && feature in settings) {

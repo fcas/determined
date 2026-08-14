@@ -4,7 +4,9 @@
 package kubernetesrm
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -17,9 +19,14 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	batchV1 "k8s.io/api/batch/v1"
 	k8sV1 "k8s.io/api/core/v1"
+	k8error "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
+	typedBatchV1 "k8s.io/client-go/kubernetes/typed/batch/v1"
 	typedV1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	"github.com/determined-ai/determined/master/internal/config"
@@ -27,7 +34,6 @@ import (
 	"github.com/determined-ai/determined/master/internal/mocks"
 	"github.com/determined-ai/determined/master/internal/rm/tasklist"
 	"github.com/determined-ai/determined/master/internal/sproto"
-	"github.com/determined-ai/determined/master/pkg/cproto"
 	"github.com/determined-ai/determined/master/pkg/device"
 	"github.com/determined-ai/determined/master/pkg/etc"
 	"github.com/determined-ai/determined/master/pkg/model"
@@ -42,6 +48,7 @@ const (
 	auxNode2Name        = "aux2"
 	compNode1Name       = "comp"
 	compNode2Name       = "comp2"
+	compLabel           = "compLabel"
 	pod1NumSlots        = 4
 	pod2NumSlots        = 8
 	nodeNumSlots        = int64(8)
@@ -53,7 +60,7 @@ const (
 
 func TestMain(m *testing.M) {
 	// Need to set up the DB for TestJobQueueStats
-	pgDB, _, err := db.ResolveTestPostgres()
+	pgDB, _, err := db.ResolveNewPostgresDatabase()
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -68,13 +75,15 @@ func TestMain(m *testing.M) {
 		log.Panicln(err)
 	}
 
+	setClusterID(uuid.NewString())
+
 	os.Exit(m.Run())
 }
 
 func TestGetAgents(t *testing.T) {
 	type AgentsTestCase struct {
 		Name           string
-		podsService    *pods
+		jobsService    *jobsService
 		wantedAgentIDs map[string]int
 	}
 
@@ -83,7 +92,7 @@ func TestGetAgents(t *testing.T) {
 	agentsTests := []AgentsTestCase{
 		{
 			Name: "GetAgents-CPU-NoPodLabels-NoAgents",
-			podsService: createMockPodsService(make(map[string]*k8sV1.Node),
+			jobsService: createMockJobsService(make(map[string]*k8sV1.Node),
 				device.CPU,
 				false,
 			),
@@ -91,7 +100,7 @@ func TestGetAgents(t *testing.T) {
 		},
 		{
 			Name: "GetAgents-CPU-NoPodLabels",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				auxNode1Name: auxNode1,
 				auxNode2Name: auxNode2,
 			},
@@ -102,7 +111,7 @@ func TestGetAgents(t *testing.T) {
 		},
 		{
 			Name: "GetAgents-CPU-PodLabels",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				auxNode1Name: auxNode1,
 				auxNode2Name: auxNode2,
 			},
@@ -113,7 +122,7 @@ func TestGetAgents(t *testing.T) {
 		},
 		{
 			Name: "GetAgents-GPU-PodLabels-NonDetAgent",
-			podsService: createMockPodsService(make(map[string]*k8sV1.Node),
+			jobsService: createMockJobsService(make(map[string]*k8sV1.Node),
 				slotTypeGPU,
 				true,
 			),
@@ -121,7 +130,7 @@ func TestGetAgents(t *testing.T) {
 		},
 		{
 			Name: "GetAgents-GPU-NoPodNoLabels",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: compNode1,
 				compNode2Name: compNode2,
 			},
@@ -132,7 +141,7 @@ func TestGetAgents(t *testing.T) {
 		},
 		{
 			Name: "GetAgents-GPU-PodLabels",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: compNode1,
 				compNode2Name: compNode2,
 			},
@@ -143,7 +152,7 @@ func TestGetAgents(t *testing.T) {
 		},
 		{
 			Name: "GetAgents-CUDA-NoPodLabels",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: compNode1,
 				compNode2Name: compNode2,
 			},
@@ -154,7 +163,7 @@ func TestGetAgents(t *testing.T) {
 		},
 		{
 			Name: "GetAgents-CUDA-PodLabels",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: compNode1,
 				compNode2Name: compNode2,
 			},
@@ -167,7 +176,8 @@ func TestGetAgents(t *testing.T) {
 
 	for _, test := range agentsTests {
 		t.Run(test.Name, func(t *testing.T) {
-			agentsResp := test.podsService.handleGetAgentsRequest()
+			agentsResp, err := test.jobsService.getAgents()
+			require.NoError(t, err)
 			require.Equal(t, len(test.wantedAgentIDs), len(agentsResp.Agents))
 			for _, agent := range agentsResp.Agents {
 				_, ok := test.wantedAgentIDs[agent.Id]
@@ -178,10 +188,86 @@ func TestGetAgents(t *testing.T) {
 	}
 }
 
+// TestGetAgentsNodeSelectors adds node selectors to nodes belonging to the jobs service
+// and checks if they belong to the job service's resource pool.
+func TestGetAgentsNodeSelectors(t *testing.T) {
+	cases := []struct {
+		Name          string
+		labels        map[string]string
+		agentsMatched map[string]int
+	}{
+		{
+			Name:   "GetAgents-GPU-Two-NodeSelectors",
+			labels: map[string]string{compNode1Name: compNode1Name, compNode2Name: compNode1Name},
+			agentsMatched: map[string]int{
+				compNode1Name:  1,
+				compNode2Name:  1,
+				nonDetNodeName: 0,
+			},
+		},
+		{
+			Name:   "GetAgents-GPU-One-NodeSelectors",
+			labels: map[string]string{compNode1Name: compNode1Name, compNode2Name: compNode2Name},
+			agentsMatched: map[string]int{
+				compNode1Name:  1,
+				compNode2Name:  0,
+				nonDetNodeName: 0,
+			},
+		},
+		{
+			Name:   "GetAgents-GPU-No-NodeSelectors",
+			labels: map[string]string{},
+			agentsMatched: map[string]int{
+				compNode1Name:  0,
+				compNode2Name:  0,
+				nonDetNodeName: 0,
+			},
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.Name, func(t *testing.T) {
+			_, _, compNode1, compNode2 := setupNodes()
+
+			if label, exists := test.labels[compNode1.Name]; exists {
+				compNode1.SetLabels(map[string]string{compLabel: label})
+			}
+
+			if label, exists := test.labels[compNode2.Name]; exists {
+				compNode2.SetLabels(map[string]string{compLabel: label})
+			}
+
+			js := createMockJobsService(map[string]*k8sV1.Node{
+				compNode1Name: compNode1,
+				compNode2Name: compNode2,
+			}, device.CUDA, true)
+
+			// Add a node selector to the job service's config.
+			js.resourcePoolConfigs = []config.ResourcePoolConfig{{
+				PoolName: "test-pool",
+				TaskContainerDefaults: &model.TaskContainerDefaultsConfig{GPUPodSpec: &k8sV1.Pod{
+					Spec: k8sV1.PodSpec{NodeSelector: map[string]string{compLabel: compNode1Name}},
+				}},
+			}}
+
+			agentsResp, err := js.getAgents()
+			require.NoError(t, err)
+			require.Equal(t, len(test.agentsMatched), len(agentsResp.Agents))
+
+			for _, agent := range agentsResp.Agents {
+				rp, ok := test.agentsMatched[agent.Id]
+				require.True(t, ok,
+					fmt.Sprintf("name %s is not present in agent id list", agent.Id))
+				require.Len(t, agent.ResourcePools, rp)
+			}
+		})
+	}
+}
+
 func TestGetAgent(t *testing.T) {
 	type AgentTestCase struct {
 		Name          string
-		podsService   *pods
+		jobsService   *jobsService
 		agentExists   bool
 		wantedAgentID string
 	}
@@ -195,7 +281,7 @@ func TestGetAgent(t *testing.T) {
 		},
 		Status: k8sV1.NodeStatus{
 			Allocatable: map[k8sV1.ResourceName]resource.Quantity{
-				k8sV1.ResourceName(ResourceTypeNvidia): *resource.NewQuantity(
+				k8sV1.ResourceName(resourceTypeNvidia): *resource.NewQuantity(
 					16,
 					resource.DecimalSI,
 				),
@@ -206,7 +292,7 @@ func TestGetAgent(t *testing.T) {
 	agentTests := []AgentTestCase{
 		{
 			Name: "GetAgent-CPU-NoPodLabels-Aux1",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				auxNode1Name: auxNode1,
 				auxNode2Name: auxNode2,
 			},
@@ -218,7 +304,7 @@ func TestGetAgent(t *testing.T) {
 		},
 		{
 			Name: "GetAgent-CPU-PodLabels-Aux2",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				auxNode1Name: auxNode1,
 				auxNode2Name: auxNode2,
 			},
@@ -230,7 +316,7 @@ func TestGetAgent(t *testing.T) {
 		},
 		{
 			Name: "GetAgent-GPU-PodLabels-Comp1",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: compNode1,
 				compNode2Name: compNode2,
 			},
@@ -242,7 +328,7 @@ func TestGetAgent(t *testing.T) {
 		},
 		{
 			Name: "GetAgent-CUDA-NoPodLabels-Comp2",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: compNode1,
 				compNode2Name: compNode2,
 			},
@@ -254,7 +340,7 @@ func TestGetAgent(t *testing.T) {
 		},
 		{
 			Name: "GetAgent-CUDA-NoPodLabels-NonexistentAgent",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: compNode1,
 				compNode2Name: compNode2,
 			},
@@ -266,7 +352,7 @@ func TestGetAgent(t *testing.T) {
 		},
 		{
 			Name: "GetAgent-CUDA-NoPodLabels-EmptyAgentID",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: compNode1,
 				compNode2Name: compNode2,
 			},
@@ -278,7 +364,7 @@ func TestGetAgent(t *testing.T) {
 		},
 		{
 			Name: "GetAgent-CUDA-Large-Node",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: largeNode,
 			}, slotTypeGPU, false),
 			wantedAgentID: compNode1Name,
@@ -288,9 +374,9 @@ func TestGetAgent(t *testing.T) {
 
 	for _, test := range agentTests {
 		t.Run(test.Name, func(t *testing.T) {
-			agentResp := test.podsService.handleGetAgentRequest(test.wantedAgentID)
+			agentResp := test.jobsService.getAgent(test.wantedAgentID)
 			if agentResp == nil {
-				require.True(t, !test.agentExists)
+				require.False(t, test.agentExists)
 				return
 			}
 			require.Equal(t, test.wantedAgentID, agentResp.Agent.Id)
@@ -316,7 +402,7 @@ func TestGetAgent(t *testing.T) {
 func TestGetSlots(t *testing.T) {
 	type SlotsTestCase struct {
 		Name           string
-		podsService    *pods
+		jobsService    *jobsService
 		agentID        string
 		agentExists    bool
 		wantedSlotsNum int
@@ -327,7 +413,7 @@ func TestGetSlots(t *testing.T) {
 	slotsTests := []SlotsTestCase{
 		{
 			Name: "GetSlots-CPU-NoPodLabels-Aux1",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				auxNode1Name: auxNode1,
 				auxNode2Name: auxNode2,
 			},
@@ -340,7 +426,7 @@ func TestGetSlots(t *testing.T) {
 		},
 		{
 			Name: "GetSlots-GPU-NoPodLabels-Comp2",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: compNode1,
 				compNode2Name: compNode2,
 			},
@@ -353,7 +439,7 @@ func TestGetSlots(t *testing.T) {
 		},
 		{
 			Name: "GetSlots-CUDA-PodLabels-Comp1",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: compNode1,
 				compNode2Name: compNode2,
 			},
@@ -366,7 +452,7 @@ func TestGetSlots(t *testing.T) {
 		},
 		{
 			Name: "GetSlots-CUDA-PodLabels-NonexistentAgent",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: compNode1,
 				compNode2Name: compNode2,
 			},
@@ -379,7 +465,7 @@ func TestGetSlots(t *testing.T) {
 		},
 		{
 			Name: "GetSlots-CUDA-PodLabels-EmptyAgentID",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: compNode1,
 				compNode2Name: compNode2,
 			},
@@ -401,12 +487,12 @@ func TestGetSlots(t *testing.T) {
 	}
 	for _, test := range slotsTests {
 		t.Run(test.Name, func(t *testing.T) {
-			slotsResp := test.podsService.handleGetSlotsRequest(test.agentID)
+			slotsResp := test.jobsService.getSlots(test.agentID)
 			if slotsResp == nil {
-				require.True(t, !test.agentExists)
+				require.False(t, test.agentExists)
 				return
 			}
-			require.Equal(t, test.wantedSlotsNum, len(slotsResp.Slots))
+			require.Len(t, slotsResp.Slots, test.wantedSlotsNum)
 
 			// Count number of active slots on the node. (Slots allocated to a pod running
 			// a container).
@@ -428,7 +514,7 @@ func TestGetSlots(t *testing.T) {
 func TestGetSlot(t *testing.T) {
 	type SlotTestCase struct {
 		Name          string
-		podsService   *pods
+		jobsService   *jobsService
 		agentID       string
 		wantedSlotNum string
 	}
@@ -438,7 +524,7 @@ func TestGetSlot(t *testing.T) {
 	slotTests := []SlotTestCase{
 		{
 			Name: "GetSlot-CPU-PodLabels-Aux1-LastId",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				auxNode1Name: auxNode1,
 				auxNode2Name: auxNode2,
 			},
@@ -450,7 +536,7 @@ func TestGetSlot(t *testing.T) {
 		},
 		{
 			Name: "GetSlot-GPU-PodLabels-Comp1-Id4",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: compNode1,
 				compNode2Name: compNode2,
 			},
@@ -462,7 +548,7 @@ func TestGetSlot(t *testing.T) {
 		},
 		{
 			Name: "GetSlot-GPU-PodLabels-Comp1-Id4",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: compNode1,
 				compNode2Name: compNode2,
 			},
@@ -474,7 +560,7 @@ func TestGetSlot(t *testing.T) {
 		},
 		{
 			Name: "GetSlot-GPU-PodLabels-Comp1-Id0",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: compNode1,
 				compNode2Name: compNode2,
 			},
@@ -486,7 +572,7 @@ func TestGetSlot(t *testing.T) {
 		},
 		{
 			Name: "GetSlot-CUDA-NoPodLabels-Comp1-BadSlotReq",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: compNode1,
 				compNode2Name: compNode2,
 			},
@@ -498,7 +584,7 @@ func TestGetSlot(t *testing.T) {
 		},
 		{
 			Name: "GetSlot-CUDA-PodLabels-Comp2-BadSlotReq",
-			podsService: createMockPodsService(map[string]*k8sV1.Node{
+			jobsService: createMockJobsService(map[string]*k8sV1.Node{
 				compNode1Name: compNode1,
 				compNode2Name: compNode2,
 			},
@@ -515,7 +601,7 @@ func TestGetSlot(t *testing.T) {
 			wantedSlotInt, err := strconv.Atoi(test.wantedSlotNum)
 			require.NoError(t, err)
 
-			slotResp := test.podsService.handleGetSlotRequest(test.agentID, test.wantedSlotNum)
+			slotResp := test.jobsService.getSlot(test.agentID, test.wantedSlotNum)
 			if slotResp == nil {
 				require.True(t, wantedSlotInt < 0 || wantedSlotInt >= int(nodeNumSlots))
 				return
@@ -539,14 +625,12 @@ func TestAssignResourcesTime(t *testing.T) {
 	groups[allocateReq.JobID] = &tasklist.Group{
 		JobID: allocateReq.JobID,
 	}
-	mockPods := createMockPodsService(make(map[string]*k8sV1.Node), device.CUDA, true)
+	mockPods := createMockJobsService(make(map[string]*k8sV1.Node), device.CUDA, true)
 	poolRef := &kubernetesResourcePool{
 		poolConfig:                &config.ResourcePoolConfig{PoolName: "cpu-pool"},
-		podsService:               mockPods,
+		jobsService:               mockPods,
 		reqList:                   taskList,
 		groups:                    groups,
-		allocationIDToContainerID: map[model.AllocationID]cproto.ID{},
-		containerIDtoAllocationID: map[string]model.AllocationID{},
 		jobIDToAllocationID:       map[model.JobID]model.AllocationID{},
 		allocationIDToJobID:       map[model.AllocationID]model.JobID{},
 		slotsUsedPerGroup:         map[*tasklist.Group]int{},
@@ -566,7 +650,7 @@ func TestGetResourcePools(t *testing.T) {
 	cfg := &config.ResourceConfig{
 		RootManagerInternal: &config.ResourceManagerConfig{
 			KubernetesRM: &config.KubernetesResourceManagerConfig{
-				Name:                       expectedName,
+				ClusterName:                expectedName,
 				Metadata:                   expectedMetadata,
 				MaxSlotsPerPod:             ptrs.Ptr(5),
 				DefaultAuxResourcePool:     "cpu-pool",
@@ -579,15 +663,15 @@ func TestGetResourcePools(t *testing.T) {
 		},
 	}
 
-	mockPods := createMockPodsService(make(map[string]*k8sV1.Node), device.CUDA, true)
+	mockPods := createMockJobsService(make(map[string]*k8sV1.Node), device.CUDA, true)
 	cpuPoolRef := &kubernetesResourcePool{
 		poolConfig:  &config.ResourcePoolConfig{PoolName: "cpu-pool"},
-		podsService: mockPods,
+		jobsService: mockPods,
 		reqList:     tasklist.New(),
 	}
 	gpuPoolRef := &kubernetesResourcePool{
 		poolConfig:  &config.ResourcePoolConfig{PoolName: "gpu-pool"},
-		podsService: mockPods,
+		jobsService: mockPods,
 		reqList:     tasklist.New(),
 	}
 	kubernetesRM := &ResourceManager{
@@ -622,7 +706,7 @@ func TestGetResourcePools(t *testing.T) {
 			InstanceType:            "n/a",
 			Details:                 &resourcepoolv1.ResourcePoolDetail{},
 			Stats:                   &jobv1.QueueStats{},
-			ResourceManagerName:     expectedName,
+			ClusterName:             expectedName,
 			ResourceManagerMetadata: expectedMetadata,
 		},
 		{
@@ -637,7 +721,7 @@ func TestGetResourcePools(t *testing.T) {
 			InstanceType:            "n/a",
 			Details:                 &resourcepoolv1.ResourcePoolDetail{},
 			Stats:                   &jobv1.QueueStats{},
-			ResourceManagerName:     expectedName,
+			ClusterName:             expectedName,
 			ResourceManagerMetadata: expectedMetadata,
 		},
 	}
@@ -648,15 +732,15 @@ func TestGetResourcePools(t *testing.T) {
 }
 
 func TestGetJobQueueStatsRequest(t *testing.T) {
-	mockPods := createMockPodsService(make(map[string]*k8sV1.Node), device.CUDA, true)
+	mockPods := createMockJobsService(make(map[string]*k8sV1.Node), device.CUDA, true)
 	pool1 := &kubernetesResourcePool{
 		poolConfig:  &config.ResourcePoolConfig{PoolName: "pool1"},
-		podsService: mockPods,
+		jobsService: mockPods,
 		reqList:     tasklist.New(),
 	}
 	pool2 := &kubernetesResourcePool{
 		poolConfig:  &config.ResourcePoolConfig{PoolName: "pool2"},
-		podsService: mockPods,
+		jobsService: mockPods,
 		reqList:     tasklist.New(),
 	}
 	k8sRM := &ResourceManager{
@@ -680,7 +764,7 @@ func TestGetJobQueueStatsRequest(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			res, err := k8sRM.GetJobQueueStatsRequest(&apiv1.GetJobQueueStatsRequest{ResourcePools: tt.filteredRPs})
 			require.NoError(t, err)
-			require.Equal(t, tt.expected, len(res.Results))
+			require.Len(t, res.Results, tt.expected)
 		})
 	}
 }
@@ -689,11 +773,12 @@ func TestHealthCheck(t *testing.T) {
 	mockPodInterface := &mocks.PodInterface{}
 	kubernetesRM := &ResourceManager{
 		config: &config.KubernetesResourceManagerConfig{
-			Name: "testname",
+			ClusterName: "testname",
 		},
-		podsService: &pods{
+		jobsService: &jobsService{
 			podInterfaces: map[string]typedV1.PodInterface{
 				"namespace": mockPodInterface,
+				"":          mockPodInterface,
 			},
 			syslog: logrus.WithField("namespace", "test"),
 		},
@@ -703,8 +788,8 @@ func TestHealthCheck(t *testing.T) {
 		mockPodInterface.On("List", mock.Anything, mock.Anything).Return(nil, nil).Once()
 		require.Equal(t, []model.ResourceManagerHealth{
 			{
-				Name:   "testname",
-				Status: model.Healthy,
+				ClusterName: "testname",
+				Status:      model.Healthy,
 			},
 		}, kubernetesRM.HealthCheck())
 	})
@@ -714,50 +799,644 @@ func TestHealthCheck(t *testing.T) {
 			Return(nil, fmt.Errorf("error")).Once()
 		require.Equal(t, []model.ResourceManagerHealth{
 			{
-				Name:   "testname",
-				Status: model.Unhealthy,
+				ClusterName: "testname",
+				Status:      model.Unhealthy,
 			},
 		}, kubernetesRM.HealthCheck())
 	})
 }
 
-func TestROCmPodsService(t *testing.T) {
-	tests := []struct {
-		name     string
-		testFunc func()
+func TestVerifyNamespaceExists(t *testing.T) {
+	js := createMockJobsService(nil, device.CPU, false)
+	validNamespace := "validNamespace"
+	nonexistentNamespaceName := "nonExistentNamespace"
+	js.clientSet = setupClientSetForTests(validNamespace, &nonexistentNamespaceName)
+	js.namespacesWithInformers[validNamespace] = true
+	js.podInterfaces = make(map[string]typedV1.PodInterface)
+	js.configMapInterfaces = make(map[string]typedV1.ConfigMapInterface)
+	js.jobInterfaces = make(map[string]typedBatchV1.JobInterface)
+
+	channel := make(chan resourcesRequestFailure, 16)
+	js.requestQueueWorkers = []*requestProcessingWorker{
+		{
+			jobInterface:        js.jobInterfaces,
+			podInterface:        js.podInterfaces,
+			configMapInterfaces: js.configMapInterfaces,
+			failures:            channel,
+		},
+	}
+
+	// Valid namespace name.
+	err := js.verifyNamespaceExists(validNamespace, true)
+	require.NoError(t, err)
+
+	invalidNamespace := "invalidNamespace"
+
+	// Verify that the namespace was registered by all necessary components of the request
+	// processing workers.
+	for _, worker := range js.requestQueueWorkers {
+		_, ok := worker.podInterface[validNamespace]
+		_, notOk := worker.podInterface[invalidNamespace]
+		require.True(t, ok)
+		require.False(t, notOk)
+		_, ok = worker.jobInterface[validNamespace]
+		_, notOk = worker.jobInterface[invalidNamespace]
+		require.True(t, ok)
+		require.False(t, notOk)
+		_, ok = worker.configMapInterfaces[validNamespace]
+		_, notOk = worker.configMapInterfaces[invalidNamespace]
+		require.True(t, ok)
+		require.False(t, notOk)
+	}
+
+	// Test that a non-existent namespace name.
+	err = js.verifyNamespaceExists(nonexistentNamespaceName, true)
+	require.Error(t, err)
+}
+
+func TestCreateNamespaceHelper(t *testing.T) {
+	js := createMockJobsService(nil, device.CPU, false)
+
+	validNamespace := "valNamespace"
+	existentNamespace := "nonexistentNamespace"
+	erroneousNamespace := "erroneousNamespace"
+
+	validk8sNamespace := &k8sV1.Namespace{
+		TypeMeta: metaV1.TypeMeta{
+			Kind:       "Namespace",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:   validNamespace,
+			Labels: map[string]string{determinedLabel: validNamespace},
+		},
+	}
+
+	existentk8sNamespace := &k8sV1.Namespace{
+		TypeMeta: metaV1.TypeMeta{
+			Kind:       "Namespace",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:   existentNamespace,
+			Labels: map[string]string{determinedLabel: existentNamespace},
+		},
+	}
+
+	erroneousk8sNamespace := &k8sV1.Namespace{
+		TypeMeta: metaV1.TypeMeta{
+			Kind:       "Namespace",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:   erroneousNamespace,
+			Labels: map[string]string{determinedLabel: erroneousNamespace},
+		},
+	}
+
+	jobsClientSet := &mocks.K8sClientsetInterface{}
+	coreV1Interface := &mocks.K8sCoreV1Interface{}
+	namespaceInterface := &mocks.NamespaceInterface{}
+	namespaceInterface.On("Create", context.TODO(), validk8sNamespace, metaV1.CreateOptions{}).
+		Return(validk8sNamespace, nil).Once()
+	namespaceInterface.On("Create", context.TODO(), existentk8sNamespace, metaV1.CreateOptions{}).
+		Return(nil, &k8error.StatusError{ErrStatus: metaV1.Status{Reason: metaV1.StatusReasonAlreadyExists}}).Once()
+	namespaceInterface.On("Create", context.TODO(), erroneousk8sNamespace, metaV1.CreateOptions{}).
+		Return(nil, errors.New("random error")).Once()
+	coreV1Interface.On("Namespaces").Return(namespaceInterface)
+	configMapInterace := &mocks.ConfigMapInterface{}
+	coreV1Interface.On("ConfigMaps", validNamespace).Return(configMapInterace)
+	podsInterface := &mocks.PodInterface{}
+	coreV1Interface.On("Pods", validNamespace).Return(podsInterface)
+	jobsClientSet.On("CoreV1").Return(coreV1Interface)
+	batchV1Interface := &mocks.K8sBatchV1Interface{}
+	jobsInterface := &mocks.JobInterface{}
+	batchV1Interface.On("Jobs", validNamespace).Return(jobsInterface)
+	jobsClientSet.On("BatchV1").Return(batchV1Interface)
+	js.clientSet = jobsClientSet
+
+	js.podInterfaces = make(map[string]typedV1.PodInterface)
+	js.configMapInterfaces = make(map[string]typedV1.ConfigMapInterface)
+	js.jobInterfaces = make(map[string]typedBatchV1.JobInterface)
+	channel := make(chan resourcesRequestFailure, 16)
+	js.requestQueueWorkers = []*requestProcessingWorker{
+		{
+			jobInterface:        js.jobInterfaces,
+			podInterface:        js.podInterfaces,
+			configMapInterfaces: js.configMapInterfaces,
+			failures:            channel,
+		},
+	}
+
+	// test with valid namespace
+	err := js.createNamespaceHelper(validNamespace)
+	require.NoError(t, err)
+
+	// test with non-existent namespace
+	err = js.createNamespaceHelper(existentNamespace)
+	require.NoError(t, err)
+
+	// verify that all necessary components have resgistered the namespace
+	_, ok := js.podInterfaces[validNamespace]
+	require.True(t, ok)
+	_, ok = js.podInterfaces[validNamespace]
+	require.True(t, ok)
+	_, ok = js.podInterfaces[validNamespace]
+	require.True(t, ok)
+	for _, worker := range js.requestQueueWorkers {
+		_, ok := worker.podInterface[validNamespace]
+		require.True(t, ok)
+		_, ok = worker.jobInterface[validNamespace]
+		require.True(t, ok)
+		_, ok = worker.configMapInterfaces[validNamespace]
+		require.True(t, ok)
+	}
+
+	// test with erroneous namespace
+	err = js.createNamespace(erroneousNamespace, true)
+	require.ErrorContains(t, err, "random error")
+}
+
+func TestDeleteNamespace(t *testing.T) {
+	js := createMockJobsService(nil, device.CPU, false)
+
+	validNamespace := "validNs"
+	nonexistentNamespace := "nonExistentNs"
+	erroneousNamespace := "erroneousNs"
+
+	jobsClientSet := &mocks.K8sClientsetInterface{}
+	coreV1Interface := &mocks.K8sCoreV1Interface{}
+	namespaceInterface := &mocks.NamespaceInterface{}
+	namespaceInterface.On("Delete", context.TODO(), validNamespace, metaV1.DeleteOptions{}).
+		Return(nil).Once()
+	namespaceInterface.On("Delete", context.TODO(), nonexistentNamespace, metaV1.DeleteOptions{}).
+		Return(&k8error.StatusError{ErrStatus: metaV1.Status{Reason: metaV1.StatusReasonNotFound, Code: 404}}).Once()
+	namespaceInterface.On("Delete", context.TODO(), erroneousNamespace, metaV1.DeleteOptions{}).
+		Return(errors.New("random error")).Once()
+	coreV1Interface.On("Namespaces").Return(namespaceInterface)
+	jobsClientSet.On("CoreV1").Return(coreV1Interface)
+	js.clientSet = jobsClientSet
+
+	// test with valid namespace
+	err := js.deleteNamespace(validNamespace)
+	require.NoError(t, err)
+
+	// test with non-existent namespace
+	err = js.deleteNamespace(nonexistentNamespace)
+	require.NoError(t, err)
+
+	// test with erroneous namespace
+	err = js.deleteNamespace(erroneousNamespace)
+	require.ErrorContains(t, err, "random error")
+}
+
+func TestRemoveEmptyNamespace(t *testing.T) {
+	ctx := context.Background()
+	wkspID1, _ := db.RequireMockWorkspaceID(t, db.SingleDB(), "")
+
+	namespaceName := "anamespace"
+	clusterName := "testing_C1"
+
+	binding := model.WorkspaceNamespace{
+		WorkspaceID: wkspID1,
+		ClusterName: clusterName,
+		Namespace:   namespaceName,
+	}
+
+	_, err := db.Bun().NewInsert().Model(&binding).Exec(ctx)
+	require.NoError(t, err)
+
+	js := createMockJobsService(nil, device.CPU, false)
+
+	js.clientSet = setupClientSetForTests(namespaceName, nil)
+	js.podInterfaces = map[string]typedV1.PodInterface{namespaceName: js.clientSet.CoreV1().Pods(namespaceName)}
+	js.configMapInterfaces = map[string]typedV1.ConfigMapInterface{
+		namespaceName: js.clientSet.CoreV1().ConfigMaps(namespaceName),
+	}
+	js.jobInterfaces = map[string]typedBatchV1.JobInterface{namespaceName: js.clientSet.BatchV1().Jobs(namespaceName)}
+
+	channel := make(chan resourcesRequestFailure, 16)
+	js.requestQueueWorkers = []*requestProcessingWorker{
+		{
+			jobInterface:        js.jobInterfaces,
+			podInterface:        js.podInterfaces,
+			configMapInterfaces: js.configMapInterfaces,
+			failures:            channel,
+		},
+	}
+	// Try removing non-empty namespace name.
+	err = js.RemoveEmptyNamespace(namespaceName, clusterName)
+	require.NoError(t, err)
+
+	// Verify that the namespace was not removed from anywhere.
+	_, ok := js.podInterfaces[namespaceName]
+	require.True(t, ok)
+	_, ok = js.jobInterfaces[namespaceName]
+	require.True(t, ok)
+	_, ok = js.configMapInterfaces[namespaceName]
+	require.True(t, ok)
+	for _, worker := range js.requestQueueWorkers {
+		_, ok = worker.podInterface[namespaceName]
+		require.True(t, ok)
+		_, ok = worker.jobInterface[namespaceName]
+		require.True(t, ok)
+		_, ok = worker.configMapInterfaces[namespaceName]
+		require.True(t, ok)
+	}
+
+	// Remove namespace from bindings.
+	_, err = db.Bun().NewDelete().
+		Model(&model.WorkspaceNamespace{}).
+		Where("workspace_id = ?", wkspID1).
+		Exec(ctx)
+	require.NoError(t, err)
+
+	// Try removing empty namespace name.
+	err = js.RemoveEmptyNamespace(namespaceName, clusterName)
+	require.NoError(t, err)
+
+	// Verify that the namespace was removed from everywhere.
+	_, notOk := js.podInterfaces[namespaceName]
+	require.False(t, notOk)
+	_, notOk = js.jobInterfaces[namespaceName]
+	require.False(t, notOk)
+	_, notOk = js.configMapInterfaces[namespaceName]
+	require.False(t, notOk)
+	for _, worker := range js.requestQueueWorkers {
+		_, notOk = worker.podInterface[namespaceName]
+		require.False(t, notOk)
+		_, notOk = worker.jobInterface[namespaceName]
+		require.False(t, notOk)
+		_, notOk = worker.configMapInterfaces[namespaceName]
+		require.False(t, notOk)
+	}
+
+	// Try removing empty namespace name again.
+	err = js.RemoveEmptyNamespace(namespaceName, clusterName)
+	require.NoError(t, err)
+
+	// Verify that the namespace is still removed from everywhere.
+	_, notOk = js.podInterfaces[namespaceName]
+	require.False(t, notOk)
+	_, notOk = js.jobInterfaces[namespaceName]
+	require.False(t, notOk)
+	_, notOk = js.configMapInterfaces[namespaceName]
+	require.False(t, notOk)
+	for _, worker := range js.requestQueueWorkers {
+		_, notOk = worker.podInterface[namespaceName]
+		require.False(t, notOk)
+		_, notOk = worker.jobInterface[namespaceName]
+		require.False(t, notOk)
+		_, notOk = worker.configMapInterfaces[namespaceName]
+		require.False(t, notOk)
+	}
+}
+
+func setupClientSetForTests(validNamespace string,
+	invalidNamespaceName *string,
+) kubernetes.Interface {
+	jobsClientSet := &mocks.K8sClientsetInterface{}
+	coreV1Interface := &mocks.K8sCoreV1Interface{}
+
+	k8sNamespace := &k8sV1.Namespace{
+		ObjectMeta: metaV1.ObjectMeta{Name: validNamespace},
+	}
+
+	namespaceInterface := &mocks.NamespaceInterface{}
+	namespaceInterface.On("Get", context.Background(), validNamespace, metaV1.GetOptions{}).
+		Return(k8sNamespace, nil).Once()
+
+	if invalidNamespaceName != nil {
+		namespaceInterface.On("Get", context.Background(), *invalidNamespaceName, metaV1.GetOptions{}).
+			Return(nil, fmt.Errorf("namespace does not exist")).Once()
+	}
+
+	coreV1Interface.On("Namespaces").Return(namespaceInterface)
+
+	configMapInterace := &mocks.ConfigMapInterface{}
+	coreV1Interface.On("ConfigMaps", validNamespace).Return(configMapInterace)
+
+	podsInterface := &mocks.PodInterface{}
+	coreV1Interface.On("Pods", validNamespace).Return(podsInterface)
+
+	jobsClientSet.On("CoreV1").Return(coreV1Interface)
+
+	batchV1Interface := &mocks.K8sBatchV1Interface{}
+	jobsInterface := &mocks.JobInterface{}
+	batchV1Interface.On("Jobs", validNamespace).Return(jobsInterface)
+
+	jobsClientSet.On("BatchV1").Return(batchV1Interface)
+
+	return jobsClientSet
+}
+
+func TestGetNamespaceResourceQuota(t *testing.T) {
+	namespaceName := "bnamespace"
+
+	js := createMockJobsService(nil, device.CPU, false)
+
+	js.clientSet = setupClientSetForResourceQuotaTests(namespaceName, nil, []int{3, 5}, nil, nil, nil)
+
+	resp, err := js.getNamespaceResourceQuota(namespaceName)
+	require.NoError(t, err)
+	require.Equal(t, 3, int(*resp))
+
+	js.clientSet = setupClientSetForResourceQuotaTests(namespaceName, nil, []int{5}, nil, nil, nil)
+
+	resp, err = js.getNamespaceResourceQuota(namespaceName)
+	require.NoError(t, err)
+	require.Equal(t, 5, int(*resp))
+
+	js.clientSet = setupClientSetForResourceQuotaTests(namespaceName, nil, []int{5, 10, 15}, nil, nil, nil)
+
+	resp, err = js.getNamespaceResourceQuota(namespaceName)
+	require.NoError(t, err)
+	require.Equal(t, 5, int(*resp))
+
+	js.clientSet = setupClientSetForResourceQuotaTests(namespaceName, nil, []int{}, nil, nil, nil)
+
+	resp, err = js.getNamespaceResourceQuota(namespaceName)
+	require.NoError(t, err)
+	require.Nil(t, resp)
+}
+
+func setupClientSetForResourceQuotaTests(namespaceName string, k8sNamespace *k8sV1.Namespace,
+	resourceQuotaList []int, addExtraDetRQ *int, patchByteArray *[]byte, rqToCreate *k8sV1.ResourceQuota,
+) kubernetes.Interface {
+	jobsClientSet := &mocks.K8sClientsetInterface{}
+	coreV1Interface := &mocks.K8sCoreV1Interface{}
+
+	qlist := []k8sV1.ResourceQuota{}
+	for i, v := range resourceQuotaList {
+		q := k8sV1.ResourceQuota{
+			TypeMeta: metaV1.TypeMeta{
+				Kind:       "ResourceQuota",
+				APIVersion: "v1",
+			},
+			ObjectMeta: metaV1.ObjectMeta{Name: "q-" + strconv.Itoa(i)},
+			Spec: k8sV1.ResourceQuotaSpec{
+				Hard: k8sV1.ResourceList{
+					k8sV1.ResourceName("requests." + ResourceTypeNvidia): *resource.
+						NewQuantity(int64(v), resource.DecimalSI),
+				},
+			},
+		}
+		qlist = append(qlist, q)
+	}
+	if addExtraDetRQ != nil {
+		q := &k8sV1.ResourceQuota{
+			TypeMeta: metaV1.TypeMeta{
+				Kind:       "ResourceQuota",
+				APIVersion: "v1",
+			},
+			ObjectMeta: metaV1.ObjectMeta{
+				Labels: map[string]string{determinedLabel: namespaceName},
+				Name:   namespaceName + "-quota",
+			},
+			Spec: k8sV1.ResourceQuotaSpec{
+				Hard: k8sV1.ResourceList{
+					k8sV1.ResourceName("requests." + ResourceTypeNvidia): *resource.
+						NewQuantity(int64(*addExtraDetRQ), resource.DecimalSI),
+				},
+			},
+		}
+		qlist = append(qlist, *q)
+	}
+	resourceQuotaInterface := &mocks.ResourceQuotaInterface{}
+	k8sResourceQuota := &k8sV1.ResourceQuotaList{
+		Items: qlist,
+	}
+	resourceQuotaInterface.On("List", context.TODO(), metaV1.ListOptions{}).
+		Return(k8sResourceQuota, nil).Once()
+	if rqToCreate != nil {
+		resourceQuotaInterface.On("Create", context.TODO(), rqToCreate, metaV1.CreateOptions{}).
+			Return(rqToCreate, nil).Once()
+	}
+	if patchByteArray != nil {
+		resourceQuotaInterface.On(
+			"Patch", context.TODO(),
+			namespaceName+"-quota",
+			types.MergePatchType,
+			*patchByteArray,
+			metaV1.PatchOptions{},
+		).Return(rqToCreate, nil).Once()
+	}
+	coreV1Interface.On("ResourceQuotas", namespaceName).Return(resourceQuotaInterface)
+
+	if k8sNamespace != nil {
+		namespaceInterface := &mocks.NamespaceInterface{}
+		namespaceInterface.On("Get", context.TODO(), namespaceName, metaV1.GetOptions{
+			TypeMeta: metaV1.TypeMeta{
+				Kind:       "Namespace",
+				APIVersion: "v1",
+			},
+		}).
+			Return(k8sNamespace, nil).Once()
+		coreV1Interface.On("Namespaces").Return(namespaceInterface)
+	}
+
+	jobsClientSet.On("CoreV1").Return(coreV1Interface)
+
+	return jobsClientSet
+}
+
+func TestDefaultNamespace(t *testing.T) {
+	js := createMockJobsService(nil, device.CPU, false)
+
+	newDefaultNamespace := "newNamespace"
+	js.namespace = newDefaultNamespace
+	ns := js.DefaultNamespace()
+	require.Equal(t, newDefaultNamespace, ns)
+}
+
+func TestSetResourceQuota(t *testing.T) {
+	namespaceName := "NamespaceC"
+	js := createMockJobsService(nil, device.CPU, false)
+
+	k8sDeterminedLabel := map[string]string{determinedLabel: namespaceName}
+
+	k8sNamespace := &k8sV1.Namespace{
+		TypeMeta: metaV1.TypeMeta{
+			Kind:       "Namespace",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:   namespaceName,
+			Labels: k8sDeterminedLabel,
+		},
+	}
+	// No existing Resource Quota
+	newRQ := 5
+	js.clientSet = setupClientSetForResourceQuotaTests(
+		namespaceName, k8sNamespace, []int{}, nil, nil, &k8sV1.ResourceQuota{
+			TypeMeta: metaV1.TypeMeta{
+				Kind:       "ResourceQuota",
+				APIVersion: "v1",
+			},
+			ObjectMeta: metaV1.ObjectMeta{Labels: k8sDeterminedLabel, Name: namespaceName + "-quota"},
+			Spec: k8sV1.ResourceQuotaSpec{
+				Hard: k8sV1.ResourceList{
+					k8sV1.ResourceName("requests." + ResourceTypeNvidia): *resource.
+						NewQuantity(int64(newRQ), resource.DecimalSI),
+				},
+			},
+		})
+	err := js.setResourceQuota(newRQ, namespaceName)
+	require.NoError(t, err)
+
+	// 1 existing non determined Resource Quota that is more than the quota we are trying to set.
+	newRQ = 2
+	js.clientSet = setupClientSetForResourceQuotaTests(
+		namespaceName, k8sNamespace, []int{5}, nil, nil, &k8sV1.ResourceQuota{
+			TypeMeta: metaV1.TypeMeta{
+				Kind:       "ResourceQuota",
+				APIVersion: "v1",
+			},
+			ObjectMeta: metaV1.ObjectMeta{
+				Labels: k8sDeterminedLabel,
+				Name:   namespaceName + "-quota",
+			},
+			Spec: k8sV1.ResourceQuotaSpec{
+				Hard: k8sV1.ResourceList{
+					k8sV1.ResourceName("requests." + ResourceTypeNvidia): *resource.
+						NewQuantity(int64(newRQ), resource.DecimalSI),
+				},
+			},
+		})
+	err = js.setResourceQuota(newRQ, namespaceName)
+	require.NoError(t, err)
+
+	// 1 existing non determined Resource Quota that is less than the quota we are trying to set.
+	newRQ = 7
+	js.clientSet = setupClientSetForResourceQuotaTests(
+		namespaceName, k8sNamespace, []int{2}, nil, nil, &k8sV1.ResourceQuota{
+			TypeMeta: metaV1.TypeMeta{
+				Kind:       "ResourceQuota",
+				APIVersion: "v1",
+			},
+			ObjectMeta: metaV1.ObjectMeta{
+				Labels: k8sDeterminedLabel,
+				Name:   namespaceName + "-quota",
+			},
+			Spec: k8sV1.ResourceQuotaSpec{
+				Hard: k8sV1.ResourceList{
+					k8sV1.ResourceName("requests." + ResourceTypeNvidia): *resource.
+						NewQuantity(int64(newRQ), resource.DecimalSI),
+				},
+			},
+		})
+	err = js.setResourceQuota(newRQ, namespaceName)
+	require.ErrorContains(t, err, "lower than the request limit you wish to set on this namespace")
+
+	// 1 existing determined Resource Quota.
+	detQVal := 2
+	newRQ = 9
+	detQuota := &k8sV1.ResourceQuota{
+		TypeMeta: metaV1.TypeMeta{
+			Kind:       "ResourceQuota",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metaV1.ObjectMeta{
+			Labels: map[string]string{determinedLabel: namespaceName},
+			Name:   namespaceName + "-quota",
+		},
+		Spec: k8sV1.ResourceQuotaSpec{
+			Hard: k8sV1.ResourceList{
+				k8sV1.ResourceName("requests." + ResourceTypeNvidia): *resource.
+					NewQuantity(int64(newRQ), resource.DecimalSI),
+			},
+		},
+	}
+	detQuotaToByteArray, err := json.Marshal(detQuota)
+	require.NoError(t, err)
+	js.clientSet = setupClientSetForResourceQuotaTests(
+		namespaceName, k8sNamespace, []int{}, &detQVal, &detQuotaToByteArray, nil)
+	err = js.setResourceQuota(newRQ, namespaceName)
+	require.NoError(t, err)
+}
+
+func TestRMValidateResources(t *testing.T) {
+	resourcePool := &kubernetesResourcePool{
+		poolConfig:     &config.ResourcePoolConfig{PoolName: "test-pool"},
+		maxSlotsPerPod: 4,
+	}
+	kubernetesRM := &ResourceManager{
+		pools: map[string]*kubernetesResourcePool{
+			"test-pool": resourcePool,
+		},
+	}
+
+	cases := []struct {
+		name            string
+		validateRequest sproto.ValidateResourcesRequest
+		valid           bool
 	}{
-		{name: "GetAgentsROCM", testFunc: testROCMGetAgents},
-		{name: "GetAgentROCM", testFunc: testROCMGetAgent},
-		{name: "GetSlotsROCM", testFunc: testROCMGetSlots},
-		{name: "GetSlotROCM", testFunc: testROCMGetSlot},
+		{"single node, valid", sproto.ValidateResourcesRequest{
+			IsSingleNode: true,
+			Slots:        3,
+			ResourcePool: "test-pool",
+		}, true},
+		{"single node invalid, slots < max_slots_per_pod", sproto.ValidateResourcesRequest{
+			IsSingleNode: true,
+			Slots:        5,
+			ResourcePool: "test-pool",
+		}, false},
+		{"non-single node valid", sproto.ValidateResourcesRequest{
+			IsSingleNode: false,
+			Slots:        8,
+			ResourcePool: "test-pool",
+		}, true},
+		{"non-single node invalid, slots not divisible by max_slots_per_pod ", sproto.ValidateResourcesRequest{
+			IsSingleNode: false,
+			Slots:        7,
+			ResourcePool: "test-pool",
+		}, false},
 	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) { require.Panics(t, test.testFunc) })
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := kubernetesRM.ValidateResources(c.validateRequest)
+			if c.valid {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, "invalid resource request")
+			}
+		})
 	}
 }
 
-func testROCMGetAgents() {
-	ps := createMockPodsService(createCompNodeMap(), device.ROCM, false)
-	ps.handleGetAgentsRequest()
+func TestROCMGetAgents(t *testing.T) {
+	ps := createMockJobsService(createCompNodeMap(), device.ROCM, false)
+
+	resp, err := ps.getAgents()
+	require.NoError(t, err)
+	require.Len(t, resp.Agents, 1)
+	require.Equal(t, compNode1Name, resp.Agents[0].Id)
+	require.Len(t, resp.Agents[0].Slots, int(nodeNumSlots))
 }
 
-func testROCMGetAgent() {
+func TestROCMGetAgent(t *testing.T) {
 	nodes := createCompNodeMap()
-	ps := createMockPodsService(nodes, device.ROCM, false)
-	ps.handleGetAgentRequest(compNode1Name)
+	ps := createMockJobsService(nodes, device.ROCM, false)
+
+	resp := ps.getAgent(compNode1Name)
+	require.Equal(t, compNode1Name, resp.Agent.Id)
+	require.Len(t, resp.Agent.Slots, int(nodeNumSlots))
 }
 
-func testROCMGetSlots() {
+func TestROCMGetSlots(t *testing.T) {
 	nodes := createCompNodeMap()
-	ps := createMockPodsService(nodes, device.ROCM, false)
-	ps.handleGetSlotsRequest(compNode1Name)
+	ps := createMockJobsService(nodes, device.ROCM, false)
+
+	resp := ps.getSlots(compNode1Name)
+	require.Len(t, resp.Slots, int(nodeNumSlots))
 }
 
-func testROCMGetSlot() {
+func TestROCMGetSlot(t *testing.T) {
 	nodes := createCompNodeMap()
-	ps := createMockPodsService(nodes, device.ROCM, false)
+	ps := createMockJobsService(nodes, device.ROCM, false)
 	for i := 0; i < int(nodeNumSlots); i++ {
-		ps.handleGetSlotRequest(compNode1Name, strconv.Itoa(i))
+		resp := ps.getSlot(compNode1Name, strconv.Itoa(i))
+		require.Equal(t, device.ROCM.Proto(), resp.Slot.Device.Type)
 	}
 }
 
@@ -767,7 +1446,7 @@ func setupNodes() (*k8sV1.Node, *k8sV1.Node, *k8sV1.Node, *k8sV1.Node) {
 	}
 
 	compResourceList := map[k8sV1.ResourceName]resource.Quantity{
-		k8sV1.ResourceName(ResourceTypeNvidia): *resource.NewQuantity(
+		k8sV1.ResourceName(resourceTypeNvidia): *resource.NewQuantity(
 			nodeNumSlots,
 			resource.DecimalSI,
 		),
@@ -809,7 +1488,7 @@ func setupNodes() (*k8sV1.Node, *k8sV1.Node, *k8sV1.Node, *k8sV1.Node) {
 
 func createCompNodeMap() map[string]*k8sV1.Node {
 	resourceList := map[k8sV1.ResourceName]resource.Quantity{
-		k8sV1.ResourceName(device.ROCM): *resource.NewQuantity(nodeNumSlots, resource.DecimalSI),
+		k8sV1.ResourceName(resourceTypeAMD): *resource.NewQuantity(nodeNumSlots, resource.DecimalSI),
 	}
 
 	compNode := k8sV1.Node{
@@ -824,45 +1503,56 @@ func createCompNodeMap() map[string]*k8sV1.Node {
 	}
 }
 
-// createMockPodsService creates two pods. One pod is run on the auxiliary node and the other is
+// createMockJobsService creates two pods. One pod is run on the auxiliary node and the other is
 // run on the compute node.
-func createMockPodsService(nodes map[string]*k8sV1.Node, devSlotType device.Type,
+func createMockJobsService(nodes map[string]*k8sV1.Node, devSlotType device.Type,
 	labels bool,
-) *pods {
+) *jobsService {
+	var jobsList batchV1.JobList
+	var podsList k8sV1.PodList
 	// Create two pods that are scheduled on a node.
-	pod1 := &pod{
+	jobName1 := uuid.NewString()
+	job1 := &job{
 		allocationID: model.AllocationID(uuid.New().String()),
-		slots:        pod1NumSlots,
-		pod: &k8sV1.Pod{
-			Spec: k8sV1.PodSpec{NodeName: auxNode1Name},
+		jobName:      jobName1,
+		slotsPerPod:  pod1NumSlots,
+		podNodeNames: map[string]string{
+			jobName1: auxNode1Name,
 		},
 	}
-	pod2 := &pod{
+	jobsList.Items = append(jobsList.Items, batchV1.Job{ObjectMeta: metaV1.ObjectMeta{Name: jobName1}})
+	podsList.Items = append(podsList.Items, k8sV1.Pod{ObjectMeta: metaV1.ObjectMeta{Name: jobName1}})
+
+	jobName2 := uuid.NewString()
+	job2 := &job{
 		allocationID: model.AllocationID(uuid.New().String()),
-		slots:        pod2NumSlots,
-		pod: &k8sV1.Pod{
-			Spec: k8sV1.PodSpec{NodeName: compNode1Name},
+		jobName:      jobName2,
+		slotsPerPod:  pod2NumSlots,
+		podNodeNames: map[string]string{
+			uuid.NewString(): compNode1Name,
 		},
 	}
+	jobsList.Items = append(jobsList.Items, batchV1.Job{ObjectMeta: metaV1.ObjectMeta{Name: jobName2}})
+	podsList.Items = append(podsList.Items, k8sV1.Pod{ObjectMeta: metaV1.ObjectMeta{Name: jobName2}})
 
 	// Create pod that is not yet scheduled on a node.
-	pod3 := &pod{
+	jobName3 := uuid.NewString()
+	job3 := &job{
 		allocationID: model.AllocationID(uuid.New().String()),
-		slots:        0,
-		pod: &k8sV1.Pod{
-			Spec: k8sV1.PodSpec{NodeName: ""},
-		},
+		jobName:      jobName3,
+		slotsPerPod:  0,
+		podNodeNames: map[string]string{},
 	}
+	jobsList.Items = append(jobsList.Items, batchV1.Job{ObjectMeta: metaV1.ObjectMeta{Name: jobName3}})
+	podsList.Items = append(podsList.Items, k8sV1.Pod{ObjectMeta: metaV1.ObjectMeta{Name: jobName3}})
 
-	podsList := &k8sV1.PodList{Items: []k8sV1.Pod{*pod1.pod, *pod2.pod, *pod3.pod}}
-
-	var nonDetPod *pod
+	var nonDetPod *job
 
 	if labels {
 		// Give labels to all determined pods.
-		pod1.pod.ObjectMeta = metaV1.ObjectMeta{Labels: map[string]string{"determined": ""}}
-		pod2.pod.ObjectMeta = metaV1.ObjectMeta{Labels: map[string]string{"determined": ""}}
-		pod3.pod.ObjectMeta = metaV1.ObjectMeta{Labels: map[string]string{"determined": ""}}
+		for _, j := range jobsList.Items {
+			j.ObjectMeta = metaV1.ObjectMeta{Labels: map[string]string{"determined": ""}}
+		}
 
 		resourceList := make(map[k8sV1.ResourceName]resource.Quantity)
 
@@ -870,7 +1560,7 @@ func createMockPodsService(nodes map[string]*k8sV1.Node, devSlotType device.Type
 			resourceList[k8sV1.ResourceName(device.CPU)] = *resource.NewQuantity(nodeNumSlotsCPU,
 				resource.DecimalSI)
 		} else {
-			resourceList[k8sV1.ResourceName(ResourceTypeNvidia)] = *resource.NewQuantity(nodeNumSlots,
+			resourceList[k8sV1.ResourceName(resourceTypeNvidia)] = *resource.NewQuantity(nodeNumSlots,
 				resource.DecimalSI)
 		}
 		nonDetNode := k8sV1.Node{
@@ -884,45 +1574,56 @@ func createMockPodsService(nodes map[string]*k8sV1.Node, devSlotType device.Type
 		nodes[nonDetNode.Name] = &nonDetNode
 
 		// Create pod without determined label.
-		nonDetPod = &pod{
+		nonDetPod = &job{
 			allocationID: model.AllocationID(uuid.New().String()),
-			slots:        0,
-			pod: &k8sV1.Pod{
-				Spec: k8sV1.PodSpec{NodeName: nonDetNodeName},
+			slotsPerPod:  0,
+			podNodeNames: map[string]string{
+				uuid.NewString(): nonDetNodeName,
 			},
 		}
-		podsList.Items = append(podsList.Items, *nonDetPod.pod)
+		jobsList.Items = append(jobsList.Items, batchV1.Job{})
 	}
 
-	podHandlers := map[string]*pod{
-		string(pod1.allocationID): pod1,
-		string(pod2.allocationID): pod2,
-		string(pod3.allocationID): pod3,
+	jobHandlers := map[string]*job{
+		string(job1.allocationID): job1,
+		string(job2.allocationID): job2,
+		string(job3.allocationID): job3,
 	}
 	if nonDetPod != nil {
-		podHandlers[string(nonDetPod.allocationID)] = nonDetPod
+		jobHandlers[string(nonDetPod.allocationID)] = nonDetPod
 	}
 
 	// Create pod service client set.
-	podsClientSet := &mocks.K8sClientsetInterface{}
+	jobsClientSet := &mocks.K8sClientsetInterface{}
 	coreV1Interface := &mocks.K8sCoreV1Interface{}
 	podsInterface := &mocks.PodInterface{}
 	podsInterface.On("List", mock.Anything, mock.Anything).Return(podsList, nil)
+	batchV1Interface := &mocks.K8sBatchV1Interface{}
+	jobsInterface := &mocks.JobInterface{}
+	jobsInterface.On("List", mock.Anything, mock.Anything).Return(jobsList, nil)
 	coreV1Interface.On("Pods", mock.Anything).Return(podsInterface)
-	podsClientSet.On("CoreV1").Return(coreV1Interface)
+	batchV1Interface.On("Jobs", mock.Anything).Return(jobsInterface)
+	jobsClientSet.On("CoreV1").Return(coreV1Interface)
+	jobsClientSet.On("BatchV1").Return(batchV1Interface)
 
-	return &pods{
+	emptyNS := &mocks.PodInterface{}
+	emptyNS.On("List", mock.Anything, mock.Anything).Return(&podsList, nil)
+
+	podInterfaces := map[string]typedV1.PodInterface{"": emptyNS}
+	return &jobsService{
 		namespace:           "default",
-		namespaceToPoolName: make(map[string]string),
+		clusterName:         "",
 		currentNodes:        nodes,
-		podNameToPodHandler: podHandlers,
+		jobNameToJobHandler: jobHandlers,
 		slotType:            devSlotType,
 		syslog:              logrus.WithField("namespace", namespace),
 		nodeToSystemResourceRequests: map[string]int64{
 			auxNode1Name: cpuResourceRequests,
 			auxNode2Name: cpuResourceRequests,
 		},
-		slotResourceRequests: config.PodSlotResourceRequests{CPU: 2},
-		clientSet:            podsClientSet,
+		slotResourceRequests:    config.PodSlotResourceRequests{CPU: 2},
+		clientSet:               jobsClientSet,
+		namespacesWithInformers: make(map[string]bool),
+		podInterfaces:           podInterfaces,
 	}
 }

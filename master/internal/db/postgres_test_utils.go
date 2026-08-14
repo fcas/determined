@@ -103,9 +103,9 @@ func ResolveTestPostgres() (*PgDB, func(), error) {
 
 // MustResolveTestPostgres is the same as ResolveTestPostgres but with panics on errors.
 func MustResolveTestPostgres(t *testing.T) (*PgDB, func()) {
-	pgDB, close, err := ResolveTestPostgres()
+	pgDB, closeDB, err := ResolveTestPostgres()
 	require.NoError(t, err, "failed to connect to postgres")
-	return pgDB, close
+	return pgDB, closeDB
 }
 
 // ResolveNewPostgresDatabase returns a connection to a randomly-named, newly-created database, and
@@ -113,7 +113,7 @@ func MustResolveTestPostgres(t *testing.T) (*PgDB, func()) {
 func ResolveNewPostgresDatabase() (*PgDB, func(), error) {
 	baseURL := os.Getenv("DET_INTEGRATION_POSTGRES_URL")
 	if baseURL == "" {
-		return nil, nil, errors.New("no DET_INTEGRATION_POSTGRES_URL detected")
+		return nil, nil, fmt.Errorf("no DET_INTEGRATION_POSTGRES_URL detected")
 	}
 
 	url, err := url.Parse(baseURL)
@@ -196,7 +196,7 @@ func MigrateTestPostgres(db *PgDB, migrationsPath string, actions ...string) err
 	if len(actions) == 0 {
 		actions = []string{"up"}
 	}
-	_, err := db.Migrate(
+	err := db.Migrate(
 		migrationsPath, strings.ReplaceAll(migrationsPath+"/../views_and_triggers", "file://", ""), actions)
 	if err != nil {
 		return fmt.Errorf("failed to migrate postgres: %w", err)
@@ -211,9 +211,9 @@ func MigrateTestPostgres(db *PgDB, migrationsPath string, actions ...string) err
 
 // MustSetupTestPostgres returns a ready to use test postgres connection.
 func MustSetupTestPostgres(t *testing.T) (*PgDB, func()) {
-	pgDB, close := MustResolveTestPostgres(t)
+	pgDB, closeDB := MustResolveTestPostgres(t)
 	MustMigrateTestPostgres(t, pgDB, MigrationsFromDB)
-	return pgDB, close
+	return pgDB, closeDB
 }
 
 // RequireMockJob returns a stub job.
@@ -332,6 +332,7 @@ type MockExperimentParams struct {
 	ProjectID            *int
 	ExternalExperimentID *string
 	State                *model.State
+	Integrations         *expconf.IntegrationsConfigV0
 }
 
 // RequireMockExperimentParams returns a mock experiment with various parameters.
@@ -360,13 +361,8 @@ func RequireMockExperimentParams(
 			},
 		},
 		RawSearcher: &expconf.SearcherConfigV0{
-			RawSingleConfig: &expconf.SingleConfigV0{
-				RawMaxLength: &expconf.LengthV0{
-					Unit:  expconf.Batches,
-					Units: 1,
-				},
-			},
-			RawMetric: ptrs.Ptr(defaultSearcherMetric),
+			RawSingleConfig: &expconf.SingleConfigV0{},
+			RawMetric:       ptrs.Ptr(defaultSearcherMetric),
 		},
 	}
 	if p.HParamNames != nil {
@@ -378,6 +374,9 @@ func RequireMockExperimentParams(
 				},
 			}
 		}
+	}
+	if p.Integrations != nil {
+		notDefaulted.RawIntegrations = p.Integrations
 	}
 
 	cfg := schemas.WithDefaults(notDefaulted)

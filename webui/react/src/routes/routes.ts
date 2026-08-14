@@ -85,6 +85,18 @@ const routes: RouteConfig[] = [
     title: 'Experiment',
   },
   {
+    id: 'searchDetails',
+    needAuth: true,
+    path: '/searches/:searchId',
+    title: 'Search',
+  },
+  {
+    id: 'searchDetails',
+    needAuth: true,
+    path: '/searches/:searchId/:tab',
+    title: 'Search',
+  },
+  {
     id: 'experimentDetails',
     needAuth: true,
     path: '/experiments/:experimentId/:tab',
@@ -141,6 +153,13 @@ const routes: RouteConfig[] = [
     needAuth: true,
     path: '/templates',
     title: 'Manage Templates',
+  },
+  {
+    icon: 'options',
+    id: 'configPolicies',
+    needAuth: true,
+    path: '/policies',
+    title: 'Config Policies',
   },
   {
     icon: 'cluster',

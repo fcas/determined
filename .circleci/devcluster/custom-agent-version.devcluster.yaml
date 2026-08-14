@@ -6,6 +6,8 @@ stages:
       pre:
         - sh: make -C tools prep-root
       config_file:
+        security:
+          initial_user_password: $INITIAL_USER_PASSWORD
         db:
           host: localhost
           port: 5432
@@ -22,6 +24,8 @@ stages:
         cache: 
           cache_dir: /tmp/determined-cache
         launch_error: false
+        telemetry:
+          enabled: false
 
   - custom_docker:
       name: agent

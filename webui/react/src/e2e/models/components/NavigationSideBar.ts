@@ -1,14 +1,13 @@
-import { BaseComponent, BaseReactFragment } from 'e2e/models/BaseComponent';
-import { DropdownMenu } from 'e2e/models/hew/Dropdown';
-import { Nameplate } from 'e2e/models/hew/Nameplate';
+import { BaseComponent } from 'playwright-page-model-base/BaseComponent';
+import { BaseReactFragment } from 'playwright-page-model-base/BaseReactFragment';
+
+import { DropdownMenu } from 'e2e/models/common/hew/Dropdown';
+import { Nameplate } from 'e2e/models/common/hew/Nameplate';
 
 import { WorkspaceActionDropdown } from './WorkspaceActionDropdown';
 
 /**
- * Returns a representation of the NavigationSideBar component.
- * This constructor represents the contents in src/components/NavigationSideBar.tsx.
- * @param {object} obj
- * @param {CanBeParent} obj.parent - The parent used to locate this NavigationSideBar
+ * Represents the NavigationSideBar component in src/components/NavigationSideBar.tsx
  */
 export class NavigationSideBar extends BaseReactFragment {
   readonly #nav = new BaseComponent({
@@ -23,7 +22,7 @@ export class NavigationSideBar extends BaseReactFragment {
     parent: this.header,
   });
   readonly headerDropdown = new HeaderDropdown({
-    childNode: this.header,
+    clickThisComponentToOpen: this.header,
     root: this.root,
   });
   readonly home = new BaseComponent({
@@ -54,9 +53,14 @@ export class NavigationSideBar extends BaseReactFragment {
     parent: this.#nav,
     selector: `a[aria-label="${'Workspaces'}"]`,
   });
-  readonly createWorkspace = new BaseComponent({
+  readonly createWorkspaceFromHover = new BaseComponent({
     parent: this.#nav,
     selector: 'span[aria-label="Create workspace"]',
+  });
+  // consider this to be a rowContainer
+  readonly #pinnedWorkspaces = new BaseComponent({
+    parent: this.#nav,
+    selector: '[class*="NavigationSideBar_pinnedWorkspaces"]',
   });
   /**
    * Returns a representation of a sidebar NavigationItem with the specified label.
@@ -65,23 +69,17 @@ export class NavigationSideBar extends BaseReactFragment {
    */
   public sidebarWorkspaceItem(label: string): SidebarWorkspaceItem {
     return new SidebarWorkspaceItem({
-      parent: this.#nav,
+      parent: this.#pinnedWorkspaces,
       selector: `a[aria-label="${label}"]`,
     });
   }
+  // consider the other add workspace button
   // TODO UserSettings works as a drawer on desktop view after clicking on nav.headerDropdown.settings
   // TODO readonly userSettings= new UserSettings({ parent: this });
 }
+
 /**
- * Returns a representation of the HeaderDropdown component.
- * Until the dropdown component supports test ids, this model will match any open dropdown.
- * This constructor represents the contents in src/components/NavigationSideBar.
- *
- * The dropdown can be opened by calling the open method.
- * @param {object} obj
- * @param {BasePage} obj.root - root of the page
- * @param {ComponentBasics} [obj.childNode] - optional if `openMethod` is present. It's the element we click on to open the dropdown.
- * @param {Function} [obj.openMethod] - optional if `childNode` is present. It's the method to open the dropdown.
+ * Represents the HeaderDropdown in the NavigationSideBar component
  */
 class HeaderDropdown extends DropdownMenu {
   readonly admin = this.menuItem('admin');
@@ -91,11 +89,7 @@ class HeaderDropdown extends DropdownMenu {
 }
 
 /**
- * Returns the representation of a SidebarWorkspaceItem.
- * This constructor is a base class for any component in src/components/NavigationSideBar.tsx.
- * @param {object} obj
- * @param {CanBeParent} obj.parent - The parent used to locate this BaseComponent
- * @param {string} obj.selector - Used as a selector uesd to locate this object
+ * Represents the SidebarWorkspaceItem in the NavigationSideBar component
  */
 class SidebarWorkspaceItem extends BaseComponent {
   readonly actionMenu = new WorkspaceActionDropdown({

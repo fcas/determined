@@ -15,8 +15,6 @@ import (
 	"github.com/determined-ai/determined/master/internal/user"
 )
 
-const defaultResourcePoolName = "default"
-
 func TestResourceManagerForwardMessage(t *testing.T) {
 	user.InitService(nil, nil)
 	conf := &config.ResourceConfig{
@@ -49,7 +47,7 @@ func TestAgentRMHealthCheck(t *testing.T) {
 	conf := &config.ResourceConfig{
 		RootManagerInternal: &config.ResourceManagerConfig{
 			AgentRM: &config.AgentResourceManagerConfig{
-				Name: "testname",
+				ClusterName: "testname",
 			},
 		},
 	}
@@ -59,8 +57,8 @@ func TestAgentRMHealthCheck(t *testing.T) {
 
 	require.Equal(t, []model.ResourceManagerHealth{
 		{
-			Name:   "testname",
-			Status: model.Healthy,
+			ClusterName: "testname",
+			Status:      model.Healthy,
 		},
 	}, rm.HealthCheck())
 }

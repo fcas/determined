@@ -14,11 +14,11 @@ This user guide provides step-by-step instructions for installing Determined usi
    GPUs, ensure that the :ref:`NVIDIA Container Toolkit <validate-nvidia-container-toolkit>` on each
    one is working as expected.
 
-#. Pull the official Docker image for PostgreSQL. We recommend using the version listed below.
+#. Pull the official Docker image for the latest PostgreSQL version.
 
    .. code::
 
-      docker pull postgres:10
+      docker pull postgres:14
 
    This image is not provided by Determined AI; please see `its Docker Hub page
    <https://hub.docker.com/_/postgres>`_ for more information.
@@ -51,7 +51,7 @@ Run the following command to start the PostgreSQL container:
        -v determined_db:/var/lib/postgresql/data \
        -e POSTGRES_DB=determined \
        -e POSTGRES_PASSWORD=<DB password> \
-       postgres:10
+       postgres:14
 
 In order to expose the port only on the master machine's loopback network interface, pass ``-p
 127.0.0.1:5432:5432`` instead of ``-p 5432:5432``. If you choose to run in host networking mode,
@@ -193,7 +193,8 @@ large range of ports, as it does not require network address translation (NAT) a
 The host networking driver only works on Linux hosts, and is not supported on Docker Desktop for
 Mac, Docker Desktop for Windows, or Docker EE for Windows Server.
 
-See `Docker's documentation <https://docs.docker.com/network/drivers/host/>`_ for more details.
+See `Docker's documentation <https://docs.docker.com/engine/network/drivers/host/>`_ for more
+details.
 
 .. note::
 
@@ -209,7 +210,7 @@ See `Docker's documentation <https://docs.docker.com/network/drivers/host/>`_ fo
 
 By default, ``docker run`` will run in the foreground, so that a container can be stopped simply by
 pressing Control-C. If you wish to keep Determined running for the long term, consider running the
-containers `detached <ttps://docs.docker.com/engine/reference/commandline/container_run/#detach>`_
+containers `detached <https://docs.docker.com/engine/reference/commandline/container_run/#detach>`_
 and/or with `restart policies
-<https://docs.docker.com/config/containers/start-containers-automatically/>`_. Using :ref:`our
+<https://docs.docker.com/engine/containers/start-containers-automatically/>`_. Using :ref:`our
 deployment tool <install-using-deploy>` is also an option.

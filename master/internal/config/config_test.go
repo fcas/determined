@@ -48,7 +48,7 @@ func TestDeprecations(t *testing.T) {
 			},
 		},
 	}
-	require.Len(t, c.Deprecations(), 0)
+	require.Empty(t, c.Deprecations())
 
 	c.ResourceConfig.RootPoolsInternal[0].AgentReattachEnabled = true
 	c.ResourceConfig.AdditionalResourceManagersInternal[0].ResourcePools[0].AgentReattachEnabled = true
@@ -86,6 +86,8 @@ integrations:
   pachyderm:
     address: foo
 `
+	defaultPriority := DefaultSchedulingPriority
+
 	expected := Config{
 		Log: logger.Config{
 			Level: "info",
@@ -101,7 +103,9 @@ integrations:
 			RootManagerInternal: &ResourceManagerConfig{
 				AgentRM: &AgentResourceManagerConfig{
 					Scheduler: &SchedulerConfig{
-						FairShare:     &FairShareSchedulerConfig{},
+						Priority: &PrioritySchedulerConfig{
+							DefaultPriority: &defaultPriority,
+						},
 						FittingPolicy: "best",
 					},
 					DefaultComputeResourcePool: "default",
@@ -125,6 +129,7 @@ integrations:
 					TaskContainerDefaults: &model.TaskContainerDefaultsConfig{
 						ShmSizeBytes:           4294967296,
 						NetworkMode:            "bridge",
+						PreemptionTimeout:      model.DefaultPreemptionTimeout,
 						DtrainNetworkInterface: "if0",
 					},
 					AgentReconnectWait: model.Duration(aproto.AgentReconnectWait),
@@ -142,6 +147,60 @@ integrations:
 	err := yaml.Unmarshal([]byte(raw), &unmarshaled, yaml.DisallowUnknownFields)
 	assert.NilError(t, err)
 	assert.DeepEqual(t, unmarshaled, expected)
+}
+
+const (
+	dbConfig = `
+db:
+  user: config_file_user
+  password: password
+  host: hostname
+  port: "3000"`
+)
+
+func TestAgentRMSchedulerDeprecation(t *testing.T) {
+	noScheduler := dbConfig + `
+
+resource_manager:
+  type: agent
+`
+	roundRobinScheduler := dbConfig + `
+resource_manager:
+  type: agent
+  scheduler:
+    type: round_robin
+`
+
+	fairShareScheduler := dbConfig + `
+resource_manager:
+  type: agent
+  scheduler:
+    type: fair_share
+`
+
+	type result struct {
+		scheduler string
+		allowed   bool
+	}
+	tests := map[string]result{
+		noScheduler:         {PriorityScheduling, true},
+		roundRobinScheduler: {RoundRobinScheduling, false},
+		fairShareScheduler:  {FairShareScheduling, true},
+	}
+
+	for config, expected := range tests {
+		unmarshaled := Config{}
+		err := yaml.Unmarshal([]byte(config), &unmarshaled, yaml.DisallowUnknownFields)
+		require.NoError(t, err)
+		if expected.allowed {
+			require.NoError(t, unmarshaled.Resolve())
+		} else {
+			require.Error(t, unmarshaled.Resolve())
+		}
+		rm := unmarshaled.ResourceManagers()
+		require.Len(t, rm, 1)
+		require.Equal(t, expected.scheduler, rm[0].ResourceManager.AgentRM.Scheduler.GetType())
+	}
 }
 
 func TestUnmarshalConfigWithCPUGPUPools(t *testing.T) {
@@ -453,11 +512,13 @@ db:
 
 resource_manager:
   type: kubernetes
+  cluster_name: c1 
   max_slots_per_pod: 5
 
 additional_resource_managers:
  - resource_manager:
      name: test
+     cluster_name: c2
      type: kubernetes
 `
 
@@ -468,8 +529,8 @@ task_container_defaults:
 `
 
 	expectedMaxSlots := map[string]int{
-		"default": 5,
-		"test":    65,
+		"c1": 5,
+		"c2": 65,
 	}
 
 	testCases := map[string]struct {
@@ -504,7 +565,7 @@ task_container_defaults:
 				require.NoError(t, unmarshaled.Resolve())
 				actualRMs := unmarshaled.ResourceConfig.ResourceManagers()
 				for _, r := range actualRMs {
-					require.Equal(t, expectedMaxSlots[r.ResourceManager.Name()], *r.ResourceManager.KubernetesRM.MaxSlotsPerPod)
+					require.Equal(t, expectedMaxSlots[r.ResourceManager.ClusterName()], *r.ResourceManager.KubernetesRM.MaxSlotsPerPod)
 				}
 			} else {
 				require.Error(t, unmarshaled.Resolve(), test.expectedError)
@@ -594,8 +655,9 @@ additional_resource_managers:
 				Username: "yo-yo-ma",
 				Password: registryAuthSecret,
 			},
-			ShmSizeBytes: 4294967296,
-			NetworkMode:  "bridge",
+			ShmSizeBytes:      4294967296,
+			NetworkMode:       "bridge",
+			PreemptionTimeout: model.DefaultPreemptionTimeout,
 		},
 		ResourceConfig: ResourceConfig{
 			AdditionalResourceManagersInternal: []*ResourceManagerWithPoolsConfig{
@@ -783,17 +845,6 @@ resource_manager:
 			rpName:            "",
 			preemptionEnabled: false,
 		},
-		{
-			name: "k8 with preemption plugin",
-			configRaw: `
-resource_manager:
-  type: kubernetes
-  default_scheduler: preemption
-  max_slots_per_pod: 54
-`,
-			rpName:            "default",
-			preemptionEnabled: true,
-		},
 	}
 
 	for _, tc := range testCases {
@@ -803,79 +854,95 @@ resource_manager:
 	}
 }
 
-func TestMultiRMPreemptionAndPriority(t *testing.T) {
-	prio1 := 3
-	prio2 := 30
+func TestKubernetesRMSchedulerDeprecation(t *testing.T) {
+	noScheduler := dbConfig + `
+resource_manager:
+  type: kubernetes
+  max_slots_per_pod: 1
+`
+	priorityScheduler := dbConfig + `
+resource_manager:
+  type: kubernetes
+  max_slots_per_pod: 1
+  default_scheduler: preemption
+`
 
-	cfg := DefaultConfig()
-	cfg.ResourceConfig = ResourceConfig{
-		RootManagerInternal: &ResourceManagerConfig{AgentRM: &AgentResourceManagerConfig{
-			Name: DefaultRMName, Scheduler: &SchedulerConfig{
-				Priority: &PrioritySchedulerConfig{
-					Preemption:      false,
-					DefaultPriority: &prio1,
-				},
-			},
-		}},
-		RootPoolsInternal: []ResourcePoolConfig{{
-			PoolName: "default123",
-			Scheduler: &SchedulerConfig{Priority: &PrioritySchedulerConfig{
-				Preemption:      true,
-				DefaultPriority: &prio2,
-			}},
-		}},
-		AdditionalResourceManagersInternal: []*ResourceManagerWithPoolsConfig{
-			{ResourceManager: &ResourceManagerConfig{KubernetesRM: &KubernetesResourceManagerConfig{
-				Name:             "test",
-				DefaultScheduler: "not-preemption-scheduler",
-			}}, ResourcePools: []ResourcePoolConfig{{
-				PoolName: "default234",
-				Scheduler: &SchedulerConfig{Priority: &PrioritySchedulerConfig{
-					Preemption:      true,
-					DefaultPriority: &prio1,
-				}},
-			}}},
-			// nil preemption case
-			{
-				ResourceManager: &ResourceManagerConfig{KubernetesRM: &KubernetesResourceManagerConfig{
-					Name: "nil-rm", DefaultScheduler: "not-preemption-scheduler",
-				}},
-				ResourcePools: []ResourcePoolConfig{{PoolName: "nil-rp"}},
-			},
+	type result struct {
+		scheduler string
+		allowed   bool
+	}
+	tests := map[string]result{
+		noScheduler:       {"", true},
+		priorityScheduler: {"preemption", false},
+	}
+
+	for config, expected := range tests {
+		unmarshaled := Config{}
+		err := yaml.Unmarshal([]byte(config), &unmarshaled, yaml.DisallowUnknownFields)
+		require.NoError(t, err)
+		if expected.allowed {
+			require.NoError(t, unmarshaled.Resolve())
+		} else {
+			require.Error(t, unmarshaled.Resolve())
+		}
+		rm := unmarshaled.ResourceManagers()
+		require.Len(t, rm, 1)
+		// In both cases, since we don't define a valid RM, expect something empty
+		require.Equal(t, expected.scheduler, rm[0].ResourceManager.KubernetesRM.DefaultScheduler)
+	}
+}
+
+func TestPickVariation(t *testing.T) {
+	userConfig := MediaAssetVariations{
+		LightHorizontal: "light-horizontal",
+		LightVeritical:  "light-vertical",
+		DarkHorizontal:  "dark-horizontal",
+		DarkVeritical:   "dark-vertical",
+	}
+	tests := []struct {
+		mode        string
+		orientation string
+		expected    string
+	}{
+		{
+			mode:        "",
+			orientation: "",
+			expected:    "light-horizontal",
+		},
+		{
+			mode:        "",
+			orientation: "horizontal",
+			expected:    "light-horizontal",
+		},
+		{
+			mode:        "",
+			orientation: "vertical",
+			expected:    "light-vertical",
+		},
+		{
+			mode:        "light",
+			orientation: "",
+			expected:    "light-horizontal",
+		},
+		{
+			mode:        "dark",
+			orientation: "",
+			expected:    "dark-horizontal",
+		},
+		{
+			mode:        "dark",
+			orientation: "vertical",
+			expected:    "dark-vertical",
 		},
 	}
 
-	SetMasterConfig(cfg)
-
-	// 'default123' RP exists under 'default' RM, so the preemption will
-	// be 'True' & priority to prio2, like the RP.
-	status := ReadRMPreemptionStatus("default123")
-	require.True(t, status)
-
-	priority := ReadPriority("default123", model.CommandConfig{})
-	require.Equal(t, prio2, priority)
-
-	// 'test1' RP doesn't exist under any RM so the preemption and
-	// priority will default.
-	status = ReadRMPreemptionStatus("test1")
-	require.False(t, status)
-
-	priority = ReadPriority("test1", model.CommandConfig{})
-	require.Equal(t, DefaultSchedulingPriority, priority)
-
-	// 'default234' RP exists under 'test' RM, so the preemption
-	// & priority will default to the RP's.
-	status = ReadRMPreemptionStatus("default234")
-	require.True(t, status)
-
-	priority = ReadPriority("default234", model.CommandConfig{})
-	require.Equal(t, prio1, priority)
-
-	// 'nil-rp' RP exists under 'nil-rm' RM, so the preemption
-	// & priority default to the RMs.
-	status = ReadRMPreemptionStatus("nil-rp")
-	require.False(t, status)
-
-	priority = ReadPriority("nil-rp", model.CommandConfig{})
-	require.Equal(t, KubernetesDefaultPriority, priority)
+	for _, tt := range tests {
+		name := fmt.Sprintf("mode=%s, orientation=%s", tt.mode, tt.orientation)
+		t.Run(name, func(t *testing.T) {
+			result := userConfig.PickVariation(tt.mode, tt.orientation)
+			if result != tt.expected {
+				t.Errorf("PickVariation(%v, %v) = %v; want %v", tt.mode, tt.orientation, result, tt.expected)
+			}
+		})
+	}
 }

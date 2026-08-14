@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	docker "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/jinzhu/copier"
 
+	"github.com/determined-ai/determined/master/internal/config"
 	"github.com/determined-ai/determined/master/pkg/archive"
 	"github.com/determined-ai/determined/master/pkg/cproto"
 	"github.com/determined-ai/determined/master/pkg/device"
@@ -69,7 +71,7 @@ type TaskSpec struct {
 	ClusterID   string
 	HarnessPath string
 	MasterCert  []byte
-	SSHRsaSize  int
+	SSHConfig   config.SSHConfig
 
 	SegmentEnabled bool
 	SegmentAPIKey  string
@@ -115,6 +117,9 @@ type TaskSpec struct {
 	Labels    []string
 	// Ports required by trial or commands and their respective base port values.
 	UniqueExposedPortRequests map[string]int
+
+	// For testing only.
+	DontShipLogs bool
 }
 
 // Clone deep copies a taskSpec.
@@ -220,7 +225,7 @@ func (t TaskSpec) EnvVars() map[string]string {
 		e["DET_USE_TLS"] = "false"
 	}
 
-	e["DET_SEGMENT_ENABLED"] = fmt.Sprintf("%v", t.SegmentEnabled)
+	e["DET_SEGMENT_ENABLED"] = strconv.FormatBool(t.SegmentEnabled)
 	if t.SegmentEnabled {
 		e["DET_SEGMENT_API_KEY"] = t.SegmentAPIKey
 	}
@@ -242,6 +247,10 @@ func (t TaskSpec) EnvVars() map[string]string {
 
 // LogShipperWrappedEntrypoint returns the configured Entrypoint wrapped with ship_logs.py.
 func (t *TaskSpec) LogShipperWrappedEntrypoint() []string {
+	if t.DontShipLogs {
+		return t.Entrypoint
+	}
+
 	// Prepend the entrypoint like: `ship-logs.sh ship_logs.py "$@"`.
 	shipLogsShell := filepath.Join(RunDir, taskShipLogsShell)
 	shipLogsPython := filepath.Join(RunDir, taskShipLogsPython)

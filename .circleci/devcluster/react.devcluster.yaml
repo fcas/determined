@@ -8,6 +8,8 @@ stages:
       pre:
         - sh: make -C tools prep-root
       config_file:
+        security:
+          initial_user_password: $INITIAL_USER_PASSWORD
         port: 8082
         db:
           host: localhost
@@ -25,6 +27,8 @@ stages:
         cache: 
           cache_dir: /tmp/determined-cache
         launch_error: false
+        telemetry:
+          enabled: false
         resource_manager:
           default_aux_resource_pool: default
           default_compute_resource_pool: default

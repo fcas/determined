@@ -113,6 +113,7 @@ SELECT
   t.start_time,
   t.end_time,
   t.hparams,
+  t.log_policy_matched,
   new_ckpt.uuid AS warm_start_checkpoint_uuid,
   (
     SELECT tt.task_id FROM run_id_task_id tt
@@ -140,7 +141,8 @@ SELECT
   ) AS wall_clock_time,
   -- `restart` count is incremented before `restart <= max_restarts` stop restart check,
   -- so trials in terminal state have restarts = max + 1
-  LEAST(t.restarts, max_restarts) as restarts
+  LEAST(t.restarts, max_restarts) as restarts,
+  t.metadata as metadata
 FROM searcher_info
   INNER JOIN trials t ON t.id = searcher_info.trial_id
   LEFT JOIN best_validation bv ON bv.trial_id = searcher_info.trial_id

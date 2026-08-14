@@ -16,8 +16,8 @@ import (
 )
 
 func TestAddJob(t *testing.T) {
-	close := setupDBForTest(t)
-	defer close()
+	closeDB := setupDBForTest(t)
+	defer closeDB()
 
 	t.Run("add job", func(t *testing.T) {
 		_, err := createAndAddJob(0)
@@ -41,8 +41,8 @@ func TestAddJob(t *testing.T) {
 }
 
 func TestJobByID(t *testing.T) {
-	close := setupDBForTest(t)
-	defer close()
+	closeDB := setupDBForTest(t)
+	defer closeDB()
 
 	t.Run("add and retrieve job", func(t *testing.T) {
 		// create and send job
@@ -66,84 +66,13 @@ func TestJobByID(t *testing.T) {
 	})
 }
 
-func TestUpdateJobPosition(t *testing.T) {
-	close := setupDBForTest(t)
-	defer close()
-
-	t.Run("update position", func(t *testing.T) {
-		// create and send job
-		sendJob, err := createAndAddJob(10)
-		require.NoError(t, err)
-
-		// update job position
-		newPos := decimal.NewFromInt(5)
-		err = UpdateJobPosition(context.Background(), sendJob.JobID, newPos)
-		require.NoError(t, err)
-
-		// retrieve job and confirm pos update
-		recvJob, err := JobByID(context.Background(), sendJob.JobID)
-		require.NoError(t, err)
-		assert.Equal(t, newPos.Equal(recvJob.QPos), true)
-		// expect other fields to remain the same
-		assert.Equal(t, sendJob.JobID, recvJob.JobID)
-		assert.Equal(t, sendJob.JobType, recvJob.JobType)
-		assert.Equal(t, sendJob.OwnerID, recvJob.OwnerID)
-	})
-
-	t.Run("update position - negative value", func(t *testing.T) {
-		// create and send job
-		sendJob, err := createAndAddJob(10)
-		require.NoError(t, err)
-
-		// update job position
-		newPos := decimal.NewFromInt(-5)
-		err = UpdateJobPosition(context.Background(), sendJob.JobID, newPos)
-		require.NoError(t, err)
-
-		// retrieve job and confirm pos update
-		recvJob, err := JobByID(context.Background(), sendJob.JobID)
-		require.NoError(t, err)
-		assert.Equal(t, newPos.Equal(recvJob.QPos), true)
-		// expect other fields to remain the same
-		assert.Equal(t, sendJob.JobID, recvJob.JobID)
-		assert.Equal(t, sendJob.JobType, recvJob.JobType)
-		assert.Equal(t, sendJob.OwnerID, recvJob.OwnerID)
-	})
-
-	t.Run("update position - empty ID", func(t *testing.T) {
-		sendJob, err := createAndAddJob(10)
-		require.NoError(t, err)
-
-		// update job position
-		newPos := decimal.NewFromInt(5)
-		err = UpdateJobPosition(context.Background(), model.JobID(""), newPos)
-		require.Error(t, err)
-
-		// retrieve job and ensure queue pos not updated
-		recvJob, err := JobByID(context.Background(), sendJob.JobID)
-		require.NoError(t, err)
-		assert.Equal(t, sendJob.QPos.Equal(recvJob.QPos), true)
-	})
-
-	t.Run("update position - ID does not exist", func(t *testing.T) {
-		// create and send job
-		_, err := createAndAddJob(10)
-		require.NoError(t, err)
-
-		// update job position for a job that doesn't exist
-		newPos := decimal.NewFromInt(5)
-		err = UpdateJobPosition(context.Background(), model.NewJobID(), newPos)
-		require.NoError(t, err)
-	})
-}
-
 // TODO [RM-27] initialize db in a TestMain(...) when there's enough package isolation.
 func setupDBForTest(t *testing.T) func() {
 	require.NoError(t, etc.SetRootPath(RootFromDB))
 
-	db, close := MustResolveTestPostgres(t)
+	db, closeDB := MustResolveTestPostgres(t)
 	MustMigrateTestPostgres(t, db, MigrationsFromDB)
-	return close
+	return closeDB
 }
 
 func createAndAddJob(pos int64) (model.Job, error) {

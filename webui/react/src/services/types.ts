@@ -300,7 +300,6 @@ export interface LaunchJupyterLabParams {
   templateName?: string;
   workspaceId?: number;
 }
-
 export interface GetResourcePoolsParams extends PaginationParams {
   unbound?: boolean;
 }
@@ -501,6 +500,13 @@ export interface DeleteProjectParams {
 export interface PatchWorkspaceParams extends Api.V1PatchWorkspace {
   id: number;
 }
+export interface ListWorkspaceNamespaceBindingsParams {
+  id: number;
+}
+
+export interface GetKubernetesResourceQuotasParamas {
+  id: number;
+}
 
 export interface PatchProjectParams extends Api.V1PatchProject {
   id: number;
@@ -514,10 +520,16 @@ export type UnarchiveProjectParams = ArchiveProjectParams;
 
 export interface GetProjectColumnsParams {
   id: number;
+  tableType: Api.V1TableType;
 }
 
 export interface GetProjectNumericMetricsRangeParams {
   id: number;
+}
+
+export interface GetMetadataValuesParams {
+  projectId: number;
+  key: string;
 }
 
 export interface ActionWorkspaceParams {
@@ -526,6 +538,11 @@ export interface ActionWorkspaceParams {
 
 export interface GetWebhookParams {
   id: number;
+}
+
+export interface PatchWebhookParams {
+  id: number;
+  url: string;
 }
 
 export interface SearchRolesAssignableToScopeParams {
@@ -545,4 +562,33 @@ export interface GetResourcePoolBindingsParams {
 export interface ModifyResourcePoolBindingsParams {
   resourcePoolName: string;
   workspaceIds: number[];
+}
+
+export interface GetWorkspaceConfigPolicies {
+  workspaceId: number;
+  workloadType: 'NTSC' | 'EXPERIMENT';
+}
+
+export interface UpdateWorkspaceConfigPolicies {
+  workspaceId: number;
+  workloadType: 'NTSC' | 'EXPERIMENT';
+  configPolicies: string;
+}
+
+export interface DeleteWorkspaceConfigPolicies {
+  workspaceId: number;
+  workloadType: 'NTSC' | 'EXPERIMENT';
+}
+
+export interface GetGlobalConfigPolicies {
+  workloadType: 'NTSC' | 'EXPERIMENT';
+}
+
+export interface UpdateGlobalConfigPolicies {
+  workloadType: 'NTSC' | 'EXPERIMENT';
+  configPolicies: string;
+}
+
+export interface DeleteGlobalConfigPolicies {
+  workloadType: 'NTSC' | 'EXPERIMENT';
 }

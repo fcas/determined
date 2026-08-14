@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,8 +14,10 @@ import (
 	echoV4 "github.com/labstack/echo/v4"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	launcher "github.hpe.com/hpe/hpc-ard-launcher-go/launcher"
+	"github.hpe.com/hpe/hpc-ard-launcher-go/launcher"
 	"golang.org/x/exp/maps"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/determined-ai/determined/master/internal/api/apiutils"
@@ -240,26 +243,6 @@ func (m *DispatcherResourceManager) DeleteJob(
 	return sproto.EmptyDeleteJobResponse(), nil
 }
 
-// ExternalPreemptionPending notifies a task of a preemption from the underlying resource manager.
-func (m *DispatcherResourceManager) ExternalPreemptionPending(msg sproto.PendingPreemption) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.syslog.WithField("allocation-id", msg.AllocationID).
-		Info("pending preemption of allocation, terminating")
-	allocReq, ok := m.reqList.TaskByID(msg.AllocationID)
-	if ok {
-		rmevents.Publish(allocReq.AllocationID, &sproto.ReleaseResources{
-			Reason:          "preempted by the scheduler",
-			ForcePreemption: true,
-		})
-	} else {
-		m.syslog.WithField("allocation-id", msg.AllocationID).
-			Errorf("unable to find allocation actor for allocation")
-	}
-	return nil
-}
-
 // HealthCheck tries to call launcher and check if it is reachable.
 func (m *DispatcherResourceManager) HealthCheck() []model.ResourceManagerHealth {
 	status := model.Healthy
@@ -271,8 +254,8 @@ func (m *DispatcherResourceManager) HealthCheck() []model.ResourceManagerHealth 
 
 	return []model.ResourceManagerHealth{
 		{
-			Name:   m.rmConfig.Name,
-			Status: status,
+			ClusterName: m.rmConfig.ClusterName,
+			Status:      status,
 		},
 	}
 }
@@ -467,7 +450,7 @@ func (m *DispatcherResourceManager) GetResourcePools() (
 			InstanceType:                 "",
 			Details:                      &resourcepoolv1.ResourcePoolDetail{},
 			Accelerator:                  v.Accelerator,
-			ResourceManagerName:          m.rmConfig.Name,
+			ClusterName:                  m.rmConfig.ClusterName,
 			ResourceManagerMetadata:      m.rmConfig.Metadata,
 		}
 		poolNameMap[pool.Name] = &pool
@@ -510,14 +493,6 @@ func (m *DispatcherResourceManager) getLauncherProvidedPools(
 		}
 	}
 	return result
-}
-
-// MoveJob implements rm.ResourceManager.
-func (*DispatcherResourceManager) MoveJob(req sproto.MoveJob) error {
-	// TODO(HAL-2863): We may not be able to support these specific actions, but how we
-	// let people interact with the job queue in dispatcher/slurm world.
-	// ctx.Respond(fmt.Errorf("modifying job positions is not yet supported in slurm"))
-	return rmerrors.UnsupportedError("move job unsupported in the dispatcher RM")
 }
 
 // RecoverJobPosition implements rm.ResourceManager.
@@ -603,7 +578,7 @@ func (m *DispatcherResourceManager) DisableAgent(msg *apiv1.DisableAgentRequest,
 	defer m.mu.Unlock()
 
 	if m.wlmType == pbsSchedulerType {
-		return nil, errors.New("disable agent is not supported for PBS")
+		return nil, fmt.Errorf("disable agent is not supported for PBS")
 	}
 
 	agent, err := m.findAgent(msg.AgentId)
@@ -624,7 +599,7 @@ func (m *DispatcherResourceManager) EnableAgent(
 	msg *apiv1.EnableAgentRequest,
 ) (*apiv1.EnableAgentResponse, error) {
 	if m.wlmType == pbsSchedulerType {
-		return nil, errors.New("enable agent is not supported for PBS")
+		return nil, fmt.Errorf("enable agent is not supported for PBS")
 	}
 
 	agent, err := m.findAgent(msg.AgentId)
@@ -666,6 +641,44 @@ func (*DispatcherResourceManager) GetSlot(*apiv1.GetSlotRequest) (*apiv1.GetSlot
 // GetSlots is unsupported.
 func (*DispatcherResourceManager) GetSlots(*apiv1.GetSlotsRequest) (*apiv1.GetSlotsResponse, error) {
 	return nil, rmerrors.ErrNotSupported
+}
+
+// DefaultNamespace is unsupported.
+func (*DispatcherResourceManager) DefaultNamespace(string) (*string, error) {
+	return nil, status.Error(codes.NotFound, rmerrors.ErrNotSupported.Error())
+}
+
+// VerifyNamespaceExists is unsupported.
+func (*DispatcherResourceManager) VerifyNamespaceExists(string, string) error {
+	return rmerrors.ErrNotSupported
+}
+
+// CreateNamespace is unsupported.
+func (*DispatcherResourceManager) CreateNamespace(string, string, bool) error {
+	return rmerrors.ErrNotSupported
+}
+
+// DeleteNamespace is unsupported.
+func (*DispatcherResourceManager) DeleteNamespace(string) error {
+	// We don't want to error out when this gets called, because the function cannot get called
+	// because of an API request to delete the namespace. It is only used internally to clean up
+	// namespaces created for workspaces that no longer exist.
+	return nil
+}
+
+// RemoveEmptyNamespace is not supported.
+func (*DispatcherResourceManager) RemoveEmptyNamespace(string, string) error {
+	return rmerrors.ErrNotSupported
+}
+
+// SetResourceQuota is unsupported.
+func (*DispatcherResourceManager) SetResourceQuota(int, string, string) error {
+	return rmerrors.ErrNotSupported
+}
+
+// GetNamespaceResourceQuota is not supported.
+func (*DispatcherResourceManager) GetNamespaceResourceQuota(string, string) (*float64, error) {
+	return nil, status.Error(codes.NotFound, rmerrors.ErrNotSupported.Error())
 }
 
 // ResolveResourcePool returns the resolved slurm partition or an error if it doesn't exist or
@@ -1015,7 +1028,7 @@ func addSlotToAgent(
 	}
 	slotRef := fmt.Sprintf("/agents/%s/slots/%d", node.Name, slotID)
 	slot := agentv1.Slot{
-		Id:       fmt.Sprintf("%d", slotID),
+		Id:       strconv.Itoa(slotID),
 		Device:   &device,
 		Enabled:  true,
 		Draining: false,
@@ -1038,7 +1051,7 @@ func (m *DispatcherResourceManager) StartDispatcherResources(msg StartDispatcher
 	// Perform any necessary actions on m.reqList before going async
 	req, ok := m.reqList.TaskByID(msg.AllocationID)
 	if !ok {
-		m.sendResourceStateChangedErrorResponse(errors.New("no such task"), msg,
+		m.sendResourceStateChangedErrorResponse(fmt.Errorf("no such task"), msg,
 			"task not found in the task list")
 
 		// no request to process, so bail
@@ -1302,12 +1315,11 @@ func (m *DispatcherResourceManager) waitForDispatchTerminalState(
 	log := m.syslog.WithField("dispatch-id", dispatchID)
 
 	for i := 0; i < 20; i++ {
-		if m.jobWatcher.isDispatchInProgress(impersonatedUser, dispatchID) {
-			log.Debugf("dispatch still active, waiting for termination")
-			time.Sleep(6 * time.Second)
-		} else {
+		if !m.jobWatcher.isDispatchInProgress(impersonatedUser, dispatchID) {
 			return
 		}
+		log.Debugf("dispatch still active, waiting for termination")
+		time.Sleep(6 * time.Second)
 	}
 	log.Warn("dispatch still active, but wait time exceeded, continuing...")
 }
@@ -1773,7 +1785,7 @@ func (m *DispatcherResourceManager) sendManifestToDispatcher(
 		if response != nil {
 			// If we have a real error body, return the details message
 			if details := extractDetailsFromResponse(response, err); len(details) > 0 {
-				return "", errors.New(details)
+				return "", fmt.Errorf(details)
 			}
 			return "", errors.Wrapf(err, m.apiClient.handleLauncherError(
 				response, "Job launch failed", err))
@@ -2224,4 +2236,9 @@ func (m *DispatcherResourceManager) EnableSlot(*apiv1.EnableSlotRequest,
 func (m *DispatcherResourceManager) DisableSlot(*apiv1.DisableSlotRequest,
 ) (resp *apiv1.DisableSlotResponse, err error) {
 	return nil, errNotSupportedOnHpcCluster
+}
+
+// SmallerValueIsHigherPriority returns true if smaller priority values indicate a higher priority level.
+func (m *DispatcherResourceManager) SmallerValueIsHigherPriority() (bool, error) {
+	return false, fmt.Errorf("priority not implemented")
 }

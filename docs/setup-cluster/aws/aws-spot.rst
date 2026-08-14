@@ -4,7 +4,7 @@
  Use Spot Instances
 ####################
 
-This document describes how to use AWS spot instances with Determined. Spot instances can be much
+This guide describes how to use AWS spot instances with Determined. Spot instances can be much
 cheaper than on-demand instances (up to 90% cheaper, but more often 70-80%) but they are unreliable,
 so software that runs on spot instances must be fault tolerant. Unfortunately, deep learning code is
 often not written with fault tolerance in mind, preventing many practitioners from using spot
@@ -101,8 +101,8 @@ to use spot instances:
 
    AWS error while launching spot instances, AuthFailure.ServiceLinkedRoleCreationNotPermitted, The provided credentials do not have permission to create the service-linked role for EC2 Spot Instances.
 
-When this error occurs, please check the `AWS documentation
-<https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/spot-requests.html#service-linked-roles-spot-instance-requests>`__.
+For more information, visit the `AWS documentation
+<https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/service-linked-roles-spot-instance-requests.html>`__.
 Most likely, you will need to use the AWS CLI to create the ``AWSServiceRoleForEC2Spot`` role:
 
 .. code::

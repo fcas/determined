@@ -1,13 +1,9 @@
-import { expect } from '@playwright/test';
-
-import { test } from 'e2e/fixtures/global-fixtures';
-import { BasePage } from 'e2e/models/BasePage';
+import { expect, test } from 'e2e/fixtures/global-fixtures';
+import { Cluster } from 'e2e/models/pages/Cluster';
+import { DefaultRoute } from 'e2e/models/pages/DefaultRoute';
 import { SignIn } from 'e2e/models/pages/SignIn';
 
 test.describe('Authentication', () => {
-  test.beforeEach(async ({ dev }) => {
-    await dev.setServerAddress();
-  });
   test.afterEach(async ({ page, auth }) => {
     const signInPage = new SignIn(page);
     if ((await page.title()).indexOf(signInPage.title) === -1) {
@@ -18,34 +14,42 @@ test.describe('Authentication', () => {
   test('Login and Logout', async ({ page, auth }) => {
     await test.step('Login', async () => {
       await auth.login();
-      await expect(page).toHaveTitle(BasePage.getTitle('Home'));
-      await expect(page).toHaveURL(/dashboard/);
+      const defaultPage = new DefaultRoute(page);
+      await expect(page).toHaveDeterminedTitle(defaultPage.title);
+      await expect(page).toHaveURL(defaultPage.url);
     });
 
     await test.step('Logout', async () => {
       const signInPage = new SignIn(page);
       await auth.logout();
-      await expect(page).toHaveTitle(signInPage.title);
+      await expect(page).toHaveDeterminedTitle(signInPage.title);
       await expect(page).toHaveURL(/login/);
     });
   });
 
-  test('Redirect to the target URL after login', async ({ page, auth }) => {
-    await test.step('Visit a page and expect redirect back to login', async () => {
-      await page.goto('./models');
+  test('Login Redirect', async ({ page, auth }) => {
+    await test.step('Attempt to Visit a Page', async () => {
+      await page.goto('./clusters/logs');
       await expect(page).toHaveURL(/login/);
     });
 
-    await test.step('Login and expect redirect to previous page', async () => {
-      await auth.login({ waitForURL: /models/ });
-      await expect(page).toHaveTitle(BasePage.getTitle('Model Registry'));
+    await test.step('Login and Redirect', async () => {
+      await auth.login({ expectedURL: /clusters\/logs/ });
+      const clusterPage = new Cluster(page);
+      await expect(page).toHaveDeterminedTitle(clusterPage.title);
+      await expect(clusterPage.overviewTab.pwLocator).toHaveAttribute('aria-selected', 'false');
+      await expect(clusterPage.historicalUsageTab.pwLocator).toHaveAttribute(
+        'aria-selected',
+        'false',
+      );
+      await expect(clusterPage.logsTab.pwLocator).toHaveAttribute('aria-selected', 'true');
     });
   });
 
-  test('Bad credentials should throw an error', async ({ page, auth }) => {
+  test('Bad Credentials', async ({ page, auth }) => {
     const signInPage = new SignIn(page);
-    await auth.login({ password: 'superstar', username: 'jcom', waitForURL: /login/ });
-    await expect(page).toHaveTitle(signInPage.title);
+    await auth.login({ expectedURL: /login/, password: 'superstar', username: 'jcom' });
+    await expect(page).toHaveDeterminedTitle(signInPage.title);
     await expect(page).toHaveURL(/login/);
     await expect(signInPage.detAuth.errors.pwLocator).toBeVisible();
     await expect(signInPage.detAuth.errors.alert.pwLocator).toBeVisible();
@@ -57,10 +61,9 @@ test.describe('Authentication', () => {
     );
   });
 
-  test('Expect submit disabled; Show multiple errors', async ({ page }) => {
+  test('Show Multiple Errors', async ({ page }) => {
     const signInPage = new SignIn(page);
     await signInPage.goto();
-    await expect.soft(signInPage.detAuth.submit.pwLocator).toBeDisabled();
     await signInPage.detAuth.username.pwLocator.fill('chubbs');
     await signInPage.detAuth.submit.pwLocator.click();
     await signInPage.detAuth.submit.pwLocator.click();

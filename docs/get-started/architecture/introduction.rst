@@ -333,7 +333,7 @@ Here are some scenarios where it can be valuable to use multiple resource pools:
 -  *Use GPU for training while using CPUs for TensorBoard.*
 
    You create one pool, ``aws-v100``, that provisions ``p3dn.24xlarge`` instances (large V100 EC2
-   instances) and another pool, ``aws-cpu`` that provisions ``m5.large`` instances (small and cheap
+   instances) and another pool, ``aws-cpu`` that provisions ``m6i.large`` instances (small and cheap
    CPU instances). You train your experiments using the ``aws-v100`` pool, while you run your
    TensorBoards in the ``aws-cpu`` pool. When your experiments complete, the ``aws-v100 pool`` can
    scale down to zero to save money, but you can continue to run your TensorBoard. Without resource
@@ -391,6 +391,11 @@ If you are using static resource pools and launching agents by hand, you will ne
 :ref:`agent configuration <agent-config-reference>` to specify which resource pool the agent should
 join.
 
+To change the resource pool an agent is assigned to after it has already joined one, you need to
+update the :ref:`agent configuration <agent-config-reference>`. Before making this change, ensure
+the agents are properly drained. Once the configuration is updated, restart the agent to connect it
+to the new resource pool.
+
 Migrate to Resource Pools
 -------------------------
 
@@ -428,7 +433,7 @@ Here is an example master configuration illustrating the potential problem.
    resource_manager:
      type: agent
      scheduler:
-       type: round_robin
+       type: fair_share
        fitting_policy: best
      default_aux_resource_pool: pool1
      default_compute_resource_pool: pool1
@@ -438,13 +443,13 @@ Here is an example master configuration illustrating the potential problem.
        scheduler:
          fitting_policy: worst
 
-This example sets the cluster-wide scheduler defaults to use a best-fit, round robin scheduler in
+This example sets the cluster-wide scheduler defaults to use a best-fit, fair share scheduler in
 ``resource_manager.scheduler``. The scheduler settings at the pool level for ``pool1`` are then
 overwritten. Because ``scheduler.fitting_policy=worst`` is set, no settings are inherited from
-``resource_manager.scheduler`` so pool1 uses a worst-fit, fair share scheduler because for a blank
-``scheduler.type`` field, the default value is ``fair_share``.
+``resource_manager.scheduler`` so pool1 uses a worst-fit, priority scheduler because for a blank
+``scheduler.type`` field, the default value is ``priority``.
 
-If you want to have ``pool1`` use a worst-fit, round robin scheduler, you need to make sure you
+If you want to have ``pool1`` use a worst-fit, fair share scheduler, you need to make sure you
 redefine the scheduler type at the pool-specific level:
 
 .. code:: yaml
@@ -452,7 +457,7 @@ redefine the scheduler type at the pool-specific level:
    resource_manager:
      type: agent
      scheduler:
-       type: round_robin
+       type: fair_share
        fitting_policy: best
      default_aux_resource_pool: pool1
      default_compute_resource_pool: pool1
@@ -460,7 +465,7 @@ redefine the scheduler type at the pool-specific level:
    resource_pools:
      - pool_name: pool1
        scheduler:
-         type: round_robin
+         type: fair_share
          fitting_policy: worst
 
 Launch Tasks into Resource Pools
@@ -677,51 +682,7 @@ a higher priority (e.g. a priority 50 task will run before a priority 40 task).
 Priority Scheduling with Preemption
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Determined also makes available a priority scheduler that extends the Kubernetes scheduler to
-support preemption with backfilling. This plugin will preempt existing pods if higher priority pods
-are submitted. If there is still space in the cluster, backfilling will attempt to fill the nodes by
-scheduling lower priority jobs. Additionally, if there are leftover slots on partially-filled nodes,
-the scheduler will attempt to assign single-slot tasks until the space is filled. This packing
-behavior only occurs with single-slot tasks.
-
-This plugin is also in beta and is not enabled by default. To enable it, edit ``values.yaml`` in the
-Determined Helm chart to set the ``defaultScheduler`` field to ``preemption``. Autoscaling is not
-supported and Determined can only automatically set labels for GPU experiments.
-
-Determined provides a default priority class, ``determined-medium-priority`` that has a priority of
-``50`` and is used for all tasks. If users want to set a different priority level for an experiment,
-they may either specify a priority in the ``resources`` field of the experiment config or create a
-priorityClass and specify it in the ``pod_spec`` of the config. If both are specified, the specified
-priorityClass will take precedence over the priority field. In Kubernetes, a higher priority value
-means a higher priority (e.g. a priority 50 task will run before a priority 40 task).
-
-Additionally, if using a cluster with tainted nodes or labels, users must specify the tolerations or
-node selectors in the ``pod_spec``. It is recommended that you use both tolerations and node
-selectors to better constrain where your experiments can run, especially on clusters that contain
-multiple GPU types.
-
-Below is an example that illustrates how to set priorities, tolerations, and node selectors.
-
-.. code:: yaml
-
-   resources:
-      priority: 42 # priorityClass, if set, takes precedence over this value
-   environment:
-      pod_spec:
-         apiVersion: v1
-         kind: Pod
-         spec:
-            priorityClassName: determined-medium-priority # don't set if using priority value
-            nodeSelector:
-               key: value
-            tolerations:
-            -  key: "key1"
-               operator: "Equal"
-               value: "value"
-               effect: "NoSchedule"
-
-The Kubernetes priority scheduler can be used with the Determined job queue feature, which allows
-more insight into scheduling decisions.
+This extension to the Kubernetes scheduler was deprecated and removed as of version 0.36.0.
 
 .. _concept-trial:
 
@@ -849,8 +810,6 @@ In this example experiment configuration, numbers, strings, maps, and an array a
    searcher:
      name: single
      metric: error
-     max_length:
-       batches: 500
      smaller_is_better: true
    environment:
      environment_variables:

@@ -12,9 +12,31 @@ VALID_WORKLOAD_MANAGERS="slurm pbs"
 export OPT_CONTAINER_RUN_TYPE="singularity"
 export OPT_WORKLOAD_MANAGER="slurm"
 export OPT_LAUNCHER_PORT=8081
-DETERMINED_AGENT=
 MACHINE_TYPE=
 GPUS=
+
+tryloop_attempt() {
+    # Run the command after the `--` arg.
+    while [ "$1" != "--" ]; do shift; done
+    shift
+    "$@"
+}
+
+# Try an action multiple time with configurable sleeps in between.
+#
+# usage: tryloop A B... -- CMD...
+#
+# Equivalent to: CMD || sleep A && CMD || sleep B && CMD || ...
+tryloop() {
+    while [ "$1" != "--" ]; do
+        tryloop_attempt "$@" && return
+        echo "retrying in $1..." >&2
+        sleep "$1"
+        shift
+    done
+    # Final attempt.
+    tryloop_attempt "$@"
+}
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -29,18 +51,18 @@ while [[ $# -gt 0 ]]; do
         -w | --workload-manager)
             export OPT_WORKLOAD_MANAGER=$2
             if [[ ! " $VALID_WORKLOAD_MANAGERS " =~ " $OPT_WORKLOAD_MANAGER " ]]; then
-                echo >&2 "usage $0: Missing or invalid workload manager specified for the '-r' option.  Valid values are: ${VALID_WORKLOAD_MANAGERS}"
+                echo >&2 "usage $0: Missing or invalid workload manager specified for the '-w' option.  Valid values are: ${VALID_WORKLOAD_MANAGERS}"
                 exit 1
             fi
             shift 2
             ;;
-        -A)
-            DETERMINED_AGENT=1
-            shift
-            ;;
         -m)
             # This is processed already by generate-tfvars.sh
             MACHINE_TYPE=$2
+            shift 2
+            ;;
+        -l)
+            # This is processed already by generate-tfvars.sh
             shift 2
             ;;
         -g)
@@ -73,9 +95,6 @@ while [[ $# -gt 0 ]]; do
             echo "as always."
             echo ""
             echo "FLAGS:"
-            echo '  -A '
-            echo "           Description: Invokes a slurmcluster that uses agents instead of the launcher."
-            echo "           Example: $0 -A"
             echo '  -c {enroot|podman|singularity}'
             echo "           Description: Invokes a slurmcluster using the specified container run type."
             echo "           Options are 'enroot', 'podman', or 'singularity'. Default is 'singularity'."
@@ -100,7 +119,7 @@ while [[ $# -gt 0 ]]; do
             echo "You can also combine the flags.  When invoked via 'make slurmcluster' flags are passed"
             echo 'via the FLAGS="options" argument.'
             echo ""
-            echo '   Example: FLAGS="-A -c enroot -w pbs -g nvidia-tesla-t4:2"'
+            echo '   Example: FLAGS="-c enroot -w pbs -g nvidia-tesla-t4:2"'
             echo ""
             exit 0
             ;;
@@ -148,15 +167,13 @@ trap 'kill $TUNNEL_PID' EXIT
 echo "Started bidirectional tunnels to $INSTANCE_NAME"
 
 # Grab launcher token.
-if [[ -z $DETERMINED_AGENT ]]; then
-    REMOTE_TOKEN_SOURCE=/opt/launcher/jetty/base/etc/.launcher.token
-    LOCAL_TOKEN_DEST=$TEMPDIR/.launcher.token
-    gcloud compute scp --quiet --zone "us-west1-b" --project "determined-ai" root@$INSTANCE_NAME:$REMOTE_TOKEN_SOURCE $LOCAL_TOKEN_DEST
-    echo "Copied launcher token to $LOCAL_TOKEN_DEST"
-    # The launcher service verifies communication with the launcher, so just have to be sure it is started.
-    # Also show the status for extra confirmaiton in the logs of the state.
-    gcloud compute ssh --zone "$ZONE" "$INSTANCE_NAME" --project "$PROJECT" -- "sudo systemctl start launcher.service ; systemctl status launcher.service --no-pager"
-fi
+REMOTE_TOKEN_SOURCE=/opt/launcher/jetty/base/etc/.launcher.token
+LOCAL_TOKEN_DEST=$TEMPDIR/.launcher.token
+tryloop 1 1 1 10 30 -- gcloud compute scp --quiet --zone "us-west1-b" --project "determined-ai" root@$INSTANCE_NAME:$REMOTE_TOKEN_SOURCE $LOCAL_TOKEN_DEST
+echo "Copied launcher token to $LOCAL_TOKEN_DEST"
+# The launcher service verifies communication with the launcher, so just have to be sure it is started.
+# Also show the status for extra confirmaiton in the logs of the state.
+tryloop 1 1 1 10 30 -- gcloud compute ssh --zone "$ZONE" "$INSTANCE_NAME" --project "$PROJECT" -- "sudo systemctl start launcher.service ; systemctl status launcher.service --no-pager"
 
 # Build devcluster.yaml.
 
@@ -183,9 +200,9 @@ export OPT_PROJECT_ROOT='../..'
 export OPT_CLUSTER_INTERNAL_IP=$(terraform -chdir=terraform output --raw internal_ip)
 export OPT_AUTHFILE=$LOCAL_TOKEN_DEST
 
-LOCAL_CPU_IMAGE_STRING=$(grep "CPUImage" ../../master/pkg/schemas/expconf/const.go | awk -F'\"' '{print $2}')
+LOCAL_CPU_IMAGE_STRING="determinedai/pytorch-tensorflow-cpu-dev:e960eae"
 LOCAL_CPU_IMAGE_SQSH=${LOCAL_CPU_IMAGE_STRING//[\/:]/+}.sqsh
-LOCAL_CUDA_IMAGE_STRING=$(grep "CUDAImage" ../../master/pkg/schemas/expconf/const.go | awk -F'\"' '{print $2}')
+LOCAL_CUDA_IMAGE_STRING="determinedai/pytorch-ngc-dev:e960eae"
 LOCAL_CUDA_IMAGE_SQSH=${LOCAL_CUDA_IMAGE_STRING//[\/:]/+}.sqsh
 
 # Enroot container creation
@@ -195,11 +212,11 @@ if [[ $OPT_CONTAINER_RUN_TYPE == "enroot" ]]; then
     CUDA_IMAGE_SQSH=$(gcloud_ssh_stdout_only "ls /srv/enroot/ | grep '^determinedai+environments+cuda'")
 
     if [[ $CPU_IMAGE_SQSH != "$LOCAL_CPU_IMAGE_SQSH" ]]; then
-        echo "WARNING: Local CPUImage specified in ../../master/pkg/schemas/expconf/const.go does not match the CPU Image found on existing ${OPT_WORKLOAD_MANAGER} image."
+        echo "WARNING: Local CPUImage ${LOCAL_CPU_IMAGE_STRING} does not match the CPU Image found on existing ${OPT_WORKLOAD_MANAGER} image."
         echo "   Regenerate base image with: make -C tools/slurm/packer build WORKLOAD_MANAGER=${OPT_WORKLOAD_MANAGER}"
     fi
     if [[ $CUDA_IMAGE_SQSH != "$LOCAL_CUDA_IMAGE_SQSH" ]]; then
-        echo "WARNING: Local CUDAImage specified in ../../master/pkg/schemas/expconf/const.go does not match the CUDA Image found on existing ${OPT_WORKLOAD_MANAGER} image."
+        echo "WARNING: Local CUDAImage ${LOCAL_CUDA_IMAGE_STRING} does not match the CUDA Image found on existing ${OPT_WORKLOAD_MANAGER} image."
         echo "   Regenerate base image with: make -C tools/slurm/packer build WORKLOAD_MANAGER=${OPT_WORKLOAD_MANAGER}"
     fi
 
@@ -216,12 +233,6 @@ fi
 
 TEMPYAML=$TEMPDIR/slurmcluster.yaml
 envsubst <$PARENT_PATH/slurmcluster.yaml >$TEMPYAML
-if [[ -n $DETERMINED_AGENT ]]; then
-    # When deploying with the determined agent, remove the resource_manager section
-    # that would otherwise be used.   This then defaults to the agent rm and
-    # the master waits for agents to connect and provide resources.
-    sed -i -e '/resource_manager/,/resource_manager_end/d' $TEMPYAML
-fi
 echo "Generated devcluster file: $TEMPYAML"
 
 # We connect to the Slurm VM using an external IP address, but although it's a

@@ -73,7 +73,7 @@ func generateMetricToColumn(metric string) string {
 // trial.
 func MetricsTimeSeries(trialID int32, startTime time.Time,
 	metricNames []string,
-	startBatches int, endBatches int, xAxisMetricLabels []string,
+	startBatches int, endBatches int,
 	maxDatapoints int, timeSeriesColumn string,
 	timeSeriesFilter *commonv1.PolymorphicFilter, metricGroup model.MetricGroup) (
 	metricMeasurements []db.MetricMeasurements, err error,
@@ -106,7 +106,7 @@ func MetricsTimeSeries(trialID int32, startTime time.Time,
 		return nil, fmt.Errorf("getting summary metrics for trial %d: %w", trialID, err)
 	}
 
-	for _, metricName := range append(metricNames, "epoch") {
+	for _, metricName := range append(metricNames, "epoch", "epochs") {
 		metricType := db.MetricTypeString
 		if curSummary, ok := summaryMetrics.Metrics[metricName].(map[string]any); ok {
 			if m, ok := curSummary["type"].(string); ok {
@@ -163,14 +163,23 @@ func MetricsTimeSeries(trialID int32, startTime time.Time,
 				valuesMap[selectMetrics[mName]] = mVal
 			}
 		}
-		var epoch *float64
-		if results[i]["epoch"] != nil {
-			if e, ok := results[i]["epoch"].(float64); ok {
-				epoch = &e
-			} else {
+		var epochs *float64
+		// "epoch" is the legacy metric name for epoch x-axis metric, it was renamed to "epochs"
+		// but we fallback to "epoch" for backwards compatibility.
+		if results[i]["epochs"] != nil {
+			e, ok := results[i]["epochs"].(float64)
+			if !ok {
+				return nil, fmt.Errorf(
+					"metric 'epochs' has nonnumeric value reported value='%v'", results[i]["epochs"])
+			}
+			epochs = &e
+		} else if results[i]["epoch"] != nil {
+			e, ok := results[i]["epoch"].(float64)
+			if !ok {
 				return nil, fmt.Errorf(
 					"metric 'epoch' has nonnumeric value reported value='%v'", results[i]["epoch"])
 			}
+			epochs = &e
 		}
 		var endTime time.Time
 		if results[i]["time"] == nil {
@@ -181,7 +190,7 @@ func MetricsTimeSeries(trialID int32, startTime time.Time,
 		metricM := db.MetricMeasurements{
 			Batches: uint(results[i]["batches"].(int64)),
 			Time:    endTime,
-			Epoch:   epoch,
+			Epoch:   epochs,
 			TrialID: int32(results[i]["trial_id"].(int64)),
 			Values:  valuesMap,
 		}
@@ -333,6 +342,11 @@ func UpdateUnmanagedExperimentStatesTx(
 				endTime = ptrs.Ptr(time.Now())
 			}
 			exp.EndTime = endTime
+
+			if exp.State == model.CompletedState {
+				columns = append(columns, "progress")
+				exp.Progress = ptrs.Ptr(1.0)
+			}
 		}
 
 		if _, err := tx.NewUpdate().Model(exp).Column(columns...).WherePK().Exec(ctx); err != nil {
@@ -454,8 +468,7 @@ func ProtoGetTrialsPlusTx(
 			"task_ids",
 		}
 		for _, field := range jsonFields {
-			switch sVal := resMap[field].(type) {
-			case string:
+			if sVal, ok := resMap[field].(string); ok {
 				resMap[field] = []byte(sVal)
 			}
 		}

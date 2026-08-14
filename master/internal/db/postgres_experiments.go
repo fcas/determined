@@ -172,17 +172,16 @@ func MetricBatches(
 	batches []int32, endTime time.Time, err error,
 ) {
 	var rows []*batchesWrapper
-	JSONKey := model.TrialMetricsJSONPath(metricGroup == model.ValidationMetricGroup)
+	jsonKey := model.TrialMetricsJSONPath(metricGroup == model.ValidationMetricGroup)
 
 	err = BunSelectMetricsQuery(metricGroup, false).
 		TableExpr("trials t").
 		Join("INNER JOIN metrics m ON t.id=m.trial_id").
 		ColumnExpr("m.total_batches AS batches_processed, max(t.end_time) as end_time").
 		Where("t.experiment_id = ?", experimentID).
-		Where(fmt.Sprintf("m.metrics->'%s' ? '%s'", JSONKey, metricName)).
+		Where(fmt.Sprintf("m.metrics->'%s' ? '%s'", jsonKey, metricName)).
 		Where("m.end_time > ?", startTime).
 		Group("batches_processed").Scan(context.Background(), &rows)
-
 	if err != nil {
 		return nil, endTime, errors.Wrapf(err, "error querying DB for metric batches")
 	}
@@ -388,25 +387,6 @@ LIMIT 1`, metricOrdering), exp.Config.Searcher.Metric, id).Scan(ctx, &metric); e
 	return metric, nil
 }
 
-// TrialExperimentAndRequestID returns the trial's experiment and request ID.
-func (db *PgDB) TrialExperimentAndRequestID(id int) (int, model.RequestID, error) {
-	var eID int
-	var rID model.RequestID
-	err := db.sql.QueryRow(`
-SELECT e.id, t.request_id
-FROM trials t, experiments e
-WHERE t.experiment_id = e.id
-  AND t.id = $1`, id).Scan(&eID, &rID)
-	switch {
-	case err == sql.ErrNoRows:
-		return eID, rID, errors.WithStack(ErrNotFound)
-	case err != nil:
-		return eID, rID, errors.Wrap(err, "failed to get trial exp and req id")
-	default:
-		return eID, rID, nil
-	}
-}
-
 // ExperimentConfigRaw returns the full config object for an experiment as a JSON string.
 func (db *PgDB) ExperimentConfigRaw(id int) ([]byte, error) {
 	return db.rawQuery(`
@@ -485,85 +465,6 @@ func AddExperimentTx(
 	if err != nil {
 		return errors.Wrapf(err, "error inserting experiment %v", experiment)
 	}
-	if err = AddProjectHyperparameters(
-		ctx, idb, int32(experiment.ProjectID), []int32{int32(experiment.ID)}); err != nil {
-		return errors.Wrapf(err, "error updating hyperparameters")
-	}
-
-	return nil
-}
-
-// RemoveProjectHyperparameters take a list of experiment ids,
-// recalculate their respective project hyper parameters.
-func RemoveProjectHyperparameters(ctx context.Context, idb bun.IDB, experimentIDs []int32) error {
-	if idb == nil {
-		idb = Bun()
-	}
-	var projectIDs []int
-	err := idb.NewRaw(`WITH recursive flat (project_id, key, value) AS (
-		SELECT project_id, key, value
-		FROM experiments,
-		jsonb_each(config -> 'hyperparameters')
-		WHERE project_id IN (SELECT project_id WHERE id IN (?)) AND id NOT IN (?)
-	UNION
-		SELECT f.project_id, concat(f.key, '.', j.key), j.value
-		FROM flat f,
-		jsonb_each(f.value) j
-		WHERE jsonb_typeof(f.value) = 'object' AND f.value -> 'type' IS NULL
-	), flatten AS (
-	SELECT project_id, array_to_json(array_agg(DISTINCT key)) AS data
-	FROM flat
-	WHERE value -> 'type' IS NOT NULL
-	GROUP BY project_id), reset_hp AS (
-        UPDATE projects SET hyperparameters = '[]'::jsonb
-		WHERE id IN (SELECT project_id FROM experiments WHERE id IN (?))
-    )
-	UPDATE projects SET hyperparameters = flatten.data FROM flatten
-	WHERE flatten.project_id = projects.id`,
-		bun.In(experimentIDs), bun.In(experimentIDs), bun.In(experimentIDs)).Scan(ctx, &projectIDs)
-	if err != nil {
-		return err
-	}
-	if len(projectIDs) > 1 {
-		return errors.New("error removing experiment hyperparameters")
-	}
-	return nil
-}
-
-// AddProjectHyperparameters takes a list of project ids,
-// combine their hyper parameters with existing one.
-func AddProjectHyperparameters(
-	ctx context.Context, idb bun.IDB, projectID int32, experimentIDs []int32,
-) error {
-	if idb == nil {
-		idb = Bun()
-	}
-	var projectIDs []int
-	err := idb.NewRaw(`WITH recursive flat (key, value) AS (
-		SELECT key, value
-		FROM experiments,
-		jsonb_each(config -> 'hyperparameters')
-		WHERE id IN (?)
-	UNION
-		SELECT concat(f.key, '.', j.key), j.value
-		FROM flat f,
-		jsonb_each(f.value) j
-		WHERE jsonb_typeof(f.value) = 'object' AND f.value -> 'type' IS NULL
-	), flatten AS (
-	SELECT key AS data
-	FROM flat WHERE value -> 'type' IS NOT NULL
-	UNION SELECT jsonb_array_elements_text(hyperparameters) FROM projects WHERE id = ?
-	), agg AS (
-		SELECT array_to_json(array_agg(DISTINCT flatten.data)) AS adata FROM flatten
-	)
-	UPDATE "projects" SET hyperparameters = agg.adata FROM agg WHERE (id = ?) RETURNING id`,
-		bun.In(experimentIDs), projectID, projectID).Scan(ctx, &projectIDs)
-	if err != nil {
-		return err
-	}
-	if len(projectIDs) > 1 {
-		return errors.New("error adding experiment hyperparameters")
-	}
 	return nil
 }
 
@@ -599,6 +500,27 @@ WHERE t.id = ?`, trialID).Scan(ctx, &experiment); err != nil {
 	}
 
 	return &experiment, nil
+}
+
+// ExperimentsByTrialID looks up an experiment by a given list of trialIDs, returning
+// an error if none exists.
+func ExperimentsByTrialID(ctx context.Context, trialIDs []int) ([]*model.Experiment, error) {
+	var experiment []*model.Experiment
+
+	if err := Bun().NewRaw(`
+SELECT DISTINCT e.id, e.state, e.config, e.start_time, e.end_time, e.archived,
+       e.owner_id, e.notes, e.job_id, u.username as username, e.project_id, unmanaged, external_experiment_id
+FROM experiments e
+JOIN trials t ON e.id = t.experiment_id
+JOIN users u ON (e.owner_id = u.id)
+WHERE t.id IN (?)`, bun.In(trialIDs)).Scan(ctx, &experiment); err != nil {
+		return nil, MatchSentinelError(err)
+	}
+
+	if len(experiment) == 0 {
+		return nil, ErrNotFound
+	}
+	return experiment, nil
 }
 
 // ExperimentByTaskID looks up an experiment by a given taskID, returning an error
@@ -667,6 +589,25 @@ SELECT experiment_id FROM trials where id = $1
 		return 0, errors.Wrapf(err, "querying for experiment id for trial %v", trialID)
 	}
 	return experimentID, nil
+}
+
+// TrialExperimentAndRequestID returns the trial's experiment and request ID.
+func (db *PgDB) TrialExperimentAndRequestID(id int) (int, model.RequestID, error) {
+	var eID int
+	var rID model.RequestID
+	err := db.sql.QueryRow(`
+SELECT e.id, t.request_id
+FROM trials t, experiments e
+WHERE t.experiment_id = e.id
+  AND t.id = $1`, id).Scan(&eID, &rID)
+	switch {
+	case err == sql.ErrNoRows:
+		return eID, rID, errors.WithStack(ErrNotFound)
+	case err != nil:
+		return eID, rID, errors.Wrap(err, "failed to get trial exp and req id")
+	default:
+		return eID, rID, nil
+	}
 }
 
 // NonTerminalExperiments finds all experiments in the database whose states are not terminal.
@@ -820,7 +761,7 @@ RETURNING e.state, old.state
 		return errors.Wrap(err, "updating experiment state")
 	}
 	if newState == oldState {
-		return errors.New("could not transition experiment")
+		return fmt.Errorf("could not transition experiment")
 	}
 	return nil
 }
@@ -888,6 +829,9 @@ EXISTS(
 
 // SaveExperimentProgress stores the progress for an experiment in the database.
 func (db *PgDB) SaveExperimentProgress(id int, progress *float64) error {
+	if progress != nil && (*progress < 0 || *progress > 1) {
+		return errors.Errorf("invalid progress value: %f. Progress value should be between 0 and 1", *progress)
+	}
 	res, err := db.sql.Exec(`UPDATE experiments SET progress = $1 WHERE id = $2`, progress, id)
 	if err != nil {
 		return errors.Wrap(err, "saving experiment progress")
@@ -1034,6 +978,7 @@ WHERE id = $1`, id)
 
 // GetCheckpoint gets checkpointv1.Checkpoint from the database by UUID.
 // Can be moved to master/internal/checkpoints once db/postgres_model_intg_test is bunified.
+// WARNING: Function does not account for "NaN", "Infinity", or "-Infinity" due to Bun unmarshallling.
 func GetCheckpoint(ctx context.Context, checkpointUUID string) (*checkpointv1.Checkpoint, error) {
 	var retCkpt1 checkpointv1.Checkpoint
 	err := Bun().NewSelect().

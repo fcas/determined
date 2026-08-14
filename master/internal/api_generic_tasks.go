@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -17,6 +18,7 @@ import (
 	"github.com/determined-ai/determined/master/internal/api"
 	"github.com/determined-ai/determined/master/internal/authz"
 	"github.com/determined-ai/determined/master/internal/command"
+	masterConfig "github.com/determined-ai/determined/master/internal/config"
 	"github.com/determined-ai/determined/master/internal/db"
 	"github.com/determined-ai/determined/master/internal/grpcutil"
 	"github.com/determined-ai/determined/master/internal/job/jobservice"
@@ -130,6 +132,12 @@ func (a *apiServer) getGenericTaskLaunchParameters(
 	taskConfig.Resources.RawResourcePool = &rawResourcePool
 	taskConfig.Resources.RawSlots = &resources.Slots
 
+	// Apply the scheduler's default priority.
+	if taskConfig.Resources.Priority() == nil {
+		prio := masterConfig.DefaultPriorityForPool(poolName.String())
+		taskConfig.Resources.RawPriority = &prio
+	}
+
 	var contextDirectoryBytes []byte
 	taskConfig.WorkDir, contextDirectoryBytes, err = fillContextDir(
 		taskConfig.WorkDir,
@@ -164,7 +172,7 @@ func (a *apiServer) canCreateGenericTask(ctx context.Context, projectID int) err
 		return err
 	}
 
-	errProjectNotFound := api.NotFoundErrs("project", fmt.Sprint(projectID), true)
+	errProjectNotFound := api.NotFoundErrs("project", strconv.Itoa(projectID), true)
 	p := &projectv1.Project{}
 	// Get project details
 	projectExperimentsQuery := db.Bun().NewSelect().
@@ -231,9 +239,6 @@ func (a *apiServer) CreateGenericTask(
 		}
 
 		forkedConfig = []byte(resp.Config)
-		if err != nil {
-			return nil, err
-		}
 
 		if len(req.ContextDirectory) == 0 {
 			contextDirectoryResp, err := a.GetTaskContextDirectory(ctx, &apiv1.GetTaskContextDirectoryRequest{
@@ -665,8 +670,11 @@ func (a *apiServer) UnpauseGenericTask(
 				FittingRequirements: sproto.FittingRequirements{
 					SingleAgent: isSingleNode,
 				},
-				Preemptible: true,
-				Restore:     false,
+				Preemption: sproto.PreemptionConfig{
+					Preemptible:     true,
+					TimeoutDuration: time.Duration(genericTaskSpec.GenericTaskConfig.PreemptionTimeout) * time.Second,
+				},
+				Restore: false,
 			}, a.m.db, a.m.rm, genericTaskSpec, onAllocationExit)
 		if err != nil {
 			return nil, err

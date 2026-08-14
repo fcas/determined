@@ -120,6 +120,7 @@ const NavigationSideBar: React.FC = () => {
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const gasLinkOn = useFeature().isOn('genai');
   const templatesOn = useFeature().isOn('task_templates');
+  const f_webhook = useFeature().isOn('webhook_improvement');
   const clusterStatus = useObservable(clusterStore.clusterStatus);
 
   const isAuthenticated = useObservable(authStore.isAuthenticated);
@@ -140,7 +141,7 @@ const NavigationSideBar: React.FC = () => {
   const shortVersion = version.replace(/^(\d+\.\d+\.\d+).*?$/i, '$1');
   const isVersionLong = version !== shortVersion;
 
-  const { canCreateWorkspace, canViewWorkspace, canEditWebhooks } = usePermissions();
+  const { canCreateWorkspace, canViewWorkspace, canViewGlobalConfigPolicies } = usePermissions();
 
   const canAccessUncategorized = canViewWorkspace({ workspace: { id: 1 } });
 
@@ -174,7 +175,14 @@ const NavigationSideBar: React.FC = () => {
         path: paths.templates(),
       });
     }
-    if (canEditWebhooks) {
+    if (info.branding === BrandingType.HPE && canViewGlobalConfigPolicies) {
+      topItems.splice(topItems.length - 1, 0, {
+        icon: 'options',
+        label: 'Config Policies',
+        path: paths.configPolicies(),
+      });
+    }
+    if (currentUser?.isAdmin || f_webhook) {
       topItems.splice(topItems.length - 1, 0, {
         icon: 'webhooks',
         label: 'Webhooks',
@@ -213,7 +221,15 @@ const NavigationSideBar: React.FC = () => {
       bottom: bottomItems,
       top: topItems,
     };
-  }, [canAccessUncategorized, canEditWebhooks, info.branding, gasLinkOn, templatesOn]);
+  }, [
+    canAccessUncategorized,
+    canViewGlobalConfigPolicies,
+    info.branding,
+    gasLinkOn,
+    templatesOn,
+    f_webhook,
+    currentUser?.isAdmin,
+  ]);
 
   const handleCollapse = useCallback(() => {
     updateSettings({ navbarCollapsed: !settings.navbarCollapsed });
@@ -242,7 +258,7 @@ const NavigationSideBar: React.FC = () => {
         label: <Link onClick={() => setShowSettings(true)}>User Settings</Link>,
       },
       { key: 'theme-toggle', label: <ThemeToggle /> },
-      { key: 'sign-out', label: <Link path={paths.logout()}>Sign Out</Link> },
+      { key: 'sign-out', label: <Link path={paths.logout() + '?hard_logout=true'}>Sign Out</Link> },
     ];
     if (canAdministrateUsers) {
       items.unshift({
@@ -254,6 +270,11 @@ const NavigationSideBar: React.FC = () => {
   }, [canAdministrateUsers]);
 
   if (!showNavigation) return null;
+
+  const openWorkspaceCreateModal = () => {
+    clusterStore.fetchKubernetesResourceManagers();
+    WorkspaceCreateModal.open();
+  };
 
   return (
     <>
@@ -308,7 +329,7 @@ const NavigationSideBar: React.FC = () => {
                       <Button
                         icon={<Icon name="add" size="tiny" title="Create workspace" />}
                         type="text"
-                        onClick={WorkspaceCreateModal.open}
+                        onClick={openWorkspaceCreateModal}
                       />
                     )}
                   </div>
@@ -353,7 +374,7 @@ const NavigationSideBar: React.FC = () => {
                           }
                           label="New Workspace"
                           tooltip={settings.navbarCollapsed}
-                          onClick={WorkspaceCreateModal.open}
+                          onClick={openWorkspaceCreateModal}
                         />
                       </li>
                     )}

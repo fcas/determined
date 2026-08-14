@@ -38,7 +38,7 @@ func makeGoPgOpts(dbURL string) (*pg.Options, error) {
 	return opts, nil
 }
 
-func tablesExist(tx *pg.Tx, tableNames []string) (map[string]bool, error) {
+func tablesExist(tx pg.DBI, tableNames []string) (map[string]bool, error) {
 	existingTables := []string{}
 	result := map[string]bool{}
 	for _, tn := range tableNames {
@@ -116,10 +116,13 @@ func ensureMigrationUpgrade(tx *pg.Tx) error {
 	return nil
 }
 
-func (db *PgDB) readDBCodeAndCheckIfDifferent(dbCodeDir string) (map[string]string, bool, error) {
-	files, err := os.ReadDir(dbCodeDir)
+func (db *PgDB) readDBCodeAndCheckIfDifferent(
+	dbCodeDir string,
+) (dbCodeFiles map[string]string, hash string, needToUpdateDBCode bool, err error) {
+	upDir := filepath.Join(dbCodeDir, "up")
+	files, err := os.ReadDir(upDir)
 	if err != nil {
-		return nil, false, fmt.Errorf("reading '%s' directory for database views: %w", dbCodeDir, err)
+		return nil, "", false, fmt.Errorf("reading '%s' directory for database views: %w", dbCodeDir, err)
 	}
 
 	allCode := ""
@@ -129,53 +132,59 @@ func (db *PgDB) readDBCodeAndCheckIfDifferent(dbCodeDir string) (map[string]stri
 			continue
 		}
 
-		filePath := filepath.Join(dbCodeDir, f.Name())
+		filePath := filepath.Join(upDir, f.Name())
 		b, err := os.ReadFile(filePath) //nolint: gosec // We trust dbCodeDir.
 		if err != nil {
-			return nil, false, fmt.Errorf("reading view definition file '%s': %w", filePath, err)
+			return nil, "", false, fmt.Errorf("reading view definition file '%s': %w", filePath, err)
 		}
+
 		fileNamesToSQL[f.Name()] = string(b)
 		allCode += string(b)
 	}
 
 	// I didn't want to get into deciding when to apply database or code or not but integration
 	// tests make it really hard to not do this.
-	hash := sha256.Sum256([]byte(allCode))
-	ourHash := hex.EncodeToString(hash[:])
+	hashSHA := sha256.Sum256([]byte(allCode))
+	ourHash := hex.EncodeToString(hashSHA[:])
 
 	// Check if the views_and_triggers_hash table exists. If it doesn't return that we need to create db code.
 	var tableExists bool
 	if err = db.sql.QueryRow(
 		"SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'views_and_triggers_hash')").
 		Scan(&tableExists); err != nil {
-		return nil, false, fmt.Errorf("checking views_and_triggers_hash exists: %w", err)
+		return nil, "", false, fmt.Errorf("checking views_and_triggers_hash exists: %w", err)
 	}
 	if !tableExists {
-		return fileNamesToSQL, true, nil
+		return fileNamesToSQL, ourHash, true, nil
 	}
 
 	// Check if our hashes match. If they do we can just return we don't need to do anything.
 	var databaseHash string
 	if err := db.sql.QueryRow("SELECT hash FROM views_and_triggers_hash").Scan(&databaseHash); err != nil {
-		return nil, false, fmt.Errorf("getting hash from views_and_triggers_hash: %w", err)
+		return nil, "", false, fmt.Errorf("getting hash from views_and_triggers_hash: %w", err)
 	}
 	if databaseHash == ourHash {
-		return fileNamesToSQL, false, nil
+		return fileNamesToSQL, ourHash, false, nil
 	}
 
 	// Update our hash and return we need to create views and triggers.
-	if _, err := db.sql.Exec("UPDATE views_and_triggers_hash SET hash = $1", ourHash); err != nil {
-		return nil, false, fmt.Errorf("updating our database hash: %w", err)
+	if err := db.dropDBCode(dbCodeDir); err != nil {
+		return nil, "", false, err
 	}
-	return fileNamesToSQL, false, nil
+
+	return fileNamesToSQL, ourHash, true, nil
 }
 
-func (db *PgDB) addDBCode(fileNamesToSQL map[string]string) error {
+func (db *PgDB) addDBCode(fileNamesToSQL map[string]string, hash string) error {
 	if err := db.withTransaction("determined database views", func(tx *sqlx.Tx) error {
 		for filePath, sql := range fileNamesToSQL {
 			if _, err := tx.Exec(sql); err != nil {
 				return fmt.Errorf("running database view file '%s': %w", filePath, err)
 			}
+		}
+
+		if _, err := tx.Exec("UPDATE views_and_triggers_hash SET hash = $1", hash); err != nil {
+			return fmt.Errorf("updating our database hash: %w", err)
 		}
 
 		return nil
@@ -186,10 +195,13 @@ func (db *PgDB) addDBCode(fileNamesToSQL map[string]string) error {
 	return nil
 }
 
-func (db *PgDB) dropDBCode() error {
-	if _, err := db.sql.Exec(`
-DROP SCHEMA IF EXISTS determined_code CASCADE;
-CREATE SCHEMA determined_code;`); err != nil {
+func (db *PgDB) dropDBCode(dbCodeDir string) error {
+	b, err := os.ReadFile(filepath.Join(dbCodeDir, "down.sql")) //nolint: gosec // We trust dbCodeDir.
+	if err != nil {
+		return fmt.Errorf("reading down db code migration: %w", err)
+	}
+
+	if _, err := db.sql.Exec(string(b)); err != nil {
 		return fmt.Errorf("removing determined database views so they can be created later: %w", err)
 	}
 
@@ -204,7 +216,7 @@ var testOnlyDBLock func(sql *sqlx.DB) (unlock func())
 // Migrate runs the migrations from the specified directory URL.
 func (db *PgDB) Migrate(
 	migrationURL string, dbCodeDir string, actions []string,
-) (isNew bool, err error) {
+) error {
 	if testOnlyDBLock != nil {
 		// In integration tests, multiple processes can be running this code at once, which can lead to
 		// errors because PostgreSQL's CREATE TABLE IF NOT EXISTS is not great with concurrency.
@@ -212,24 +224,16 @@ func (db *PgDB) Migrate(
 		defer cleanup()
 	}
 
-	dbCodeFiles, needToUpdateDBCode, err := db.readDBCodeAndCheckIfDifferent(dbCodeDir)
+	dbCodeFiles, hash, needToUpdateDBCode, err := db.readDBCodeAndCheckIfDifferent(dbCodeDir)
 	if err != nil {
-		return false, err
-	}
-	if needToUpdateDBCode {
-		if err := db.dropDBCode(); err != nil {
-			return false, err
-		}
-		log.Info("database views changed")
-	} else {
-		log.Info("database views unchanged, will not updated")
+		return err
 	}
 
 	// go-pg/migrations uses go-pg/pg connection API, which is not compatible
 	// with pgx, so we use a one-off go-pg/pg connection.
 	pgOpts, err := makeGoPgOpts(db.URL)
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	pgConn := pg.Connect(pgOpts)
@@ -241,7 +245,7 @@ func (db *PgDB) Migrate(
 
 	tx, err := pgConn.Begin()
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	defer func() {
@@ -252,11 +256,11 @@ func (db *PgDB) Migrate(
 	}()
 
 	if err = ensureMigrationUpgrade(tx); err != nil {
-		return false, errors.Wrap(err, "error upgrading migration metadata")
+		return errors.Wrap(err, "error upgrading migration metadata")
 	}
 
 	if err = tx.Commit(); err != nil {
-		return false, err
+		return err
 	}
 
 	log.Infof("running DB migrations from %s; this might take a while...", migrationURL)
@@ -264,21 +268,21 @@ func (db *PgDB) Migrate(
 	re := regexp.MustCompile(`file://(.+)`)
 	match := re.FindStringSubmatch(migrationURL)
 	if len(match) != 2 {
-		return false, fmt.Errorf("failed to parse migrationsURL: %s", migrationURL)
+		return fmt.Errorf("failed to parse migrationsURL: %s", migrationURL)
 	}
 
 	collection := migrations.NewCollection()
 	collection.DisableSQLAutodiscover(true)
 	if err = collection.DiscoverSQLMigrations(match[1]); err != nil {
-		return false, err
+		return err
 	}
 	if len(collection.Migrations()) == 0 {
-		return false, errors.New("failed to discover any migrations")
+		return errors.New("failed to discover any migrations")
 	}
 
 	oldVersion, newVersion, err := collection.Run(pgConn, actions...)
 	if err != nil {
-		return false, errors.Wrap(err, "error applying migrations")
+		return errors.Wrap(err, "error applying migrations")
 	}
 
 	if oldVersion == newVersion {
@@ -289,12 +293,15 @@ func (db *PgDB) Migrate(
 
 	if newVersion >= 20240502203516 { // Only comes up in testing old data.
 		if needToUpdateDBCode {
-			if err := db.addDBCode(dbCodeFiles); err != nil {
-				return false, err
+			log.Info("database views changed")
+			if err := db.addDBCode(dbCodeFiles, hash); err != nil {
+				return err
 			}
+		} else {
+			log.Info("database views unchanged, will not updated")
 		}
 	}
 
 	log.Info("DB migrations completed")
-	return oldVersion == 0, nil
+	return nil
 }

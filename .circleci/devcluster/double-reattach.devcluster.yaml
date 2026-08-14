@@ -6,14 +6,14 @@ stages:
       pre:
         - sh: make -C tools prep-root
       config_file:
+        security:
+          initial_user_password: $INITIAL_USER_PASSWORD
         db:
           host: localhost
           port: 5432
           password: postgres
           user: postgres
           name: determined
-        __internal:
-          preemption_timeout: 60s
         checkpoint_storage:
           type: shared_fs
           host_path: /tmp
@@ -24,6 +24,8 @@ stages:
         cache: 
           cache_dir: /tmp/determined-cache
         launch_error: false
+        telemetry:
+          enabled: false
         resource_manager:
           default_aux_resource_pool: default
           default_compute_resource_pool: default
@@ -45,6 +47,8 @@ stages:
             type: basic
             username: determined
             password: password
+        task_container_defaults:
+          preemption_timeout: 60
 
   - custom:
       name: proxy

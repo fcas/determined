@@ -12,7 +12,7 @@ import (
 
 	"github.com/docker/docker/api/types/mount"
 	"github.com/sirupsen/logrus"
-	launcher "github.hpe.com/hpe/hpc-ard-launcher-go/launcher"
+	"github.hpe.com/hpe/hpc-ard-launcher-go/launcher"
 
 	"github.com/determined-ai/determined/master/internal/config"
 	"github.com/determined-ai/determined/master/pkg/archive"
@@ -263,14 +263,10 @@ func (t *TaskSpec) ToDispatcherManifest(
 
 	launchParameters.SetCustom(customParams)
 
-	// Prepend the entrypoint like: `ship-logs.sh "$@"`.
-	shipLogsShell := filepath.Join(RunDir, taskShipLogsShell)
-	shipLogsPython := filepath.Join(RunDir, taskShipLogsPython)
-
 	// Add entrypoint command as argument
 	wrappedEntryPoint := append(
-		[]string{determinedLocalFs + "/" + dispatcherEntrypointScriptResource, shipLogsShell, shipLogsPython},
-		t.Entrypoint...)
+		[]string{determinedLocalFs + "/" + dispatcherEntrypointScriptResource},
+		t.LogShipperWrappedEntrypoint()...)
 	launchParameters.SetArguments(wrappedEntryPoint)
 
 	// We just pass through the image reference here.  It may be any scheme that
@@ -800,7 +796,7 @@ func getEnvVarsForLauncherManifest(
 	m["DET_MASTER"] = fmt.Sprintf("%s://%s:%d", masterScheme, masterHost, masterPort)
 	m["DET_MASTER_HOST"] = masterHost
 	m["DET_MASTER_IP"] = masterHost
-	m["DET_MASTER_PORT"] = fmt.Sprintf("%d", masterPort)
+	m["DET_MASTER_PORT"] = strconv.Itoa(masterPort)
 	m["DET_CLUSTER_ID"] = taskSpec.ClusterID
 	// On non-zero exit of any component/step of the sbatch job, terminate with an error
 	m["SLURM_KILL_BAD_EXIT"] = "1"

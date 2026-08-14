@@ -18,8 +18,9 @@ import (
 const regexCacheSize = 256
 
 var (
-	defaultSingleton       *LogPatternPolicies
-	expconfigCompiledRegex = regexp.MustCompile("(.*)(\\\"log_policies\\\":)(.*)")
+	defaultSingleton *LogPatternPolicies
+	// ExpconfigCompiledRegex is used to identify user submitted config.
+	ExpconfigCompiledRegex = regexp.MustCompile("(.*)(\\\"log_policies\\\":)(.*)")
 )
 
 // LogPatternPolicies performs log pattern checks.
@@ -58,7 +59,11 @@ func (l *LogPatternPolicies) monitor(ctx context.Context,
 ) error {
 	// TODO when we add rm specific log grabbing we will need to also monitor them.
 	for _, policy := range policies {
-		compiledRegex, err := l.getCompiledRegex(policy.Pattern())
+		pattern := policy.Pattern()
+		if pattern == nil {
+			continue
+		}
+		compiledRegex, err := l.getCompiledRegex(*pattern)
 		if err != nil {
 			return err
 		}
@@ -70,28 +75,53 @@ func (l *LogPatternPolicies) monitor(ctx context.Context,
 
 			// One of the trial logs prints expconf which has the regex pattern.
 			// We skip monitoring this line.
-			if expconfigCompiledRegex.MatchString(log.Log) {
+			if ExpconfigCompiledRegex.MatchString(log.Log) {
 				continue
 			}
 
 			if compiledRegex.MatchString(log.Log) {
-				switch policy.Action().GetUnionMember().(type) {
-				case expconf.LogActionCancelRetries:
-					if err := addDontRetry(
-						ctx, model.TaskID(log.TaskID), *log.AgentID, policy.Pattern(), log.Log,
-					); err != nil {
-						return fmt.Errorf("adding don't retry: %w", err)
+				err = db.Bun().RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+					if policy.Action() != nil {
+						switch policy.Action().Type {
+						case expconf.LogActionTypeCancelRetries:
+							if err := addDontRetry(
+								ctx, model.TaskID(log.TaskID), *log.AgentID, *pattern, log.Log, tx,
+							); err != nil {
+								return fmt.Errorf("adding don't retry: %w", err)
+							}
+
+						case expconf.LogActionTypeExcludeNode:
+							if err := addRetryOnDifferentNode(
+								ctx, model.TaskID(log.TaskID), *log.AgentID, *pattern, log.Log, tx,
+							); err != nil {
+								return fmt.Errorf("adding retry on different node: %w", err)
+							}
+						default:
+							return fmt.Errorf("unrecognized log pattern policy type")
+						}
 					}
 
-				case expconf.LogActionExcludeNode:
-					if err := addRetryOnDifferentNode(
-						ctx, model.TaskID(log.TaskID), *log.AgentID, policy.Pattern(), log.Log,
-					); err != nil {
-						return fmt.Errorf("adding retry on different node: %w", err)
+					if policy.Name() != nil {
+						if _, err := tx.NewUpdate().Model(&model.Task{}).
+							Set("log_policy_matched = ?", *policy.Name()).
+							Where("task_id = ?", log.TaskID).
+							Exec(ctx); err != nil {
+							return fmt.Errorf("updating log signal of task %s: %w", log.TaskID, err)
+						}
+						if _, err := tx.NewUpdate().Model(&model.Run{}).
+							Table("run_id_task_id").
+							Set("log_policy_matched = ?", *policy.Name()).
+							Where("run.id = run_id_task_id.run_id").
+							Where("run_id_task_id.task_id = ?", log.TaskID).
+							Exec(ctx); err != nil {
+							return fmt.Errorf("updating log signal of task %s: %w", log.TaskID, err)
+						}
 					}
 
-				default:
-					return fmt.Errorf("unrecognized log pattern policy type")
+					return nil
+				})
+				if err != nil {
+					return fmt.Errorf("\"%s\" matches pattern \"%s\" but failed to update db: %w", log.Log, *pattern, err)
 				}
 			}
 		}
@@ -129,7 +159,7 @@ func GetBlockedNodes(ctx context.Context, taskID model.TaskID) ([]string, error)
 }
 
 func addRetryOnDifferentNode(
-	ctx context.Context, taskID model.TaskID, nodeName, regex, triggeringLog string,
+	ctx context.Context, taskID model.TaskID, nodeName, regex, triggeringLog string, tx bun.Tx,
 ) error {
 	m := &retryOnDifferentNode{
 		TaskID:        taskID,
@@ -137,7 +167,7 @@ func addRetryOnDifferentNode(
 		Regex:         regex,
 		TriggeringLog: triggeringLog,
 	}
-	res, err := db.Bun().NewInsert().Model(m).
+	res, err := tx.NewInsert().Model(m).
 		On("CONFLICT (task_id, node_name, regex) DO NOTHING"). // Only care about the first log.
 		Exec(ctx)
 	if err != nil {
@@ -172,7 +202,7 @@ type dontRetry struct {
 }
 
 func addDontRetry(
-	ctx context.Context, taskID model.TaskID, nodeName, regex, triggeringLog string,
+	ctx context.Context, taskID model.TaskID, nodeName, regex, triggeringLog string, tx bun.Tx,
 ) error {
 	m := &dontRetry{
 		TaskID:        taskID,
@@ -180,7 +210,7 @@ func addDontRetry(
 		Regex:         regex,
 		TriggeringLog: triggeringLog,
 	}
-	if _, err := db.Bun().NewInsert().Model(m).
+	if _, err := tx.NewInsert().Model(m).
 		On("CONFLICT (task_id, regex) DO NOTHING"). // Only care about the first log.
 		Exec(ctx); err != nil {
 		return fmt.Errorf("adding don't retry policy %+v: %w", m, err)

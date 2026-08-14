@@ -67,7 +67,7 @@ func (a *apiServer) Login(
 	if err != nil {
 		return nil, err
 	}
-	fullUser, err := getUser(ctx, a.m.db, userModel.ID)
+	fullUser, err := getUser(ctx, userModel.ID)
 	return &apiv1.LoginResponse{Token: token, User: fullUser}, err
 }
 
@@ -78,7 +78,7 @@ func (a *apiServer) CurrentUser(
 	if err != nil {
 		return nil, err
 	}
-	fullUser, err := getUser(ctx, a.m.db, user.ID)
+	fullUser, err := getUser(ctx, user.ID)
 	return &apiv1.CurrentUserResponse{User: fullUser}, err
 }
 
@@ -94,7 +94,11 @@ func (a *apiServer) Logout(
 			"cannot manually logout of an allocation session")
 	}
 
-	err = user.DeleteSessionByID(ctx, userSession.ID)
+	// Do not want the AccessTokens to be deleted if the user logs out from session.
+	// User can log back in using the same AccessToken: det u login <username> --token <token>
+	if userSession.TokenType != model.TokenTypeAccessToken {
+		err = user.DeleteSessionByID(ctx, userSession.ID)
+	}
 	return &apiv1.LogoutResponse{}, err
 }
 
@@ -108,17 +112,35 @@ func redirectToLogin(c echo.Context) error {
 // processProxyAuthentication is a middleware processing function that attempts
 // to authenticate incoming HTTP requests coming through proxies.
 func processProxyAuthentication(c echo.Context) (done bool, err error) {
-	user, _, err := user.GetService().UserAndSessionFromRequest(c.Request())
+	taskID := model.TaskID(strings.SplitN(c.Param("service"), ":", 2)[0])
+
+	// Notebooks require special auth token passed as a URL parameter.
+	token := extractNotebookTokenFromRequest(c.Request())
+	var usr *model.User
+	var notebookSession *model.NotebookSession
+
+	if token != "" {
+		// Notebooks go through special token param auth.
+		usr, notebookSession, err = user.GetService().UserAndNotebookSessionFromToken(token)
+		if err != nil {
+			return true, err
+		}
+		if notebookSession.TaskID != taskID {
+			return true, fmt.Errorf("invalid notebook session token for task (%v)", taskID)
+		}
+	} else {
+		usr, _, err = user.GetService().UserAndSessionFromRequest(c.Request())
+	}
+
 	if errors.Is(err, db.ErrNotFound) {
 		return true, redirectToLogin(c)
 	} else if err != nil {
 		return true, err
 	}
-	if !user.Active {
+	if !usr.Active {
 		return true, redirectToLogin(c)
 	}
 
-	taskID := model.TaskID(strings.SplitN(c.Param("service"), ":", 2)[0])
 	var ctx context.Context
 
 	if c.Request() == nil || c.Request().Context() == nil {
@@ -141,7 +163,7 @@ func processProxyAuthentication(c echo.Context) (done bool, err error) {
 			return true, fmt.Errorf("error looking up task experiment: %w", err)
 		}
 
-		err = expauth.AuthZProvider.Get().CanGetExperiment(ctx, *user, e)
+		err = expauth.AuthZProvider.Get().CanGetExperiment(ctx, *usr, e)
 		return err != nil, authz.SubIfUnauthorized(err, serviceNotFoundErr)
 	}
 
@@ -152,12 +174,30 @@ func processProxyAuthentication(c echo.Context) (done bool, err error) {
 	// Continue NTSC task checks.
 	if spec.TaskType == model.TaskTypeTensorboard {
 		err = command.AuthZProvider.Get().CanGetTensorboard(
-			ctx, *user, spec.WorkspaceID, spec.ExperimentIDs, spec.TrialIDs)
+			ctx, *usr, spec.WorkspaceID, spec.ExperimentIDs, spec.TrialIDs)
 	} else {
 		err = command.AuthZProvider.Get().CanGetNSC(
-			ctx, *user, spec.WorkspaceID)
+			ctx, *usr, spec.WorkspaceID)
 	}
 	return err != nil, authz.SubIfUnauthorized(err, serviceNotFoundErr)
+}
+
+// extractNotebookTokenFromRequest looks for auth token for Jupyter notebooks
+// in two places:
+// 1. A token query parameter in the request URL.
+// 2. An HTTP Authorization header with a "token" type.
+func extractNotebookTokenFromRequest(r *http.Request) string {
+	token := r.URL.Query().Get("token")
+	authRaw := r.Header.Get("Authorization")
+	if token != "" {
+		return token
+	} else if authRaw != "" {
+		if strings.HasPrefix(authRaw, "token ") {
+			return strings.TrimPrefix(authRaw, "token ")
+		}
+	}
+	// If we found no token, then abort the request with an HTTP 401.
+	return ""
 }
 
 // processAuthWithRedirect is an auth middleware that redirects browser requests

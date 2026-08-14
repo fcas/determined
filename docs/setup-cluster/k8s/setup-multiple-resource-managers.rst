@@ -24,6 +24,9 @@ service in one Kubernetes cluster and schedule workloads in the same or other Ku
 Any requests to resource pools not defined in the master configuration are routed to the default
 resource manager. Such requests are not routed to additional resource managers, if defined.
 
+To enable use of Determined tasks that rely on Determined proxies in the external-to-master
+clusters, set up a gateway as described in the :doc:`internal-task-gateway`.
+
 *********************************************
  How to Configure Multiple Resource Managers
 *********************************************
@@ -69,14 +72,14 @@ Follow this example to create as many resource managers (clusters) as needed.
 
    .. code:: yaml
 
-        resource_manager:
-       type: kubernetes
-      name: default-rm # optional, should match the name of your default RM/cluster
+      resource_manager:
+        type: kubernetes
+        cluster_name: default-rm # optional, should match the name of your default RM/cluster
        ... add any other specs you might need ...
       additional_resource_managers:
       - resource_manager:
          type: kubernetes
-         name: additional-rm # should match the name of your other RM(s)
+         cluster_name: additional-rm # should match the name of your other RM(s)
          kubeconfig_path: <whatever-path-your-rm-config-is-like ~/.kubeconfig>
          ... add whatever other specs you might need ...
          resource_pools:
@@ -129,7 +132,9 @@ the same as the “cluster name” for a given cluster.
 
       additional_resource_managers:
       - resource_manager:
-         type: kubernetes name: <rm-name> namespace: default
+         type: kubernetes
+         cluster_name: <rm-name>
+         default_namespace: default
          # or whatever other namespace you want to use
          kubeconfig_secret_name: <The secret name, from ``kubectl describe secret <rm-name>``>
          kubeconfig_secret_value: <The data value, from ``kubectl describe secret <rm-name>``>
@@ -149,16 +154,21 @@ the same as the “cluster name” for a given cluster.
    default Determined deployment, all that's necessary is to upgrade the Helm deployment with that
    value as the master IP for the additional clusters.
 
+   If an additional resource manager needs to connect to the Determined master through a gateway
+   requiring TLS, ``resource_manager.determined_master_scheme`` should be set to ``https``. If
+   ``resource_manager.determined_master_scheme`` is not set ``determined_master_host`` will assume
+   ``https`` if the master is terminating TLS and ``http`` otherwise.
+
 *******
  WebUI
 *******
 
-In the WebUI, the resource manager name is visible for each resource pool.
+In the WebUI, the resource manager's associated cluster name is visible for each resource pool.
 
 To view resource managers:
 
 -  In the WebUI, navigate to the cluster view.
--  Each resource pool card displays **Resource Manager Name**.
+-  Each resource pool card displays **Cluster Name**.
 
 This field helps identify whether a resource pool is managed locally or by another manager, tagged
 as “Remote” if defined in the :ref:`master-config-reference` file.
@@ -168,11 +178,11 @@ as “Remote” if defined in the :ref:`master-config-reference` file.
 Let's say your environment contains a resource manager and a resource pool that have both adopted
 the name "default" due to their unnamed status, and you configure an additional resource pool named
 "additional-rm” with a resource pool named "test". When you sign in to the WebUI, you'll see both
-the default and test resource pools. The resource manager name for the default pool will display
-“default”, while the test pool displays "additional-rm" (or the name you specified).
+the default and test resource pools. The resource manager's cluster name for the default pool will
+display “default”, while the test pool displays "additional-rm" (or the name you specified).
 
 **Visibility and Access**
 
-**Resource Manager Name** is only visible to administrators or users with permissions to define
-multiple resource managers. Users can view all resource pools along with each resource pool's
-manager name to help distinguish between local and remote resource pools.
+**Cluster Name** is only visible to administrators or users with permissions to define multiple
+resource managers. Users can view all resource pools along with the cluster name of each resource
+pool's manager to help distinguish between local and remote resource pools.

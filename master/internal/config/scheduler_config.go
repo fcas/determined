@@ -26,8 +26,12 @@ const (
 
 // DefaultSchedulerConfig returns the default fair share configuration for the scheduler.
 func DefaultSchedulerConfig() *SchedulerConfig {
+	tmp := DefaultSchedulingPriority
 	return &SchedulerConfig{
-		FairShare:     &FairShareSchedulerConfig{},
+		Priority: &PrioritySchedulerConfig{
+			Preemption:      false,
+			DefaultPriority: &tmp,
+		},
 		FittingPolicy: defaultFitPolicy,
 	}
 }
@@ -59,7 +63,7 @@ func (s *SchedulerConfig) UnmarshalJSON(data []byte) error {
 
 	// Fill in the default
 	if s.FairShare == nil && s.Priority == nil && s.RoundRobin == nil {
-		s.FairShare = &FairShareSchedulerConfig{}
+		s.Priority = &PrioritySchedulerConfig{}
 	}
 	if s.Priority != nil && s.Priority.DefaultPriority == nil {
 		defaultPriority := DefaultSchedulingPriority

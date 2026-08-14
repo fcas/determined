@@ -16,6 +16,7 @@ import Link from 'components/Link';
 import MetadataCard from 'components/Metadata/MetadataCard';
 import Page, { BreadCrumbRoute } from 'components/Page';
 import PageNotFound from 'components/PageNotFound';
+import useFeature from 'hooks/useFeature';
 import usePermissions from 'hooks/usePermissions';
 import usePolling from 'hooks/usePolling';
 import { paths } from 'routes/utils';
@@ -23,6 +24,7 @@ import { getModelVersion, patchModelVersion } from 'services/api';
 import workspaceStore from 'stores/workspaces';
 import { Metadata, ModelVersion, Note, ValueOf } from 'types';
 import handleError, { ErrorType } from 'utils/error';
+import { createPachydermLineageLink } from 'utils/integrations';
 import { isAborted, isNotFound } from 'utils/service';
 import { humanReadableBytes } from 'utils/string';
 import { checkpointSize } from 'utils/workload';
@@ -60,6 +62,7 @@ const ModelVersionDetails: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [tabKey, setTabKey] = useState(tab && TAB_KEYS.includes(tab) ? tab : DEFAULT_TAB_KEY);
+  const f_flat_runs = useFeature().isOn('flat_runs');
 
   const modelId = modelID ?? '0';
   const versionNum = versionNUM ?? '0';
@@ -186,7 +189,8 @@ const ModelVersionDetails: React.FC = () => {
       .sort((a, b) => checkpointResources[a] - checkpointResources[b])
       .map((key) => ({ name: key, size: humanReadableBytes(checkpointResources[key]) }));
     const hasExperiment = !!modelVersion.checkpoint.experimentId;
-    return [
+    const pachydermData = modelVersion.checkpoint.experimentConfig?.integrations?.pachyderm;
+    const infoElements = [
       {
         label: 'Source',
         value: hasExperiment ? (
@@ -227,6 +231,17 @@ const ModelVersionDetails: React.FC = () => {
         value: resources.map((resource) => renderResource(resource.name, resource.size)),
       },
     ];
+
+    if (pachydermData !== undefined) {
+      const url = createPachydermLineageLink(pachydermData);
+
+      infoElements.splice(1, 0, {
+        label: 'Data Input',
+        value: <Link path={url}>{pachydermData?.dataset.repo}</Link>,
+      });
+    }
+
+    return infoElements;
   }, [modelVersion?.checkpoint]);
 
   const validationMetrics = useMemo(() => {
@@ -309,7 +324,7 @@ const ModelVersionDetails: React.FC = () => {
   const pageBreadcrumb: BreadCrumbRoute[] = [
     isUncategorized
       ? {
-          breadcrumbName: 'Uncategorized Experiments',
+          breadcrumbName: `Uncategorized ${f_flat_runs ? 'Runs' : 'Experiments'}`,
           path: paths.projectDetails(1),
         }
       : {

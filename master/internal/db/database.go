@@ -15,7 +15,7 @@ import (
 
 // DB is an interface for _all_ the functionality packed into the DB.
 type DB interface {
-	Migrate(migrationURL, codeURL string, actions []string) (isNew bool, err error)
+	Migrate(migrationURL, codeURL string, actions []string) error
 	Close() error
 	GetOrCreateClusterID(telemetryID string) (string, error)
 	TrialExperimentAndRequestID(id int) (int, model.RequestID, error)
@@ -103,4 +103,8 @@ var (
 	// ErrInvalidInput is returned when the data passed to a function is invalid for semantic or
 	// syntactic reasons.
 	ErrInvalidInput = errors.New("invalid input")
+
+	// ErrDeleteDefaultBinding is returned when trying to delete a workspace bound to its default
+	// namespace.
+	ErrDeleteDefaultBinding = errors.New("cannot delete the default namespace binding")
 )

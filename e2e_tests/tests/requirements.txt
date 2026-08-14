@@ -2,8 +2,11 @@ appdirs
 # pytest 6.0 has linter-breaking changes
 pytest>=6.0.1
 pytest-timeout
-torch==1.11.0
-torchvision==0.12.0
+# Intel MAC only supports torch <= 2.2.2
+torch==2.2.2; sys_platform == 'darwin' and platform_machine == 'x86_64'
+torch==2.3.0; sys_platform != 'darwin' or platform_machine != 'x86_64'
+torchvision==0.17.2; sys_platform == 'darwin' and platform_machine == 'x86_64'
+torchvision==0.18.0; sys_platform != 'darwin' or platform_machine != 'x86_64'
 tensorflow==2.12.0; sys_platform != 'darwin' or platform_machine != 'arm64'
 tensorflow-macos==2.11.0; sys_platform == 'darwin' and platform_machine == 'arm64'
 pandas
@@ -16,13 +19,14 @@ kubernetes
 # when pytest executes e2e_tests.
 numpy>=1.20
 h5py>=3
+# aiohttp-cors 0.8.0 breaks ray 2.10.0 (the latest version python 3.8 supports)
+aiohttp-cors==0.7.0
 ray[default,tune]
 pyarrow
 # Pydantic V2 has changes that break existing ray tests
 pydantic<2
-# DataDog tracing and result upload utility
-ddtrace
 # Selenium for okta testing
 selenium
 # Pexpect for okta testing
 pexpect
+requests != 2.32.0  # TODO(MD-415) remove this pin.

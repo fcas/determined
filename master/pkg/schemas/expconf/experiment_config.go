@@ -49,11 +49,7 @@ type ExperimentConfigV0 struct {
 	RawWorkspace                *string                     `json:"workspace"`
 	RawSlurmConfig              *SlurmConfigV0              `json:"slurm,omitempty"`
 	RawPbsConfig                *PbsConfigV0                `json:"pbs,omitempty"`
-}
-
-// Unit implements the model.InUnits interface.
-func (e *ExperimentConfigV0) Unit() Unit {
-	return e.RawSearcher.Unit()
+	RawPreemptionTimeout        *int                        `json:"preemption_timeout"`
 }
 
 // Value implements the driver.Valuer interface.
@@ -86,6 +82,7 @@ func (e *ExperimentConfigV0) Scan(src interface{}) error {
 	// were in the database, but to ensure we never allow any un-defaulted experiments anywhere
 	// inside the system, we call WithDefaults here.
 	*e = schemas.WithDefaults(config)
+
 	return nil
 }
 
@@ -142,11 +139,6 @@ func (d Name) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON marshals makes the Name container transparent to unmarshaling.
 func (d *Name) UnmarshalJSON(bytes []byte) error {
 	return json.Unmarshal(bytes, &d.RawString)
-}
-
-// InUnits is describes a type that is in terms of a specific unit.
-type InUnits interface {
-	Unit() Unit
 }
 
 // LabelsV0 holds the set of labels on the experiment.

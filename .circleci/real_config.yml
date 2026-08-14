@@ -2,7 +2,6 @@
 version: 2.1
 
 orbs:
-  codecov: codecov/codecov@3.3.0
   gcloud: circleci/gcp-cli@2.1.0
   gh: circleci/github-cli@2.0
   helm: circleci/helm@1.2.0
@@ -21,7 +20,7 @@ executors:
 parameters:
   det-version:
     type: string
-    default: 0.32.1-dev0
+    default: ""
   docker-image:
     type: string
     default: determinedai/cimg-base:latest
@@ -31,12 +30,16 @@ parameters:
   gpu-machine-image:
     type: string
     default: linux-cuda-12:default
-  # DEFAULT_PT_GPU_IMAGE: Pytorch training image reference used by the tests
-  # Inject here as a parameter so that it is updated by bumpversion, and can
-  # be referenced by --ee testing.
-  default-pt-gpu-image:
+  gpu-machine-resource-class:
     type: string
-    default: determinedai/pytorch-ngc-dev:8b3bea3
+    default: gpu.nvidia.small.multi
+  # DEFAULT_PT_GPU_IMAGE: Pytorch training image reference used by the tests
+  default-pt-gpu-hpc-image:
+    type: string
+    default: determinedai/pytorch-ngc-dev:e960eae
+  default-pt-tf-cpu-hpc-image:
+    type: string
+    default: determinedai/pytorch-tensorflow-cpu-dev:e960eae
   # Some python, go, and react dependencies are cached by circleci via `save_cache`/`restore_cache`.
   # If the dependencies stay the same, but the circleci code that would produce them is changed,
   # it may be necessary to invalidate the cache by incrementing this value.
@@ -67,8 +70,8 @@ release-and-rc-filters: &release-and-rc-filters
       - /.*/
   tags:
     only:
-      - /(\d)+(\.(\d)+)+/
-      - /((\d)+(\.(\d)+)+)(-rc)(\d)+/
+      # Tags like: v2.5.0, v3.0.1-rc2
+      - /v\d+\.\d+\.\d+(-rc\d+)?/
 
 rc-filters: &rc-filters
   branches:
@@ -76,7 +79,8 @@ rc-filters: &rc-filters
       - /.*/
   tags:
     only:
-      - /((\d)+(\.(\d)+)+)(-rc)(\d)+/
+      # Tags like: v2.5.0-rc3
+      - /v\d+\.\d+\.\d+-rc\d+/
 
 release-filters: &release-filters
   branches:
@@ -84,7 +88,17 @@ release-filters: &release-filters
       - /.*/
   tags:
     only:
-      - /(\d)+(\.(\d)+)+/
+      # Tags like: v2.1.2
+      - /v\d+\.\d+\.\d+/
+
+release-dryrun: &release-dryrun
+  branches:
+    ignore:
+      - /.*/
+  tags:
+    only:
+      # Tags like: v3.1.3+dryrun
+      - /v\d+\.\d+\.\d+\+dryrun/
 
 upstream-feature-branch: &upstream-feature-branch
   branches:
@@ -136,6 +150,40 @@ commands:
     steps:
       - run: git remote add upstream https://github.com/determined-ai/determined
       - run: tools/scripts/retry.sh git fetch upstream
+
+  collect-task-logs:
+    parameters:
+      master_address:
+        type: string
+        default: "http://localhost:8080"
+      store_path:
+        type: string
+        default: "/tmp/artifacts/logs"
+    description: Collect logs from the cluster tasks.
+    steps:
+      - run:
+          name: "Ensure necessary Python packages are available."
+          when: always
+          command: |
+            pkg_names="fire determined"
+            for pkg_name in $pkg_names; do
+              if ! python -c "import $pkg_name" 2>/dev/null; then
+                pip install $pkg_name
+              fi
+            done
+      - run:
+          name: "Collect logs and calculate statistics"
+          when: always
+          command: |
+            target_dir="<< parameters.store_path >>"
+            mkdir -p $target_dir
+            python .circleci/scripts/collect_logs.py --username determined --password "${INITIAL_USER_PASSWORD}" --mlde-host "<< parameters.master_address >>" save_all_logs $target_dir
+            echo "collected logs at $target_dir"
+            log_count=$(find "<< parameters.store_path >>" -type f | wc -l)
+            total_size=$(du -sh "<< parameters.store_path >>" | cut -f1)
+            echo "Number of log files collected: $log_count"
+            echo "Total size of collected logs: $total_size"
+
 
   skip-if-only-dir:
     parameters:
@@ -236,12 +284,6 @@ commands:
       - run: mv ../license-key-gen/license.txt ./license.txt
       - run: mv ../license-key-gen/public.txt ./public.txt
 
-  get-slurmcluster:
-    steps:
-      - run: cd .. && git clone https://${GITHUB_TOKEN}@github.com/determined-ai/dev-scripts.git
-      - run: cp ../dev-scripts/slurm/slurmcluster.sh tools/slurmcluster.sh
-      - run: ls -a
-
   pull-task-images:
     parameters:
       tf2:
@@ -251,7 +293,7 @@ commands:
       - when:
           condition: <<parameters.tf2>>
           steps:
-            - run: docker pull determinedai/pytorch-ngc-dev:8b3bea3
+            - run: docker pull determinedai/pytorch-ngc-dev:0736b6d
 
   login-docker:
     parameters:
@@ -268,7 +310,7 @@ commands:
   reinstall-go:
     steps:
       - run: sudo rm -rf /usr/local/go # Remove system go.
-      - run: tools/scripts/retry.sh curl --retry-connrefused --retry 10 https://dl.google.com/go/go1.22.0.linux-amd64.tar.gz -o /tmp/go.linux-amd64.tar.gz
+      - run: tools/scripts/retry.sh curl --retry-connrefused --retry 10 https://dl.google.com/go/go1.22.8.linux-amd64.tar.gz -o /tmp/go.linux-amd64.tar.gz
       - run: sudo tar -C /usr/local -xzf /tmp/go.linux-amd64.tar.gz
       - run: echo 'export PATH=$PATH:$HOME/go/bin' >> $BASH_ENV
 
@@ -276,10 +318,6 @@ commands:
     steps:
       - run: curl --retry-connrefused --retry 10 -o /tmp/protoc.zip -L https://github.com/protocolbuffers/protobuf/releases/download/v24.3/protoc-24.3-linux-x86_64.zip
       - run: unzip -o /tmp/protoc.zip -d $HOME/.local
-
-  install-codecov:
-    steps:
-      - run: pip install codecov
 
   setup-go-intg-deps:
     steps:
@@ -351,9 +389,6 @@ commands:
       determined:
         type: boolean
         default: false
-      model-hub:
-        type: boolean
-        default: false
       install-python:
         type: boolean
         default: true
@@ -368,6 +403,10 @@ commands:
       python-version:
         type: string
         default: "3.8.18"
+      install-nvidia-apex:
+        description: "Install dependency for some of the GPU tests."
+        type: boolean
+        default: false
     steps:
       - run:
           name: Write cache key
@@ -377,9 +416,6 @@ commands:
             if [ "<<parameters.determined>>" = "true" ]; then
               cat harness/setup.py >> /tmp/cachefile
             fi
-            if [ "<<parameters.model-hub>>" = "true" ]; then
-              cat model_hub/setup.py >> /tmp/cachefile
-            fi
             echo <<parameters.extras-requires>> >> /tmp/cachefile
             if [ -n <<parameters.extra-requirements-file>> ]; then
               for i in <<parameters.extra-requirements-file>>; do
@@ -388,6 +424,7 @@ commands:
             fi
             echo '<<parameters.python-version>>' >> /tmp/cachefile
             echo '<<parameters.install-python>>' >> /tmp/cachefile
+            echo '<<parameters.install-nvidia-apex>>' >> /tmp/cachefile
             date -u '+%y/%m/%d' >> /tmp/cachefile
 
       - restore_cache:
@@ -447,34 +484,15 @@ commands:
             echo 'export PATH=/tmp/venv/bin:$PATH' >> $BASH_ENV
             /tmp/venv/bin/python -m pip install --upgrade pip wheel setuptools
 
-      # Either of make -C {harness,model_hub} build require pypa's build module.
       - when:
-          condition:
-            or:
-              - <<parameters.determined>>
-              - <<parameters.model-hub>>
+          condition: <<parameters.determined>>
           steps:
             - run:
                 name: Install pypa builder
                 command: python3 -m pip install build
-
-      - when:
-          condition: <<parameters.determined>>
-          steps:
             - install-wheel:
                 package-name: determined
                 package-location: ./harness
-      - when:
-          condition: <<parameters.model-hub>>
-          steps:
-            - run:
-                name: Install mmdetection dependencies
-                command: |
-                  sudo apt-get update
-                  sudo apt-get install -y ffmpeg libsm6 libxext6
-            - install-wheel:
-                package-name: model-hub
-                package-location: ./model_hub
       - run:
           name: Install <<parameters.extras-requires>>
           command: |
@@ -489,6 +507,26 @@ commands:
                 tools/scripts/retry.sh pip install -r $i
               done
             fi
+      - when:
+          condition: <<parameters.install-nvidia-apex>>
+          steps:
+            - run:
+                name: Install Nvidia Apex
+                command: |
+                  if ! pip show apex; then
+                    # Ninja speeds up Apex compilation.
+                    if ! pip show ninja; then
+                      pip install ninja
+                    fi
+                    # Apex installation needs Cuda 12.1 because Pytorch binaries were compiled by Cuda 12.1.
+                    wget https://developer.download.nvidia.com/compute/cuda/12.1.0/local_installers/cuda_12.1.0_530.30.02_linux.run
+                    sudo sh cuda_12.1.0_530.30.02_linux.run --toolkit --silent
+                    nvcc --version
+                    git clone https://github.com/NVIDIA/apex ~/apex
+                    git -C ~/apex checkout tags/24.04.01
+                    pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ~/apex
+                  fi
+
       - save_cache:
           key: det-python-deps-<<pipeline.parameters.cache-buster>>-{{ checksum "/tmp/cachefile" }}
           paths:
@@ -572,6 +610,9 @@ commands:
       wait-for-master:
         type: boolean
         default: true
+      collect-det-job-logs:
+        type: boolean
+        default: true
     steps:
       # Wait for master before splitting tests, since so many splits depend on
       # asking master for its configuration in order to apply skipifs.
@@ -609,24 +650,22 @@ commands:
               echo "No Determined master listening on '<<parameters.master-scheme>>://<<parameters.master-host>>:<<parameters.master-port>>'"
             fi
 
-            cat /tmp/all-relevant-files | circleci tests run --command="DD_CIVISIBILITY_AGENTLESS_ENABLED=true \
-            DD_SITE='datadoghq.com' \
-            DD_ENV=ci DD_SERVICE='pytest-<<parameters.mark>>' \
-            DET_MASTER_CERT_FILE=<<parameters.master-cert>> \
+            CMD="DET_MASTER_CERT_FILE=<<parameters.master-cert>> \
             DET_MASTER_CERT_NAME=<<parameters.master-cert-name>> \
             IS_CIRCLECI_JOB=1 XDG_CONFIG_HOME=/tmp \
             xargs pytest --capture=tee-sys -vv \
             -m '<<parameters.mark>>' \
             --durations=0 \
-            --ddtrace \
-            --master-scheme="<<parameters.master-scheme>>" \
-            --master-host="<<parameters.master-host>>" \
-            --master-port="<<parameters.master-port>>" \
+            --master-scheme='<<parameters.master-scheme>>' \
+            --master-host='<<parameters.master-host>>' \
+            --master-port='<<parameters.master-port>>' \
             -o junit_family=xunit1 \
-            --junit-xml="<<parameters.junit-path>>" \
-            <<parameters.extra-pytest-flags>>" \
-            --verbose --split-by=timings
+            --junit-xml='<<parameters.junit-path>>' \
+            <<parameters.extra-pytest-flags>>"
 
+            echo "$CMD"
+            cat /tmp/all-relevant-files | circleci tests run --command="$CMD" \
+            --verbose --split-by=timings
             pytest_status=$?
             echo Pytest exited with $pytest_status
             exit $pytest_status
@@ -634,6 +673,14 @@ commands:
       - upload-test-job:
           only_on_branch: main
           test_results_path: <<parameters.junit-path>>
+      - when:
+          condition: <<parameters.collect-det-job-logs>>
+          steps:
+            - collect-task-logs:
+                master_address: "<<parameters.master-scheme>>://<<parameters.master-host>>:<<parameters.master-port>>"
+      - store_artifacts:
+          path: /tmp/artifacts/logs
+
 
   run-det-deploy-tests:
     parameters:
@@ -648,6 +695,7 @@ commands:
           name: Run det-deploy tests
           working_directory: ./e2e_tests
           command: |
+            DET_SECURITY_INITIAL_USER_PASSWORD=$INITIAL_USER_PASSWORD \
             pytest -vv -s \
             -m <<parameters.mark>> \
             --junitxml=/tmp/test-results/det-deploy-tests.xml \
@@ -682,7 +730,7 @@ commands:
         default: ""
       aux-agent-instance-type:
         type: string
-        default: "m5.large"
+        default: "m6i.large"
       compute-agent-instance-type:
         type: string
         default: "g4dn.xlarge"
@@ -817,7 +865,7 @@ commands:
         default: "g4dn.xlarge"
       aux-agent-instance-type:
         type: string
-        default: "m5.large"
+        default: "m6i.large"
       max-dynamic-agents:
         type: integer
         default: 1
@@ -1150,12 +1198,16 @@ commands:
       - run:
           command: kubectl create secret tls <<parameters.master-cert-name>> --cert <<parameters.master-tls-cert>> --key <<parameters.master-tls-key>> --namespace ${GENERATED_NAMESPACE} # Create tls secret in namespace w/secret name
       - run:
+          name: Pull docker images onto nodes
+          command: |
+            kubectl apply -f .circleci/scripts/pull_image_daemonset.yaml
+      - run:
           command: gsutil mb -p ${<<parameters.google-project-id>>} gs://${GENERATED_NAMESPACE}-bucket
       - helm/install-helm-client:
           version: v3.12.3
       - run:
           command: |
-            helm install ${GENERATED_NAMESPACE} helm/charts/determined  --set "${HELM_VALUES}" --namespace="${GENERATED_NAMESPACE}" --wait --timeout 10m0s
+            helm install ${GENERATED_NAMESPACE} helm/charts/determined  --set "${HELM_VALUES}" --namespace="${GENERATED_NAMESPACE}" --wait --timeout 20m0s
           name: Helm Install
       - run:
           command: |
@@ -1319,12 +1371,21 @@ commands:
             - run: make -C agent check
 
   make-package:
+    parameters:
+      dryrun:
+        type: boolean
+        default: false
     steps:
       - attach_workspace:
           at: .
       - run:
           no_output_timeout: 30m
-          command: make package
+          command: |
+            if <<parameters.dryrun>>; then
+              make package-dryrun
+            else
+              make package
+            fi
 
   make-package-ee:
     steps:
@@ -1333,14 +1394,6 @@ commands:
       - run:
           no_output_timeout: 30m
           command: make package-ee
-
-  make-package-small:
-    steps:
-      - attach_workspace:
-          at: .
-      - run:
-          no_output_timeout: 30m
-          command: make -C master package-small
 
   install-devcluster:
     steps:
@@ -1363,6 +1416,31 @@ commands:
       - run:
           command: devcluster --oneshot -c .circleci/devcluster/<<parameters.devcluster-config>> --target-stage <<parameters.target-stage>> || circleci-agent step halt
           background: true
+
+  make-component:
+    description: "Basic parameterized version of make for building Determined components."
+    parameters:
+      component:
+        type: string
+        default: ""
+      target:
+        type: string
+        default: ""
+      dryrun:
+        type: boolean
+        default: false
+      no_output_timeout:
+        type: string
+        default: "10m"
+    steps:
+      - run:
+          no_output_timeout: <<parameters.no_output_timeout>>
+          command: |
+            if <<parameters.dryrun>>; then
+              make -C <<parameters.component>> <<parameters.target>>-dryrun
+            else
+              make -C <<parameters.component>> <<parameters.target>>
+            fi
 
 jobs:
   build-helm:
@@ -1394,7 +1472,6 @@ jobs:
       - setup-python-venv:
           install-python: false
           determined: true
-          model-hub: true
           extra-requirements-file: "docs/requirements.txt"
           executor: <<pipeline.parameters.docker-image>>
       - run: make -C examples build
@@ -1412,7 +1489,6 @@ jobs:
           paths:
             - examples/build
             - harness/dist
-            - model_hub/dist
             - docs/build
             - docs/site
       - run: tar czf docs.tgz docs/site/html
@@ -1427,7 +1503,6 @@ jobs:
       - setup-python-venv:
           install-python: false
           determined: true
-          model-hub: true
           extra-requirements-file: "docs/requirements.txt"
           executor: <<pipeline.parameters.docker-image>>
       - attach_workspace:
@@ -1442,7 +1517,6 @@ jobs:
       - setup-python-venv:
           install-python: false
           determined: true
-          model-hub: true
           extra-requirements-file: "docs/requirements.txt"
           executor: <<pipeline.parameters.docker-image>>
       - attach_workspace:
@@ -1455,7 +1529,7 @@ jobs:
       ee:
         type: boolean
         default: false
-      dry-run:
+      dryrun:
         type: boolean
         default: false
     docker:
@@ -1467,7 +1541,7 @@ jobs:
       - run: apk add make curl py3-pip
       - run: pip install --break-system-packages awscli  # used in the terraform apply
       - run: |
-          if <<parameters.dry-run>>; then
+          if <<parameters.dryrun>>; then
             echo 'Doing a dry run!'
             if <<parameters.ee>>; then
               export DET_VARIANT=EE
@@ -1503,7 +1577,6 @@ jobs:
       - setup-python-venv:
           install-python: false
           determined: true
-          model-hub: true
           extra-requirements-file: "docs/requirements.txt"
           executor: <<pipeline.parameters.docker-image>>
       - when:
@@ -1610,20 +1683,6 @@ jobs:
       - make-package
       - run: tools/scripts/retry.sh make -C master publish-dev
       - run: tools/scripts/retry.sh make -C agent publish-dev
-      - run:
-          name: Build and publish model_hub docker images
-          command: |
-            if [ ${CIRCLE_BRANCH} = 'main' ] || [[ ${CIRCLE_BRANCH} == *"release-"* ]]; then
-                # For main and release branches, we will tag and publish both the environment
-                # with the git hash as well as the version.  This will make that image available
-                # immediately for nightly tests.
-                make -C model_hub build-docker
-                tools/scripts/retry.sh make -C model_hub publish-docker
-            else
-                # Otherwise, only tag and publish the environment with the git hash.
-                make -C model_hub build-docker-dev
-                tools/scripts/retry.sh make -C model_hub publish-docker-dev
-            fi
       - run: mkdir /tmp/pkgs && cp -v */dist/*.{rpm,deb,tar.gz} /tmp/pkgs
       - store_artifacts:
           path: /tmp/pkgs
@@ -1654,58 +1713,13 @@ jobs:
       - make-package-ee
       - run: tools/scripts/retry.sh make -C master publish-dev-ee
       - run: tools/scripts/retry.sh make -C agent publish-dev-ee
-      - run:
-          name: Build and publish model_hub docker images
-          command: |
-            if [ ${CIRCLE_BRANCH} = 'main' ] || [[ ${CIRCLE_BRANCH} == *"release-"* ]]; then
-                # For main and release branches, we will tag and publish both the environment
-                # with the git hash as well as the version.  This will make that image available
-                # immediately for nightly tests.
-                make -C model_hub build-docker
-                tools/scripts/retry.sh make -C model_hub publish-docker
-            else
-                # Otherwise, only tag and publish the environment with the git hash.
-                make -C model_hub build-docker-dev
-                tools/scripts/retry.sh make -C model_hub publish-docker-dev
-            fi
       - run: mkdir /tmp/pkgs && cp -v */dist/*.{rpm,deb,tar.gz} /tmp/pkgs
-      - store_artifacts:
-          path: /tmp/pkgs
-
-  package-and-push-system-dev-small:
-    docker:
-      - image: <<pipeline.parameters.docker-image>>
-        environment:
-          GO111MODULE: "on"
-    resource_class: xlarge
-    steps:
-      - checkout
-      - add-and-fetch-upstream
-      - skip-if-only-docs
-      - skip-if-only-github
-      - skip-if-only-webui
-      - attach_workspace:
-          at: .
-      - reinstall-go
-      - setup-python-venv:
-          install-python: false
-          determined: true
-          executor: <<pipeline.parameters.docker-image>>
-      - setup_remote_docker:
-          version: previous
-      - login-docker:
-          username: ${DOCKER_USER}
-          password: ${DOCKER_PASS}
-      - pre-package-and-push-system:
-          check: false
-      - make-package-small
-      - run: tools/scripts/retry.sh make -C master publish-dev-small
-      - persist_to_workspace:
-          root: .
-          paths:
-            - harness/dist
 
   package-and-push-system-rc:
+    parameters:
+      dryrun:
+        type: boolean
+        default: false
     docker:
       - image: <<pipeline.parameters.docker-image>>
         environment:
@@ -1726,11 +1740,16 @@ jobs:
           username: ${NGC_API_USERNAME}
           password: ${NGC_API_KEY}
       - pre-package-and-push-system
-      - make-package
-      - run: make -C master publish
-      - run: make -C agent publish
-      - run: make -C model_hub build-docker
-      - run: tools/scripts/retry.sh make -C model_hub publish-docker
+      - make-package:
+          dryrun: <<parameters.dryrun>>
+      - make-component:
+          component: master
+          target: publish
+          dryrun: <<parameters.dryrun>>
+      - make-component:
+          component: agent
+          target: publish
+          dryrun: <<parameters.dryrun>>
       - run: mkdir /tmp/pkgs && cp -v */dist/*.{rpm,deb,tar.gz} /tmp/pkgs
       - store_artifacts:
           path: /tmp/pkgs
@@ -1757,10 +1776,12 @@ jobs:
       - run: make -C master publish-ee
       - run: make -C agent publish-ee
       - run: mkdir /tmp/pkgs && cp -v */dist/*.{rpm,deb,tar.gz} /tmp/pkgs
-      - store_artifacts:
-          path: /tmp/pkgs
 
   package-and-push-system-release:
+    parameters:
+      dryrun:
+        type: boolean
+        default: false
     docker:
       - image: <<pipeline.parameters.docker-image>>
         environment:
@@ -1781,19 +1802,25 @@ jobs:
           username: ${NGC_API_USERNAME}
           password: ${NGC_API_KEY}
       - pre-package-and-push-system
-      - run:
-          no_output_timeout: 30m
-          command: make -C master release
-      - run:
-          no_output_timeout: 30m
-          command: make -C agent release
-      - run: make -C model_hub build-docker
-      - run: make -C model_hub publish-docker
+      - make-component:
+          dryrun: <<parameters.dryrun>>
+          component: master
+          target: release
+          no_output_timeout: "30m"
+      - make-component:
+          dryrun: <<parameters.dryrun>>
+          component: agent
+          target: release
+          no_output_timeout: "30m"
       - run: mkdir /tmp/pkgs && cp -v */dist/*.{rpm,deb,tar.gz} /tmp/pkgs
       - store_artifacts:
           path: /tmp/pkgs
 
   package-and-push-system-release-ee:
+    parameters:
+      dryrun:
+        type: boolean
+        default: false
     docker:
       - image: <<pipeline.parameters.docker-image>>
         environment:
@@ -1811,19 +1838,38 @@ jobs:
           username: ${DOCKER_USER}
           password: ${DOCKER_PASS}
       - pre-package-and-push-system
-      - run:
-          no_output_timeout: 30m
-          command: make -C master release-ee
-      - run:
-          no_output_timeout: 30m
-          command: make -C agent release-ee
+      - make-component:
+          dryrun: <<parameters.dryrun>>
+          component: master
+          target: release-ee
+          no_output_timeout: "30m"
+      - make-component:
+          dryrun: <<parameters.dryrun>>
+          component: agent
+          target: release-ee
+          no_output_timeout: "30m"
       - run: mkdir /tmp/pkgs && cp -v */dist/*.{rpm,deb,tar.gz} /tmp/pkgs
-      - store_artifacts:
-          path: /tmp/pkgs
+
+  publish-helm-gh-rc:
+    docker:
+      - image: <<pipeline.parameters.docker-image>>
+        environment:
+          GO111MODULE: "on"
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - reinstall-go
+      - make-component:
+          component: helm
+          target: release-gh-rc
 
   publish-helm-gh:
     parameters:
       ee:
+        type: boolean
+        default: false
+      dryrun:
         type: boolean
         default: false
     docker:
@@ -1835,12 +1881,19 @@ jobs:
       - attach_workspace:
           at: .
       - reinstall-go
-      - run: make -C helm release-gh
       - run: |
           if <<parameters.ee>>; then
-            make -C helm release-gh-ee
+            if <<parameters.dryrun>>; then
+              make -C helm release-gh-ee-dryrun
+            else
+              make -C helm release-gh-ee
+            fi
           else
-            make -C helm release-gh
+            if <<parameters.dryrun>>; then
+              make -C helm release-gh-dryrun
+            else
+              make -C helm release-gh
+            fi
           fi
 
   publish-python-package:
@@ -1848,6 +1901,9 @@ jobs:
       path:
         type: string
       ee:
+        type: boolean
+        default: false
+      dryrun:
         type: boolean
         default: false
     docker:
@@ -1859,11 +1915,21 @@ jobs:
           extras-requires: "build twine"
           executor: <<pipeline.parameters.docker-image>>
       - run: make -C <<parameters.path>> build
+        # The following run step is right about at the point where it should be
+        # split off into its own shell script.
       - run: |
           if <<parameters.ee>>; then
-            make -C <<parameters.path>> publish-ee
+            if <<parameters.dryrun>>; then
+              make -C <<parameters.path>> publish-ee-dryrun
+            else
+              make -C <<parameters.path>> publish-ee
+            fi
           else
-            make -C <<parameters.path>> publish
+            if <<parameters.dryrun>>; then
+              make -C <<parameters.path>> publish-dryrun
+            else
+              make -C <<parameters.path>> publish
+            fi
           fi
 
   check-ts-bindings:
@@ -1932,6 +1998,11 @@ jobs:
       - install-devcluster
       - start-devcluster:
           target-stage: db
+      - run: |
+          sudo mkdir -p /etc/systemd/system/determined-master.service.d
+          echo "[Service]" | sudo tee /etc/systemd/system/determined-master.service.d/password.override.conf >/dev/null
+          echo "Environment=\"DET_SECURITY_INITIAL_USER_PASSWORD=${INITIAL_USER_PASSWORD}\"" | sudo tee -a /etc/systemd/system/determined-master.service.d/password.override.conf >/dev/null
+          sudo systemctl daemon-reload
       - run: python3 .circleci/scripts/wait_for_server.py localhost 5432
       - run: sudo systemctl restart determined-master
       - run: python3 .circleci/scripts/wait_for_server.py localhost 8080 || { journalctl --no-pager -u determined-master; exit 1; }
@@ -1959,14 +2030,21 @@ jobs:
       ee:
         type: boolean
         default: false
+      force:
+        type: boolean
+        default: false
     docker:
       - image: cimg/node:20.9.0
     resource_class: large
     steps:
       - checkout-with-sm
       - add-and-fetch-upstream
-      - skip-if-only-docs
-      - skip-if-only-github
+      - when:
+          condition:
+            not: <<parameters.force>>
+          steps:
+            - skip-if-only-docs
+            - skip-if-only-github
       - react-get-deps
       - run: |
           if <<parameters.dev-mode>>; then
@@ -1985,6 +2063,12 @@ jobs:
 
   test-e2e-react:
     parameters:
+      devcluster-config:
+        type: enum
+        enum:
+          - react.devcluster.yaml
+          - react-rbac.devcluster.yaml
+          - react-sso.devcluster.yaml
       ee:
         type: boolean
         default: false
@@ -2017,7 +2101,7 @@ jobs:
       - run: make -C agent get-deps
       - install-devcluster
       - start-devcluster:
-          devcluster-config: react.devcluster.yaml
+          devcluster-config: <<parameters.devcluster-config>>
       - run: make -C webui/react get-playwright-ci
       - run: SERVER_ADDRESS=${PW_SERVER_ADDRESS} npm run build --prefix webui/react
       - wait-for-master:
@@ -2026,7 +2110,10 @@ jobs:
       - run:
           environment:
             PW_EE: << parameters.ee >>
-          command: npm run e2e --prefix webui/react -- << parameters.playwright-options >>
+          command: |
+              if [[ "$PW_EE" -eq 1 ]]; then env="ee"; else env="oss"; fi
+              PW_PASSWORD=${INITIAL_USER_PASSWORD} \
+              npm run e2e --prefix webui/react -- << parameters.playwright-options >>
       - store_artifacts:
           path: webui/react/src/e2e/playwright-report
       - store_artifacts:
@@ -2049,9 +2136,6 @@ jobs:
       - skip-if-only-github
       - react-get-deps
       - run: make -C webui/react test-ci
-      - codecov/upload:
-          flags: "web"
-          xtra_args: "-v"
       - store_test_results:
           path: webui/react/junit.xml
       - store_artifacts:
@@ -2158,10 +2242,10 @@ jobs:
       - setup-python-venv:
           executor: <<pipeline.parameters.machine-image>>
       - setup-go-intg-deps
+      - run: curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64 && sudo install minikube-linux-amd64 /usr/local/bin/minikube
+      - run: minikube start
+      - license-gen
       - run: make -C master test-intg
-      - codecov/upload:
-          flags: "backend"
-          xtra_args: "-v -X fixes"
       - store_test_results:
           path: master/test-intg.junit.xml
       - persist_to_workspace:
@@ -2187,9 +2271,6 @@ jobs:
           executor: <<pipeline.parameters.machine-image>>
       - setup-go-intg-deps
       - run: make -C agent test-intg
-      - codecov/upload:
-          flags: "backend"
-          xtra_args: "-v -X fixes"
       - store_test_results:
           path: agent/test-intg.junit.xml
       - persist_to_workspace:
@@ -2283,11 +2364,9 @@ jobs:
       - setup-python-venv:
           install-python: false
           determined: true
-          model-hub: true
-          extra-requirements-file: "requirements.txt model_hub/tests/requirements.txt"
+          extra-requirements-file: "requirements.txt"
           executor: <<pipeline.parameters.docker-image>>
       - run: make -C harness check
-      - run: make -C model_hub check
       - run: make -C e2e_tests check
       - run: make -C tools check
       - run: make -C schemas check
@@ -2301,7 +2380,6 @@ jobs:
       - skip-if-only-docs
       - skip-if-only-github
       - skip-if-only-webui
-      - install-codecov
       - setup-python-venv:
           install-python: false
           determined: true
@@ -2309,7 +2387,6 @@ jobs:
           executor: <<pipeline.parameters.docker-image>>
       - run: COVERAGE_FILE=$PWD/test-unit-harness-cpu-pycov make -C harness test-cpu
       - run: coverage xml -i --data-file=./test-unit-harness-cpu-pycov
-      - run: codecov -v -t $CODECOV_TOKEN -F harness
       - persist_to_workspace:
           root: .
           paths:
@@ -2318,9 +2395,9 @@ jobs:
           path: /tmp/test-results
 
   test-unit-harness-gpu-tf:
-    docker:
-      - image: determinedai/tensorflow-ngc-dev:8b3bea3
-    resource_class: determined-ai/container-runner-gpu
+    machine:
+      image: <<pipeline.parameters.gpu-machine-image>>
+      resource_class: <<pipeline.parameters.gpu-machine-resource-class>>
     steps:
       - run: mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
       - checkout
@@ -2329,11 +2406,14 @@ jobs:
       - skip-if-only-github
       - skip-if-only-webui
       - run: pip install mypy pytest coverage
-      - install-codecov
       - setup-paths
-      - run: COVERAGE_FILE=/root/project/test-unit-harness-gpu-tf-pycov make -C harness test-gpu-tf
+      - setup-python-venv:
+          install-python: true
+          determined: true
+          extra-requirements-file: "harness/tests/requirements/requirements-harness.txt"
+          executor: machine-<<pipeline.parameters.gpu-machine-resource-class>>
+      - run: COVERAGE_FILE=/home/circleci/project/test-unit-harness-gpu-tf-pycov make -C harness test-gpu-tf
       - run: coverage xml -i --data-file=./test-unit-harness-gpu-tf-pycov
-      - run: codecov -v -t $CODECOV_TOKEN -F harness
       - persist_to_workspace:
           root: .
           paths:
@@ -2342,9 +2422,9 @@ jobs:
           path: /tmp/test-results
 
   test-unit-harness-pytorch2-gpu:
-    docker:
-      - image: determinedai/pytorch-ngc-dev:8b3bea3
-    resource_class: determined-ai/container-runner-gpu
+    machine:
+      image: <<pipeline.parameters.gpu-machine-image>>
+      resource_class: <<pipeline.parameters.gpu-machine-resource-class>>
     steps:
       - run: mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
       - checkout
@@ -2353,11 +2433,15 @@ jobs:
       - skip-if-only-github
       - skip-if-only-webui
       - run: pip install mypy pytest coverage
-      - install-codecov
       - setup-paths
-      - run: COVERAGE_FILE=/root/project/test-unit-harness-pytorch2-gpu-pycov make -C harness test-pytorch-gpu
+      - setup-python-venv:
+          install-python: true
+          determined: true
+          extra-requirements-file: "harness/tests/requirements/requirements-harness.txt"
+          executor: machine-<<pipeline.parameters.gpu-machine-resource-class>>
+          install-nvidia-apex: true
+      - run: COVERAGE_FILE=/home/circleci/project/test-unit-harness-pytorch2-gpu-pycov make -C harness test-pytorch-gpu
       - run: coverage xml -i --data-file=./test-unit-harness-pytorch2-gpu-pycov
-      - run: codecov -v -t $CODECOV_TOKEN -F harness
       - persist_to_workspace:
           root: .
           paths:
@@ -2367,7 +2451,7 @@ jobs:
 
   test-unit-harness-pytorch2-cpu:
     docker:
-      - image: determinedai/pytorch-ngc-dev:8b3bea3
+      - image: determinedai/pytorch-ngc-dev:0736b6d
     steps:
       - run: mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
       - checkout
@@ -2376,11 +2460,9 @@ jobs:
       - skip-if-only-github
       - skip-if-only-webui
       - run: pip install mypy pytest coverage
-      - install-codecov
       - run: echo 'export PATH=$PATH:$HOME/.local/bin' >> $BASH_ENV
       - run: COVERAGE_FILE=/root/project/test-unit-harness-pytorch2-cpu-pycov make -C harness test-pytorch-cpu
       - run: coverage xml -i --data-file=./test-unit-harness-pytorch2-cpu-pycov
-      - run: codecov -v -t $CODECOV_TOKEN -F harness
       - persist_to_workspace:
           root: .
           paths:
@@ -2389,9 +2471,9 @@ jobs:
           path: /tmp/test-results
 
   test-unit-harness-gpu-parallel:
-    docker:
-      - image: determinedai/pytorch-ngc-dev:8b3bea3
-    resource_class: determined-ai/container-runner-multi-gpu
+    machine:
+      image: <<pipeline.parameters.gpu-machine-image>>
+      resource_class: <<pipeline.parameters.gpu-machine-resource-class>>
     steps:
       - run: mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
       - checkout
@@ -2400,11 +2482,15 @@ jobs:
       - skip-if-only-github
       - skip-if-only-webui
       - run: pip install mypy pytest coverage
-      - install-codecov
       - setup-paths
-      - run: COVERAGE_FILE=/root/project/test-unit-harness-gpu-parallel-pycov make -C harness test-gpu-parallel
+      - setup-python-venv:
+          install-python: true
+          determined: true
+          extra-requirements-file: "harness/tests/requirements/requirements-harness.txt"
+          executor: machine-<<pipeline.parameters.gpu-machine-resource-class>>
+          install-nvidia-apex: true
+      - run: COVERAGE_FILE=/home/circleci/project/test-unit-harness-gpu-parallel-pycov make -C harness test-gpu-parallel
       - run: coverage xml -i --data-file=./test-unit-harness-gpu-parallel-pycov
-      - run: codecov -v -t $CODECOV_TOKEN -F harness
       - persist_to_workspace:
           root: .
           paths:
@@ -2413,9 +2499,9 @@ jobs:
           path: /tmp/test-results
 
   test-unit-harness-gpu-deepspeed:
-    docker:
-      - image: determinedai/pytorch-ngc-dev:8b3bea3
-    resource_class: determined-ai/container-runner-gpu
+    machine:
+      image: <<pipeline.parameters.gpu-machine-image>>
+      resource_class: <<pipeline.parameters.gpu-machine-resource-class>>
     steps:
       - run: mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
       - checkout
@@ -2424,11 +2510,14 @@ jobs:
       - skip-if-only-github
       - skip-if-only-webui
       - run: pip install mypy pytest coverage
-      - install-codecov
       - setup-paths
-      - run: COVERAGE_FILE=/root/project/test-unit-harness-gpu-deepspeed-pycov make -C harness test-gpu-deepspeed
+      - setup-python-venv:
+          install-python: true
+          determined: true
+          extra-requirements-file: "harness/tests/requirements/requirements-harness.txt"
+          executor: machine-<<pipeline.parameters.gpu-machine-resource-class>>
+      - run: COVERAGE_FILE=/home/circleci/project/test-unit-harness-gpu-deepspeed-pycov make -C harness test-gpu-deepspeed
       - run: coverage xml -i --data-file=./test-unit-harness-gpu-deepspeed-pycov
-      - run: codecov -v -t $CODECOV_TOKEN -F harness
       - persist_to_workspace:
           root: .
           paths:
@@ -2445,13 +2534,11 @@ jobs:
       - skip-if-only-docs
       - skip-if-only-github
       - skip-if-only-webui
-      - install-codecov
       - run: pip install mypy pytest coverage
-      - install-codecov
       - setup-paths
+      - run: make -C harness install
       - run: COVERAGE_FILE=$PWD/test-unit-harness-tf2-pycov make -C harness test-tf2
       - run: coverage xml -i --data-file=./test-unit-harness-tf2-pycov
-      - run: codecov -v -t $CODECOV_TOKEN -F harness
       - persist_to_workspace:
           root: .
           paths:
@@ -2468,7 +2555,6 @@ jobs:
       - skip-if-only-docs
       - skip-if-only-github
       - skip-if-only-webui
-      - install-codecov
       - setup-python-venv:
           install-python: false
           determined: true
@@ -2476,39 +2562,12 @@ jobs:
           executor: <<pipeline.parameters.docker-image>>
       - run: COVERAGE_FILE=$PWD/test-unit-storage-pycov coverage run -m pytest -v --durations=0 --junitxml=/tmp/test-results/test-unit-storage.xml --require-secrets -m cloud harness/tests
       - run: coverage xml -i --data-file=./test-unit-storage-pycov
-      - run: codecov -v -t $CODECOV_TOKEN -F harness
       - persist_to_workspace:
           root: .
           paths:
             - test-unit-storage-pycov
       - store_test_results:
           path: /tmp/test-results
-
-  test-unit-model-hub:
-    docker:
-      - image: <<pipeline.parameters.docker-image>>
-    resource_class: medium+
-    steps:
-      - checkout
-      - add-and-fetch-upstream
-      - skip-if-only-docs
-      - skip-if-only-github
-      - skip-if-only-webui
-      - install-codecov
-      - setup-python-venv:
-          install-python: false
-          determined: true
-          model-hub: true
-          extras-requires: "torch==1.9.0 torchvision==0.10.0"
-          extra-requirements-file: "model_hub/tests/requirements.txt"
-          executor: <<pipeline.parameters.docker-image>>
-      - run: COVERAGE_FILE=$PWD/test-model-hub-pycov make -C model_hub test
-      - run: coverage xml -i --data-file=./test-model-hub-pycov
-      - run: codecov -v -t $CODECOV_TOKEN -F harness
-      - persist_to_workspace:
-          root: .
-          paths:
-            - test-model-hub-pycov
 
   python-coverage:
     docker:
@@ -2522,16 +2581,13 @@ jobs:
       - setup-python-venv:
           install-python: false
           determined: false
-          model-hub: false
           extras-requires: "coverage"
           executor: <<pipeline.parameters.docker-image>>
       - attach_workspace:
           at: .
       - run: coverage combine *-pycov
       - run: coverage report --include 'harness/determined/*' --skip-covered
-      - run: coverage report --include 'model_hub/model_hub/*' --skip-covered
       - run: coverage html --include 'harness/determined/*' --skip-covered -d cov-html/harness
-      - run: coverage html --include 'model_hub/model_hub/*' --skip-covered -d cov-html/model_hub
       - store_artifacts:
           path: cov-html
           destination: cov-html
@@ -2541,13 +2597,15 @@ jobs:
       executor-name:
         type: string
     executor: << parameters.executor-name >>
+    environment:
+      VERSION: "<< pipeline.parameters.det-version >>"
     steps:
       - checkout
       - python-report
       # Running the pip executable causes an error with the win/default executor for some reason.
       - run: python -m pip install --upgrade --user pip
-      - run: pip install wheel setuptools
-      - run: cd harness; python setup.py bdist_wheel -d ../build
+      - run: pip install wheel setuptools build
+      - run: cd harness; python -m build --wheel --outdir ../build
       - run: pip install --find-links build determined==<< pipeline.parameters.det-version >>
       - run: pip freeze --all
       # Allow this to fail, but it is useful for debugging.
@@ -2562,15 +2620,6 @@ jobs:
       - store_test_results:
           path: /tmp/test-results
 
-  test-e2e-slurm-disabled:
-    parameters:
-      master_config:
-        type: string
-        default:
-    docker:
-      - image: <<pipeline.parameters.docker-image>>
-    steps:
-      - run: echo "Test suite disabled."
 
   # By default, this job only runs on the main branch unless otherwise
   # specified. To invoke this job on a developer branch, add the 'ci-run-allgcp'
@@ -2588,9 +2637,6 @@ jobs:
       container-run-type:
         type: string
         default: singularity
-      agent-use:
-        type: string
-        default: ""
       workload-manager:
         type: string
         default: slurm
@@ -2638,6 +2684,11 @@ jobs:
               echo "export OPT_DEVBOX_PREFIX=circleci-job-$(echo -n "${CIRCLE_USERNAME}-${CIRCLE_BRANCH}-${CIRCLE_JOB}" | md5sum | awk '{print $1}')" >> "$BASH_ENV"
             fi
 
+      - run:
+          name: Set initial user password
+          command: |
+            echo "export INITIAL_USER_PASSWORD=${INITIAL_USER_PASSWORD}" >> "$BASH_ENV"
+
       - attach_workspace:
           at: .
 
@@ -2652,7 +2703,6 @@ jobs:
 
       - install-devcluster
       - license-gen
-      - get-slurmcluster
 
       - gcloud/install:
           version: "412.0.0"
@@ -2692,82 +2742,28 @@ jobs:
             sudo apt-get update
             sudo apt-get install gettext
             sudo apt-get install iproute2
-            yes yes | PATH=$HOME/.local/bin:$PATH make slurmcluster FLAGS="-c <<parameters.container-run-type>> -w <<parameters.workload-manager>> <<parameters.agent-use>>" TF_LOCK=false | tee output.log
+            yes yes | PATH=$HOME/.local/bin:$PATH make slurmcluster \
+              FLAGS="-c <<parameters.container-run-type>> -w <<parameters.workload-manager>> -l '{owner=\\\"determined_ci\\\", gh_team=\\\"machine-users\\\"}'" \
+              TF_LOCK=false | tee output.log || circleci-agent step halt
           background: true
 
       - run:
           name: Wait for VM creation
           command: |
             sleep 5
-            for i in {1..220}; do
+            for i in {1..500}; do
               ELAPSED_TIME=$((i * 5))
               echo "Waiting for VM creation [${ELAPSED_TIME}s]..."
               if grep -q "^Running cluster..." output.log; then
                 echo "VM creation has finished."
                 break
               fi
-              if [[ $i -eq 220 ]]; then
+              if [[ $i -eq 500 ]]; then
                 echo "Timeout waiting for VM creation."
                 exit 1
               fi
               sleep 5
             done
-
-      # For when a user wants to use an agent instead of launcher.
-      - when:
-          condition:
-            equal: ["-A", <<parameters.agent-use>>]
-          steps:
-            - wait-for-master:
-                scheme: <<parameters.master-scheme>>
-                host: <<parameters.master-host>>
-                port: <<parameters.master-port>>
-            - run:
-                name: Transfer and Allocate agent resources on VM
-                command: |
-                  ZONE=$(terraform -chdir=tools/slurm/terraform output --raw zone)
-                  INSTANCE_NAME=$(terraform -chdir=tools/slurm/terraform output --raw instance_name)
-                  PROJECT=$(terraform -chdir=tools/slurm/terraform output --raw project)
-                  gcloud compute scp agent/build/determined-agent "$INSTANCE_NAME":~ --zone $ZONE
-                  gcloud compute ssh --zone "$ZONE" "$INSTANCE_NAME" --project "$PROJECT" -- \
-                  srun determined-agent --master-host=<<parameters.master-host>> --master-port=<<parameters.master-port>> --resource-pool=default --container-runtime=<<parameters.container-run-type>>
-                background: true
-            - run:
-                name: Query the job to ensure Determined Agent is running
-                command: |
-                  # 60 tries gives 30 minutes of tries until the query times out
-                  tries=60
-                  # squeue command gives name and state information. There must be an escape character for the gcloud command.
-                  ZONE=$(terraform -chdir=tools/slurm/terraform output --raw zone)
-                  INSTANCE_NAME=$(terraform -chdir=tools/slurm/terraform output --raw instance_name)
-                  PROJECT=$(terraform -chdir=tools/slurm/terraform output --raw project)
-                  gcloud compute ssh --zone "$ZONE" "$INSTANCE_NAME" --project "$PROJECT" -- squeue -o "%j\ %T"
-                  # Queries until the jobname is shown in a running state. The agent job must be running to run e2e tests
-                  until [[ -n $(gcloud compute ssh --zone "$ZONE" "$INSTANCE_NAME" --project "$PROJECT" -- squeue -o "%j\ %T" | grep "determined-agent" | grep "RUNNING") ]] ; do
-                      if [[ $((--tries)) -eq 0 ]]; then
-                        echo "The job determined-agent did not start. Please check if there are other jobs in the queue preventing this job from starting"
-                        exit 1
-                      fi
-                      echo "Waiting 30s to query for the job name again..."
-                      sleep 30
-                      echo "Retrying job query..."
-                      gcloud compute ssh --zone "$ZONE" "$INSTANCE_NAME" --project "$PROJECT" -- squeue -o "%j\ %T"
-                  done
-            - run:
-                name: Query the slot count to ensure slots are allocated
-                command: |
-                  tries=20
-                  det slot list
-                  until [[ $(det slot list | wc -l) -gt 2 ]] ; do
-                      if [[ $((--tries)) -eq 0 ]]; then
-                        echo "ERROR: determined-agent failed to register at least 2 slots. Check the 'Transfer and Allocate agent resources on VM' for any failures."
-                        exit 1
-                      fi
-                      echo "Waiting 5s to query slots again..."
-                      sleep 5
-                      echo "Retrying slot query..."
-                      det slot list
-                  done
 
       - run-e2e-tests:
           mark: <<parameters.mark>>
@@ -2777,25 +2773,13 @@ jobs:
           master-port: <<parameters.master-port>>
           extra-pytest-flags: <<parameters.extra-pytest-flags>>
 
-      # Must cancel the srun command to prevent a ssh error
-      - when:
-          condition:
-            equal: ["-A", <<parameters.agent-use>>]
-          steps:
-            - run:
-                name: Deallocate the Resources on VM
-                command: |
-                  ZONE=$(terraform -chdir=tools/slurm/terraform output --raw zone)
-                  INSTANCE_NAME=$(terraform -chdir=tools/slurm/terraform output --raw instance_name)
-                  PROJECT=$(terraform -chdir=tools/slurm/terraform output --raw project)
-                  gcloud compute ssh --zone "$ZONE" "$INSTANCE_NAME" --project "$PROJECT" -- \
-                  scancel -u $USER
-
       - run:
           name: Make unslurmcluster
           when: always
           command: |
-            pkill determined-mast
+            # These scripts always run with `set -e`. Be careful that a failure doesn't stop
+            # make unslurmcluster from running, otherwise resources are left around.
+            pkill determined-mast || echo "failed to kill master (exit code $?)"
             (yes yes || true) | make unslurmcluster TF_LOCK=false
             # For some reason, even when `make unslurmcluster` is successful, CircleCI
             # receives exit code 141, so ignore that.
@@ -2810,315 +2794,6 @@ jobs:
       - store_test_results:
           path: /tmp/test-results/
 
-  test-e2e-slurm:
-    parameters:
-      mark:
-        type: string
-        default: e2e_slurm
-      runner_class:
-        type: string
-        default: determined-ai/znode-cluster
-      master_config:
-        type: string
-        default: |
-          task_container_defaults:
-            slurm:
-              sbatch_args:
-                - --time=04:00:00
-            environment_variables:
-              # Some ports are not working, disable them so distributed jobs work.
-              - NCCL_IB_HCA=mlx6_0:0
-          checkpoint_storage:
-            type: shared_fs
-            host_path: /scratch/launcher/.launcher.$HOSTNAME/checkpoints
-            storage_path: determined-checkpoint
-            save_experiment_best: 0
-            save_trial_best: 1
-            save_trial_latest: 1
-          db:
-            user: postgres
-            host: localhost
-            port: 5432
-            name: determined
-            password: ${HPC_DB_PASSWD}
-          resource_manager:
-            type: slurm
-            master_host: $HOSTNAME
-            master_port: 8080
-            host: localhost
-            port: 8181
-            protocol: http
-            slot_type: cuda
-            user_name: launcher
-            group_name: hpcd
-            singularity_image_root: /lustre/hdd/foundation_engineering/images
-            job_storage_root: /scratch/launcher/.launcher.$HOSTNAME
-            auth_file: /home/launcher/.launcher.$HOSTNAME.token
-            path: /opt/singularity/bin:/usr/local/bin:${PATH}
-            ld_library_path:
-      reserved_ports_znode50:
-        type: string
-        default: |
-          reserved_ports:
-            - 12350
-            - 12351
-            - 12360
-            - 12361
-            - 12365
-            - 12366
-            - 29400
-      determined_master_host:
-        type: string
-        default: localhost:8080
-      cluster_unix_user:
-        type: string
-        default: launcher
-      cluster_determined_user:
-        type: string
-        default: determined
-      determined_admin_username:
-        type: string
-        default: admin
-      determined_admin_password:
-        type: string
-        default: ""
-      database_username:
-        type: string
-        default: postgres
-      database_password:
-        type: string
-        default: launcher
-      extra-pytest-flags:
-        type: string
-        default: ""
-      agent-use:
-        type: string
-        default: ""
-    # Following https://circleci.com/docs/2.0/runner-installation-linux/index.html#start-the-service
-    machine: true
-    resource_class: <<parameters.runner_class>>
-    environment:
-      SHARED_CLUSTER: True
-    steps:
-      - checkout
-      - attach_workspace:
-          at: .
-
-      - set-slack-user-id
-      - run: sudo yum install -y xmlsec1
-      - run:
-          name: Remove previous HPE MLDE Master RPM
-          # FE-35: the slow exit of a container, or NFS caching can cause incorrect response
-          # and failure executing command "rm -rf ${dir}". Wait for 5 seconds and retry the command.
-          # Ignore the failure on retry, cause the failure from "rm -rf" should not stop the test suite to run.
-          command: |
-            export DET_PKG_NAME=$(rpm -qp --queryformat "%{NAME}" master/dist/hpe-mlde-master_*-ee_linux_amd64.rpm)
-            if rpm -q $DET_PKG_NAME; then
-              sudo rpm -e $DET_PKG_NAME
-            fi
-            echo "Cleanup state from prior runs on HOSTNAME=$HOSTNAME"
-
-            dir="/scratch/launcher/.launcher.$HOSTNAME/checkpoints/determined-checkpoint"
-            if sudo rm -rf ${dir}; then
-              echo "Removed ${dir}"
-            else
-              sleep 5
-              echo "Retry cleanup ${dir}"
-              sudo rm -rf ${dir} || true
-            fi
-
-            dir="/scratch/launcher/.launcher.$HOSTNAME/archiveVolumes/"
-            if sudo rm -rf ${dir}; then
-              echo "Removed ${dir}"
-            else
-              sleep 5
-              echo "Retry cleanup ${dir}"
-              sudo rm -rf ${dir} || true
-            fi
-
-            dir="/scratch/launcher/.launcher.$HOSTNAME/jobs"
-            if sudo rm -rf ${dir}; then
-              echo "Removed ${dir}"
-            else
-              sleep 5
-              echo "Retry cleanup ${dir}"
-              sudo rm -rf ${dir} || true
-            fi
-
-      - setup-python-venv:
-          determined: True
-          extra-requirements-file: "e2e_tests/tests/requirements.txt"
-          install-python: false
-          executor: <<parameters.runner_class>>
-
-      - run:
-          name: Recreate Fresh Database
-          command: |
-            if systemctl is-active --quiet determined-master; then
-              sudo systemctl stop determined-master
-            fi
-            PGPASSWORD=<<parameters.database_password>> dropdb --host=localhost --port=5432 --username=<<parameters.database_username>> --if-exists determined
-            PGPASSWORD=<<parameters.database_password>> createdb --host=localhost --port=5432 --username=<<parameters.database_username>> determined
-
-      - run:
-          name: Install/Configure HPE MLDE Master
-          command: |
-            sudo rpm -i master/dist/hpe-mlde-master_*-ee_linux_amd64.rpm
-            cat \<< EOF > ./master.yaml
-            <<parameters.master_config>>
-            EOF
-            cat \<< EOF > ./reserved.yaml
-            <<parameters.reserved_ports_znode50>>
-            EOF
-            echo "hostname is $(hostname)"
-            # Disallow certain ports on znode50 for fewer conflicts with znode51
-            if [[ "$(hostname)" == "znode50" ]] ; then cat ./reserved.yaml >> ./master.yaml ; fi
-            cat ./master.yaml
-            sudo cp ./master.yaml /etc/determined/master.yaml
-            sudo systemctl daemon-reload
-            sudo systemctl start determined-master
-            # Show if there are any drained nodes
-            sinfo -R
-            # Resume any drained nodes due to problems killing podman processes.
-            # This will return an error if all nodes do not require a resume (ignore status)
-            sudo scontrol update nodename=znode5[0-1,3-4] state=resume || true
-            sudo su - launcher -c "pdsh -R ssh -w znode50,znode51,znode53,znode54 mkdir -p /tmp/launcher_podman" || true
-            # Cleanup podman state from any issues in prior runs
-            #sudo su - launcher -c "pdsh -R ssh -w znode50,znode51,znode53,znode54 XDG_RUNTIME_DIR=/tmp/launcher_podman podman system migrate" || true
-            sinfo -R
-
-      - run:
-          name: Download Apptainer/Enroot image
-          command: |
-            # rocm images are not required at present
-            if sudo su - launcher -c "/etc/launcher/scripts/manage-singularity-cache --cuda --cpu <<pipeline.parameters.default-pt-gpu-image>>"; then
-                echo "Downloaded Singularity image <<pipeline.parameters.default-pt-gpu-image>> "
-            else
-                EXIT_STATUS=$?
-                echo "Failed downloading Singularity image. Received exit code $EXIT_STATUS"
-                #Ignore the other failures except for IMAGE_REF_NOT_FOUND_IN_DOC=18 or DOC_FILE_NOT_FOUND=11
-                if [[ $EXIT_STATUS -eq 18 || $EXIT_STATUS -eq 11 ]]; then
-                    exit $EXIT_STATUS
-                else
-                    exit 0
-                fi
-            fi
-            if sudo su - launcher -c "ENROOT_RUNTIME_PATH=/tmp/launcher /etc/launcher/scripts/manage-enroot-cache -s /lustre/ssd/foundation_engineering/ --cuda --cpu <<pipeline.parameters.default-pt-gpu-image>>"; then
-                echo "Downloaded Enroot image <<pipeline.parameters.default-pt-gpu-image>> "
-            else
-                EXIT_STATUS=$?
-                echo "Failed downloading Enroot image. Received exit code $EXIT_STATUS"
-                #Ignore the other failures except for IMAGE_REF_NOT_FOUND_IN_DOC=18 or DOC_FILE_NOT_FOUND=11
-                if [[ $EXIT_STATUS -eq 18 || $EXIT_STATUS -eq 11 ]]; then
-                    exit $EXIT_STATUS
-                else
-                    exit 0
-                fi
-            fi
-
-      - wait-for-master:
-          host: localhost
-
-      - run:
-          name: Populate determined user agent values
-          command: |
-            id <<parameters.cluster_unix_user>> || sudo useradd <<parameters.cluster_unix_user>>
-            TOKEN=$(
-              curl "<<parameters.determined_master_host>>/api/v1/auth/login" \
-                -f \
-                -X POST \
-                --data-binary @- \<< EOF | jq -r '.token'
-              {
-                  "username": "<<parameters.determined_admin_username>>",
-                  "password": "<<parameters.determined_admin_password>>"
-              }
-            EOF
-            )
-            curl "<<parameters.determined_master_host>>/api/v1/users/2" \
-              -f \
-              -X PATCH \
-              -H "Authorization: Bearer ${TOKEN}" \
-              --data-binary @- \<< EOF
-              {"agentUserGroup": {
-                "agentUid": $(id -u <<parameters.cluster_unix_user>>),
-                "agentUser": "<<parameters.cluster_unix_user>>",
-                "agentGid": $(id -g <<parameters.cluster_unix_user>>),
-                "agentGroup": "$(id -gn <<parameters.cluster_unix_user>>)"
-                }
-              }
-            EOF
-
-      - when:
-          condition:
-            equal: ["-A", <<parameters.agent-use>>]
-          steps:
-            - run:
-                name: Allocate Resources on Cluster
-                # Sed command reduces the slots to 8 to match '-N2 --gpus-per-node=4' usage below.
-                # Affects test e2e_tests/tests/cluster/test_slurm.py:test_mnist_pytorch_distributed
-                command: |
-                  DET_MASTER_HOST=<<parameters.determined_master_host>>
-                  # determined_master_host is localhost, so use actual hostname to pass to the agent
-                  MASTER_HOST=$(hostname)
-                  MASTER_PORT=$(echo $DET_MASTER_HOST | cut -d: -f2)
-                  sed -i 's/slots_per_trial: 16/slots_per_trial: 8/' examples/tutorials/mnist_pytorch/distributed.yaml
-                  sudo cp agent/dist/determined-agent_linux_amd64_v1/determined-agent /scratch/launcher/.launcher.$HOSTNAME
-                  # Include 40 minute time limit, name the job (determined-agent-$HOSTNAME) so we can selectively kill it
-                  sudo srun --uid launcher --export=ALL -N2 --gpus-per-node=4 --time=40 -Jdetermined-agent-$HOSTNAME \
-                  --chdir=/scratch/launcher/.launcher.$HOSTNAME  /scratch/launcher/.launcher.$HOSTNAME/determined-agent \
-                  --master-host=$MASTER_HOST  --master-port=$MASTER_PORT --resource-pool=default --container-runtime=singularity  --slot-type=cuda \
-                  --image-root=/lustre/hdd/foundation_engineering/images
-                background: true
-            - run:
-                name: Query the job to ensure Determined Agent is running
-                command: |
-                  # 60 tries gives 30 minutes of tries until the query times out
-                  tries=60
-                  squeue -u launcher -o "%j %T"
-                  # Queries until the jobname is shown in a running state. The agent job must be running to run e2e tests
-                  until [[ -n $(squeue -u launcher -o "%j %T" | grep "determined-agent-$HOSTNAME" | grep "RUNNING") ]] ; do
-                      if [[ $((--tries)) -eq 0 ]]; then
-                        echo "The job determined-agent-$HOSTNAME did not start. Please check if there are jobs in the queue preventing this job from starting"
-                        exit 1
-                      fi
-                      echo "Waiting 30s to query for the job name again..."
-                      sleep 30
-                      echo "Retrying job query..."
-                      squeue -u launcher -o "%j %T"
-                  done
-            - run:
-                name: Query the slot count to ensure slots are allocated
-                command: |
-                  tries=20
-                  det slot list
-                  until [[ $(det slot list | wc -l) -gt 2 ]] ; do
-                      if [[ $((--tries)) -eq 0 ]]; then
-                        echo "ERROR: determined-agent failed to register at least 2 slots. Check the 'Transfer and Allocate agent resources on VM' for any failures."
-                        exit 1
-                      fi
-                      echo "Waiting 5s to query slots again..."
-                      sleep 5
-                      echo "Retrying slot query..."
-                      det slot list
-                  done
-
-      - run-e2e-tests:
-          mark: <<parameters.mark>>
-          master-host: localhost
-          managed-devcluster: false
-          extra-pytest-flags: <<parameters.extra-pytest-flags>>
-
-      - store_test_results:
-          path: /tmp/test-results/
-
-      - when:
-          condition:
-            equal: ["-A", <<parameters.agent-use>>]
-          steps:
-            - run:
-                name: Deallocate Agent Resources on cluster
-                command: |
-                  scancel -u $USER --jobname=determined-agent-$HOSTNAME
 
   test-e2e:
     parameters:
@@ -3153,9 +2828,18 @@ jobs:
       run-minikubes:
         type: boolean
         default: false
+      multi-k8s:
+        type: boolean
+        default: false
       resource-class:
         type: string
         default: xlarge
+      collect-det-job-logs:
+        type: boolean
+        default: true
+      k8s-version:
+        type: string
+        default: "1.29.5"
     machine:
       image: <<pipeline.parameters.machine-image>>
     resource_class: <<parameters.resource-class>>
@@ -3187,11 +2871,15 @@ jobs:
                   curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64 && sudo install minikube-linux-amd64 /usr/local/bin/minikube
             - run:
                 name: Start defaultrm minikube
-                command: minikube start --profile defaultrm
-            - run:
-                name: Start additionalrm minikube
-                command: minikube start --profile additionalrm
-
+                command: |
+                  K8S_VERSION=<<parameters.k8s-version>> source tools/k8s/launch-minikube-with-gateway.sh defaultrm
+                  echo "export GATEWAY_IP=\"${GATEWAY_IP}\"" >> $BASH_ENV
+            - when:
+                condition: <<parameters.multi-k8s>>
+                steps:
+                  - run:
+                      name: Start additionalrm minikube
+                      command: minikube start --profile additionalrm --kubernetes-version <<parameters.k8s-version>>
       - install-devcluster
       - unless:
           condition: <<parameters.managed-devcluster>>
@@ -3209,6 +2897,7 @@ jobs:
           managed-devcluster: <<parameters.managed-devcluster>>
           extra-pytest-flags: <<parameters.extra-pytest-flags>>
           wait-for-master: <<parameters.wait-for-master>>
+          collect-det-job-logs: <<parameters.collect-det-job-logs>>
 
       - store_test_results:
           path: /tmp/test-results/
@@ -3367,28 +3056,11 @@ jobs:
                     --db-snapshot-identifier="ci-snapshot-commit-${COMMIT}"
                   echo "Snapshot completed"
       - run:
-          name: Build performance test Docker image
-          command: make -C performance build
-      - run:
-          name: Run performance test
-          command: |
-            export PERF_DOCKER_FLAGS="--network=host"
-            export PERF_K6_FLAGS='-e DET_ADMIN_USERNAME="admin" \
-              -e DET_ADMIN_PASSWORD="" \
-              -e model_name="tnjpuojqzbluqiyyqilftulsw" \
-              -e model_version_number="1" \
-              -e trial_id="8282" \
-              -e experiment_id="100" \
-              -e task_id="backported.8282" \
-              -e metric_name="85c9" \
-              -e metric_type="METRIC_TYPE_TRAINING" \
-              -e batches="1800" \
-              -e batches_margin="99" \
-              -e resource_pool="default"'
-            make -C performance run
-      - run:
-          name: Upload result of performance test to Postgres result db
-          command: python .circleci/scripts/upload_perf_results.py ./performance/reports/latest.results.json
+          name: Run REST API read-only test
+          command: ./performance/daist/run.py daist.rest_api.test_locust.TestRO
+
+      - store_artifacts:
+          path: ./performance/daist/daist/results
 
       - run:
           name: Delete RDS instance
@@ -3410,10 +3082,10 @@ jobs:
         default: "g4dn.xlarge"
       aux-agent-instance-type:
         type: string
-        default: "m5.large"
+        default: "m6i.large"
       cluster-id:
         type: string
-        default: determined-${CIRCLE_BRANCH////--}
+        default: determined-rds-${CIRCLE_BRANCH////--}
       max-dynamic-agents:
         type: integer
         default: 1
@@ -3451,64 +3123,9 @@ jobs:
           max-dynamic-agents: <<parameters.max-dynamic-agents>>
           enable-cors: <<parameters.enable-cors>>
           reattach-enabled: <<parameters.reattach-enabled>>
-          deployment-type: simple
+          deployment-type: simple-rds
           extra-tags: <<parameters.extra-tags>>
           ee: <<parameters.ee>>
-
-  deploy-latest-gke:
-    parameters:
-      det-version:
-        type: string
-      cluster-id:
-        type: string
-        default: latest-ee-gke
-      region:
-        type: string
-        default: us-west1
-      gcloud-service-key:
-        default: GCLOUD_SERVICE_KEY
-        description: The gcloud service key
-        type: env_var_name
-      google-compute-zone:
-        default: GOOGLE_COMPUTE_ZONE
-        description: The Google compute zone to connect with via the gcloud CLI
-        type: env_var_name
-      google-project-id:
-        default: GOOGLE_PROJECT_ID
-        description: The Google project ID to connect with via the gcloud CLI
-        type: env_var_name
-    docker:
-      - image: <<pipeline.parameters.docker-image>>
-    steps:
-      - checkout
-      - add-and-fetch-upstream
-      - skip-if-only-docs
-      - set-slack-user-id
-      - gcloud/install:
-          version: "319.0.0"
-      - kubernetes/install-kubectl
-      - gcloud/initialize:
-          gcloud-service-key: <<parameters.gcloud-service-key>>
-          google-compute-zone: <<parameters.google-compute-zone>>
-          google-project-id: <<parameters.google-project-id>>
-      - run:
-          command: gcloud container clusters get-credentials <<parameters.cluster-id>> --project determined-ai --region <<parameters.region>>
-          name: Get Kubeconfig
-      - helm/upgrade-helm-chart:
-          chart: helm/charts/determined
-          helm-version: v3.2.4
-          namespace: "default"
-          wait: true
-          release-name: <<parameters.cluster-id>>
-          values-to-override: |
-            detVersion=<<parameters.det-version>>,\
-            maxSlotsPerPod=4,\
-            checkpointStorage.type=gcs,\
-            checkpointStorage.bucket=det-ci,\
-            imagePullSecretName=release-cred,\
-            masterPort=80,\
-            security.authz.type=rbac,\
-            enterpriseEdition=true
 
   test-e2e-aws:
     parameters:
@@ -3521,7 +3138,7 @@ jobs:
         default: g4dn.xlarge
       aux-agent-instance-type:
         type: string
-        default: m5.large
+        default: m6i.large
       max-dynamic-agents:
         type: integer
         default: 1
@@ -3624,7 +3241,7 @@ jobs:
         type: string
         default: "1"
       environment-image:
-        default: determinedai/pytorch-ngc-dev:8b3bea3
+        default: determinedai/pytorch-ngc-dev:0736b6d
         type: string
       accel-node-taints:
         type: string
@@ -3668,13 +3285,6 @@ jobs:
           environment-image: <<parameters.environment-image>>
           accel-node-taints: <<parameters.accel-node-taints>>
       - set-google-application-credentials
-      - when:
-          condition: <<parameters.environment-image>>
-          steps:
-            - run:
-                command: |
-                  echo 'export TF2_GPU_IMAGE="<<parameters.environment-image>>"' >> "$BASH_ENV"
-                name: override test env images.
       - run-e2e-tests:
           mark: <<parameters.mark>>
           master-host: ${MASTER_HOST}
@@ -3827,7 +3437,7 @@ jobs:
         default: g4dn.xlarge
       aux-agent-instance-type:
         type: string
-        default: m5.large
+        default: m6i.large
       max-dynamic-agents:
         type: integer
         default: 1
@@ -3878,7 +3488,7 @@ jobs:
                 name: Test EFS
                 command: |
                   DET_USER=admin DET_PASS=${INITIAL_USER_PASSWORD} \
-                  det cmd run --config resources.slots=1 'mount | grep efs && echo MARKER' | grep MARKER
+                  det cmd run --config resources.slots=1 'mount | grep nfs4 && echo MARKER' | grep MARKER
       - locate-cloudwatch-logs:
           cluster-id: ${CLUSTER_ID}
       - terminate-aws-cluster:
@@ -4045,7 +3655,6 @@ workflows:
           name: f-test-unit-harness-gpu-parallel
           filters: *any-fork
 
-      - test-unit-model-hub
       - test-unit-storage:
           context: storage-unit-tests
           filters: *any-upstream
@@ -4057,7 +3666,6 @@ workflows:
             - test-unit-harness-tf2
             - test-unit-harness-pytorch2-cpu
             - test-unit-harness-pytorch2-gpu
-            - test-unit-model-hub
             - test-unit-storage
 
   send-alerts:
@@ -4073,7 +3681,11 @@ workflows:
     <<: *do-not-run-on-manual-trigger
     jobs:
       - test-intg-master:
-          context: storage-unit-tests
+          context:
+            - storage-unit-tests
+            # Provides the GITHUB_USERNAME and GITHUB_TOKEN enviroment variable
+            # that's required by the "gh" command for authentication.
+            - github-read
       - test-intg-agent
       - go-coverage:
           requires:
@@ -4100,11 +3712,13 @@ workflows:
           dev-mode: true
       - test-e2e-react:
           name: test-e2e-react-oss
+          devcluster-config: react.devcluster.yaml
           requires:
             - build-go-oss
           context:
             - playwright
             - github-read
+            - dev-ci-cluster-default-user-credentials
           filters: *any-upstream
       - build-docs:
           requires:
@@ -4128,10 +3742,6 @@ workflows:
           requires:
             - build-react-oss
             - build-docs
-          filters:
-            branches:
-              only:
-                - main
 
       - upload-docs-search-index:
           requires:
@@ -4150,38 +3760,6 @@ workflows:
               only:
                 - main
 
-      - deploy:
-          name: deploy-latest-main-cluster
-          enable-cors: true
-          reattach-enabled: true
-          extra-tags: "long_running=determined_preview_cluster"
-          context:
-            - aws
-            - aws-ci-cluster-default-user-credentials
-          filters:
-            branches:
-              only:
-                - main
-          requires:
-            - package-and-push-system-dev
-          max-dynamic-agents: 2
-
-      - deploy:
-          name: deploy-preview-cluster
-          enable-cors: true
-          context:
-            - aws
-            - aws-ci-cluster-default-user-credentials
-          filters:
-            branches:
-              only:
-                - main
-          requires:
-            - package-and-push-system-dev
-          max-dynamic-agents: 1
-          cluster-id: determined-preview
-          compute-agent-instance-type: t2.medium
-
   test-e2e:
     <<: *do-not-run-on-manual-trigger
     jobs:
@@ -4192,12 +3770,27 @@ workflows:
       - test-e2e-react:
           name: test-e2e-react-ee
           ee: true
+          devcluster-config: react-rbac.devcluster.yaml
           requires:
             - build-go-ee
           context:
             - playwright
             - github-read
+            - dev-ci-cluster-default-user-credentials
           filters: *any-upstream
+      # this will be used once sso tests are prioritized (after rbac tests)
+      # - test-e2e-react:
+      #     name: test-e2e-react-ee-sso
+      #     ee: true
+      #     devcluster-config: react-sso.devcluster.yaml
+      #     playwright-options: "-g sso"
+      #     requires:
+      #       - build-go-ee
+      #     context:
+      #       - playwright
+      #       - github-read
+      #       - dev-ci-cluster-default-user-credentials
+      #     filters: *any-upstream
       - build-docs:
           requires:
             - build-helm
@@ -4241,62 +3834,8 @@ workflows:
       - test-debian-packaging:
           requires:
             - package-and-push-system-local-ee
-          filters:
-            branches:
-              only:
-                - main
-
-      - test-e2e-slurm:
-          name: test-e2e-slurm-misconfigured
-          requires:
-            - package-and-push-system-local-ee
-          filters:
-            branches:
-              only:
-                - main
-          mark: e2e_slurm_misconfigured
-          master_config: |
-            task_container_defaults:
-              slurm:
-                sbatch_args:
-                  - --time=04:00:00
-              environment_variables:
-                # Some ports are not working, disable them so distributed jobs work.
-                - NCCL_IB_HCA=mlx6_0:0
-            checkpoint_storage:
-              type: shared_fs
-              host_path: /scratch/launcher/.launcher.$HOSTNAME/checkpoints
-              storage_path: determined-checkpoint
-              save_experiment_best: 0
-              save_trial_best: 1
-              save_trial_latest: 1
-            db:
-              user: postgres
-              host: localhost
-              port: 5432
-              name: determined
-              password: ${HPC_DB_PASSWD}
-            resource_manager:
-              type: slurm
-              master_host: junkmaster
-              master_port: 8080
-              host: localhost
-              port: 8181
-              protocol: http
-              slot_type: cuda
-              user_name: launcher
-              group_name: hpcd
-              singularity_image_root: /lustre/hdd/foundation_engineering/images
-              job_storage_root: /scratch/launcher/.launcher.$HOSTNAME
-              auth_file: /home/launcher/.launcher.$HOSTNAME.token
-              path: /opt/singularity/bin:/usr/local/bin:${PATH}
-              ld_library_path:
-
-      - test-e2e-slurm:
-          name: test-e2e-slurm-gpu
-          mark: "e2e_slurm_gpu"
-          requires:
-            - package-and-push-system-local-ee
+          context:
+            - dev-ci-cluster-default-user-credentials
           filters:
             branches:
               only:
@@ -4309,6 +3848,7 @@ workflows:
             # that's required by the "gh" command for authentication.
             - github-read
             - gcp
+            - gcp-ci-cluster-default-user-credentials
           matrix:
             parameters:
               name: [test-e2e-slurm-singularity-gcp]
@@ -4327,6 +3867,7 @@ workflows:
             # that's required by the "gh" command for authentication.
             - github-read
             - gcp
+            - gcp-ci-cluster-default-user-credentials
           matrix:
             parameters:
               name: [test-e2e-slurm-podman-gcp]
@@ -4346,6 +3887,7 @@ workflows:
             # that's required by the "gh" command for authentication.
             - github-read
             - gcp
+            - gcp-ci-cluster-default-user-credentials
           matrix:
             parameters:
               name: [test-e2e-slurm-enroot-gcp]
@@ -4365,6 +3907,7 @@ workflows:
             # that's required by the "gh" command for authentication.
             - github-read
             - gcp
+            - gcp-ci-cluster-default-user-credentials
           matrix:
             parameters:
               name: [test-e2e-pbs-singularity-gcp]
@@ -4384,6 +3927,7 @@ workflows:
             # that's required by the "gh" command for authentication.
             - github-read
             - gcp
+            - gcp-ci-cluster-default-user-credentials
           matrix:
             parameters:
               name: [test-e2e-pbs-podman-gcp]
@@ -4405,6 +3949,7 @@ workflows:
             # that's required by the "gh" command for authentication.
             - github-read
             - gcp
+            - gcp-ci-cluster-default-user-credentials
           matrix:
             parameters:
               name: [test-e2e-pbs-enroot-gcp]
@@ -4418,29 +3963,10 @@ workflows:
               only:
                 - main
 
-      # Podman over SLURM test using Agent on GCP
-      - test-e2e-hpc-gcp:
-          context:
-            # Provides the GITHUB_USERNAME and GITHUB_TOKEN enviroment variable
-            # that's required by the "gh" command for authentication.
-            - github-read
-            - gcp
-          matrix:
-            parameters:
-              name: [test-e2e-slurm-agent-podman-gcp]
-              agent-use: ["-A"]
-              container-run-type: ["podman"]
-              mark: ["e2e_slurm and not parallel and not gpu_required"]
-              extra-pytest-flags: ["-k 'not test_slurm_verify_home'"]
-          requires:
-            - build-go-ee
-          filters:
-            branches:
-              only:
-                - main
-
       - test-e2e:
           name: test-e2e-rbac
+          context:
+            - dev-ci-cluster-default-user-credentials
           requires:
             - build-go-ee
           parallelism: 1
@@ -4449,6 +3975,8 @@ workflows:
 
       - test-e2e:
           name: test-e2e-cpu
+          context:
+            - dev-ci-cluster-default-user-credentials
           requires:
             - build-go-ee
           parallelism: 6
@@ -4458,6 +3986,8 @@ workflows:
 
       - test-e2e:
           name: test-e2e-cpu-double
+          context:
+            - dev-ci-cluster-default-user-credentials
           requires:
             - build-go-ee
           parallelism: 5
@@ -4469,6 +3999,8 @@ workflows:
 
       - test-e2e:
           name: test-e2e-cpu-oauth
+          context:
+            - dev-ci-cluster-default-user-credentials
           requires:
             - build-go-ee
           parallelism: 1
@@ -4478,6 +4010,8 @@ workflows:
 
       - test-e2e:
           name: test-e2e-cpu-model-registry-rbac
+          context:
+            - dev-ci-cluster-default-user-credentials
           requires:
             - build-go-ee
           parallelism: 1
@@ -4487,6 +4021,8 @@ workflows:
 
       - test-e2e:
           name: test-e2e-managed-devcluster
+          context:
+            - dev-ci-cluster-default-user-credentials
           requires:
             - build-go-ee
           parallelism: 4
@@ -4497,9 +4033,26 @@ workflows:
           # Managed devcluster restarts the master over the course of the tests,
           # so `compare_stats` cannot get the full logs from `det master logs`.
           extra-pytest-flags: "--no-compare-stats"
+          collect-det-job-logs: false
+
+      - test-e2e:
+          name: test-e2e-managed-devcluster-resource-pools
+          context:
+            - dev-ci-cluster-default-user-credentials
+          requires:
+            - build-go-ee
+          parallelism: 4
+          resource-class: large
+          tf2: true
+          mark: managed_devcluster_resource_pools
+          managed-devcluster: true
+          extra-pytest-flags: "--no-compare-stats"
+          collect-det-job-logs: false
 
       - test-e2e:
           name: test-e2e-multi-k8s
+          context:
+            - dev-ci-cluster-default-user-credentials
           requires:
             - build-go-ee
           parallelism: 1
@@ -4508,9 +4061,24 @@ workflows:
           target-stage: master
           devcluster-config: multi-k8s.devcluster.yaml
           run-minikubes: true
+          multi-k8s: true
+
+      - test-e2e:
+          name: test-e2e-single-k8s
+          context:
+            - dev-ci-cluster-default-user-credentials
+          requires:
+            - build-go-ee
+          parallelism: 1
+          mark: e2e_single_k8s
+          target-stage: master
+          devcluster-config: single-k8s.devcluster.yaml
+          run-minikubes: true
 
       - test-e2e:
           name: test-e2e-port-registry
+          context:
+            - dev-ci-cluster-default-user-credentials
           requires:
             - build-go-ee
           parallelism: 1
@@ -4520,6 +4088,8 @@ workflows:
 
       - test-e2e:
           name: test-e2e-cpu-elastic
+          context:
+            - dev-ci-cluster-default-user-credentials
           requires:
             - build-go-ee
           parallelism: 1
@@ -4530,6 +4100,8 @@ workflows:
 
       - test-e2e:
           name: test-e2e-postgres10-with-ssl
+          context:
+            - dev-ci-cluster-default-user-credentials
           requires:
             - build-go-ee
           parallelism: 1
@@ -4540,6 +4112,8 @@ workflows:
 
       - test-e2e:
           name: test-e2e-postgres14-with-ssl
+          context:
+            - dev-ci-cluster-default-user-credentials
           requires:
             - build-go-ee
           parallelism: 1
@@ -4550,6 +4124,8 @@ workflows:
 
       - test-e2e:
           name: test-e2e-old-agent-versions
+          context:
+            - dev-ci-cluster-default-user-credentials
           requires:
             - build-go-ee
           parallelism: 1
@@ -4570,10 +4146,13 @@ workflows:
           target-stage: agent
           wait-for-master: false
           extra-pytest-flags: "--no-compare-stats"
+          collect-det-job-logs: false
 
       - test-e2e:
-          context: okta
           name: test-e2e-saml
+          context:
+            - okta
+            - dev-ci-cluster-default-user-credentials
           requires:
             - build-go-ee
           parallelism: 1
@@ -4609,7 +4188,7 @@ workflows:
             parameters:
               parallelism: [2]
               compute-agent-instance-type: ["g4dn.metal"]
-              aux-agent-instance-type: ["m5.large"]
+              aux-agent-instance-type: ["m6i.large"]
               cluster-id-prefix: ["parallel"]
               mark: ["parallel"]
 
@@ -4718,6 +4297,8 @@ workflows:
 
       - test-det-deploy:
           name: test-det-deploy-local
+          context:
+            - dev-ci-cluster-default-user-credentials
           requires:
             - package-and-push-system-local
             - package-and-push-system-local-ee
@@ -4726,36 +4307,6 @@ workflows:
               parallelism: [2]
               mark: ["det_deploy_local"]
               det-version: [$CIRCLE_SHA1]
-
-      - deploy-latest-gke:
-          name: deploy-latest-gke-master
-          context: gcp
-          det-version: $CIRCLE_SHA1
-          filters:
-            branches:
-              only:
-                - main
-          requires:
-            - package-and-push-system-dev-ee
-
-  test-e2e-gke-shared-cluster:
-    unless:
-      or:
-        - << pipeline.parameters.do_nightly_tests >>
-        - equal: [ api, << pipeline.trigger_source >> ]
-    jobs:
-      - package-and-push-system-dev-small
-
-      - test-e2e-shared-cluster:
-          name: test-e2e-shared-cluster-cpu
-          context:
-            - gcp-shared-cluster
-            - gcp-ci-cluster-default-user-credentials
-          requires:
-            - package-and-push-system-dev-small
-          parallelism: 3
-          mark: "e2e_gpu and not gpu_required"
-          test-type: cpu
 
   test-e2e-longrunning:
     <<: *do-not-run-on-manual-trigger
@@ -4821,7 +4372,7 @@ workflows:
               mark: ["distributed and not gpu_required"]
               compute-agent-instance-type: ["c5.2xlarge"]
               environment-gpu-enabled: ["0"]
-              aux-agent-instance-type: ["m5.large"]
+              aux-agent-instance-type: ["m6i.large"]
               max-dynamic-agents: [16]
 
       # DeepSpeed tests
@@ -4843,7 +4394,7 @@ workflows:
           matrix:
             parameters:
               compute-agent-instance-type: ["g4dn.12xlarge"]
-              aux-agent-instance-type: ["m5.large"]
+              aux-agent-instance-type: ["m6i.large"]
               cluster-id-prefix: ["deepspeed"]
               mark: ["deepspeed"]
               max-dynamic-agents: [2]
@@ -4960,7 +4511,7 @@ workflows:
               cluster-id-prefix: ["distributed"]
               mark: ["distributed"]
               compute-agent-instance-type: ["g4dn.metal"]
-              aux-agent-instance-type: ["m5.large"]
+              aux-agent-instance-type: ["m6i.large"]
               max-dynamic-agents: [2]
 
       # Perf tests.
@@ -5020,7 +4571,7 @@ workflows:
             parameters:
               parallelism: [2]
               compute-agent-instance-type: ["g4dn.metal"]
-              aux-agent-instance-type: ["m5.large"]
+              aux-agent-instance-type: ["m6i.large"]
               cluster-id-prefix: ["parallel"]
               mark: ["parallel"]
 
@@ -5041,29 +4592,6 @@ workflows:
               enable-tls: [true]
               mark: ["e2e_gpu"]
 
-      # mmdetection tests
-      - request-mmdetection-tests:
-          type: approval
-          filters: *upstream-feature-branch
-
-      - test-e2e-aws:
-          name: test-e2e-mmdetection
-          context:
-            - aws
-            - aws-ci-cluster-default-user-credentials
-            - determined-ee
-          filters: *upstream-feature-branch
-          requires:
-            - request-mmdetection-tests
-            - package-and-push-system-dev-ee
-          matrix:
-            parameters:
-              compute-agent-instance-type: ["g4dn.metal"]
-              aux-agent-instance-type: ["m5.large"]
-              cluster-id-prefix: ["mmdetection"]
-              mark: ["model_hub_mmdetection"]
-              max-dynamic-agents: [2]
-
       # packaging tests
       - request-packaging-tests:
           type: approval
@@ -5074,10 +4602,14 @@ workflows:
           requires:
             - package-and-push-system-local-ee
             - request-packaging-tests
+          context:
+            - dev-ci-cluster-default-user-credentials
 
       # Local deployment
       - test-det-deploy:
           name: test-det-deploy-local
+          context:
+            - dev-ci-cluster-default-user-credentials
           requires:
             - package-and-push-system-local
             - package-and-push-system-local-ee
@@ -5124,57 +4656,6 @@ workflows:
           type: approval
           filters: *upstream-feature-branch
 
-      - test-e2e-slurm:
-          name: test-e2e-slurm-misconfigured
-          filters: *upstream-feature-branch
-          requires:
-            - package-and-push-system-local-ee
-            - request-hpc-tests
-          mark: e2e_slurm_misconfigured
-          master_config: |
-            task_container_defaults:
-              slurm:
-                sbatch_args:
-                  - --time=04:00:00
-              environment_variables:
-                # Some ports are not working, disable them so distributed jobs work.
-                - NCCL_IB_HCA=mlx6_0:0
-            checkpoint_storage:
-              type: shared_fs
-              host_path: /scratch/launcher/.launcher.$HOSTNAME/checkpoints
-              storage_path: determined-checkpoint
-              save_experiment_best: 0
-              save_trial_best: 1
-              save_trial_latest: 1
-            db:
-              user: postgres
-              host: localhost
-              port: 5432
-              name: determined
-              password: ${HPC_DB_PASSWD}
-            resource_manager:
-              type: slurm
-              master_host: junkmaster
-              master_port: 8080
-              host: localhost
-              port: 8181
-              protocol: http
-              slot_type: cuda
-              user_name: launcher
-              group_name: hpcd
-              singularity_image_root: /lustre/hdd/foundation_engineering/images
-              job_storage_root: /scratch/launcher/.launcher.$HOSTNAME
-              auth_file: /home/launcher/.launcher.$HOSTNAME.token
-              path: /opt/singularity/bin:/usr/local/bin:${PATH}
-              ld_library_path:
-
-      - test-e2e-slurm:
-          name: test-e2e-slurm-gpu
-          filters: *upstream-feature-branch
-          mark: "e2e_slurm_gpu"
-          requires:
-            - package-and-push-system-local-ee
-            - request-hpc-tests
 
       # Singularity over SLURM test on GCP
       - test-e2e-hpc-gcp:
@@ -5184,6 +4665,7 @@ workflows:
             # that's required by the "gh" command for authentication.
             - github-read
             - gcp
+            - gcp-ci-cluster-default-user-credentials
           matrix:
             parameters:
               name: [test-e2e-slurm-singularity-gcp]
@@ -5200,6 +4682,7 @@ workflows:
             # that's required by the "gh" command for authentication.
             - github-read
             - gcp
+            - gcp-ci-cluster-default-user-credentials
           matrix:
             parameters:
               name: [test-e2e-slurm-podman-gcp]
@@ -5217,6 +4700,7 @@ workflows:
             # that's required by the "gh" command for authentication.
             - github-read
             - gcp
+            - gcp-ci-cluster-default-user-credentials
           matrix:
             parameters:
               name: [test-e2e-slurm-enroot-gcp]
@@ -5234,6 +4718,7 @@ workflows:
             # that's required by the "gh" command for authentication.
             - github-read
             - gcp
+            - gcp-ci-cluster-default-user-credentials
           matrix:
             parameters:
               name: [test-e2e-pbs-singularity-gcp]
@@ -5251,6 +4736,7 @@ workflows:
             # that's required by the "gh" command for authentication.
             - github-read
             - gcp
+            - gcp-ci-cluster-default-user-credentials
           matrix:
             parameters:
               name: [test-e2e-pbs-podman-gcp]
@@ -5270,31 +4756,13 @@ workflows:
             # that's required by the "gh" command for authentication.
             - github-read
             - gcp
+            - gcp-ci-cluster-default-user-credentials
           matrix:
             parameters:
               name: [test-e2e-pbs-enroot-gcp]
               container-run-type: ["enroot"]
               workload-manager: ["pbs"]
               mark: ["e2e_pbs and not parallel and not gpu_required"]
-          requires:
-            - build-go
-            - request-hpc-tests
-
-      # Podman over SLURM test using Agent on GCP
-      - test-e2e-hpc-gcp:
-          filters: *upstream-feature-branch
-          context:
-            # Provides the GITHUB_USERNAME and GITHUB_TOKEN enviroment variable
-            # that's required by the "gh" command for authentication.
-            - github-read
-            - gcp
-          matrix:
-            parameters:
-              name: [test-e2e-slurm-agent-podman-gcp]
-              agent-use: ["-A"]
-              container-run-type: ["podman"]
-              mark: ["e2e_slurm and not parallel and not gpu_required"]
-              extra-pytest-flags: ["-k 'not test_slurm_verify_home'"]
           requires:
             - build-go
             - request-hpc-tests
@@ -5325,20 +4793,7 @@ workflows:
               cluster-id-prefix: ["distributed"]
               mark: ["distributed"]
               compute-agent-instance-type: ["g4dn.metal"]
-              aux-agent-instance-type: ["m5.large"]
-              max-dynamic-agents: [2]
-      - test-e2e-aws:
-          name: test-e2e-gpu-mmdetection
-          context:
-            - aws
-            - aws-ci-cluster-default-user-credentials
-            - determined-ee
-          matrix:
-            parameters:
-              cluster-id-prefix: ["mmdet"]
-              mark: ["model_hub_mmdetection"]
-              compute-agent-instance-type: ["g4dn.metal"]
-              aux-agent-instance-type: ["m5.large"]
+              aux-agent-instance-type: ["m6i.large"]
               max-dynamic-agents: [2]
       - test-e2e-aws:
           name: test-e2e-gpu-deepspeed
@@ -5351,7 +4806,7 @@ workflows:
               cluster-id-prefix: ["deepspeed"]
               mark: ["deepspeed"]
               compute-agent-instance-type: ["g4dn.12xlarge"]
-              aux-agent-instance-type: ["m5.large"]
+              aux-agent-instance-type: ["m6i.large"]
               max-dynamic-agents: [2]
       - test-e2e-aws:
           name: test-e2e-cpu-distributed
@@ -5365,7 +4820,7 @@ workflows:
               mark: ["distributed and not gpu_required"]
               compute-agent-instance-type: ["c5.2xlarge"]
               environment-gpu-enabled: ["0"]
-              aux-agent-instance-type: ["m5.large"]
+              aux-agent-instance-type: ["m6i.large"]
               max-dynamic-agents: [16]
       - test-aws-fs:
           name: test-aws-fs-fsx
@@ -5403,105 +4858,6 @@ workflows:
             - build-docs
             - build-react-ee
           context: github-read
-      - test-e2e-slurm:
-          name: test-e2e-slurm-restart
-          mark: "e2e_slurm_restart"
-          requires:
-            - package-and-push-system-local-ee
-          extra-pytest-flags: "--no-compare-stats"
-      - test-e2e-slurm:
-          name: test-e2e-slurm-preemption
-          mark: "e2e_slurm_preemption"
-          requires:
-            - package-and-push-system-local-ee
-          extra-pytest-flags: "--no-compare-stats"
-      - test-e2e-slurm:
-          name: test-e2e-slurm-znode
-          requires:
-            - package-and-push-system-local-ee
-          extra-pytest-flags: "--no-compare-stats"
-      - test-e2e-slurm:
-          name: test-e2e-slurm-enroot-znode
-          matrix:
-            parameters:
-              mark: ["e2e_slurm and not deepspeed"]
-          requires:
-            - package-and-push-system-local-ee
-          master_config: |
-            task_container_defaults:
-              slurm:
-                sbatch_args:
-                  - --time=04:00:00
-              # The current image must be created in the launcher account before running this test
-              # cd /lustre/ssd/foundation_engineering/
-              # enroot import docker://determinedai/environments:cuda-11.3-pytorch-1.10-tf-2.8-gpu-24586f0.sqsh
-              # enroot create /lustre/ssd/foundation_engineering/determinedai+environments+cuda-11.3-pytorch-1.10-tf-2.8-gpu-24586f0.sqsh
-              #image: determinedai+environments+cuda-11.3-pytorch-1.10-tf-2.8-gpu-24586f0
-              environment_variables:
-                  # Some ports are not working, disable them so distributed jobs work.
-                  - NCCL_IB_HCA=mlx6_0:0
-                  # Workaround XDG_RUNTIME_DIR not provided by Slurm
-                  - ENROOT_RUNTIME_PATH=/tmp/launcher
-            checkpoint_storage:
-              type: shared_fs
-              host_path: /scratch/launcher/.launcher.$HOSTNAME/checkpoints
-              storage_path: determined-checkpoint
-              save_experiment_best: 0
-              save_trial_best: 1
-              save_trial_latest: 1
-            db:
-              user: postgres
-              host: localhost
-              port: 5432
-              name: determined
-              password: ${HPC_DB_PASSWD}
-            resource_manager:
-              type: slurm
-              master_host: $HOSTNAME
-              master_port: 8080
-              host: localhost
-              port: 8181
-              protocol: http
-              slot_type: cuda
-              user_name: launcher
-              container_run_type: enroot
-              group_name: hpcd
-              singularity_image_root: /lustre/hdd/foundation_engineering/images
-              job_storage_root: /scratch/launcher/.launcher.$HOSTNAME
-              auth_file: /home/launcher/.launcher.$HOSTNAME.token
-              path: /opt/singularity/bin:/usr/local/bin:${PATH}
-              ld_library_path:
-      - test-e2e-slurm:
-            name: test-e2e-slurm-agent-singularity-znode
-            requires:
-              - package-and-push-system-local-ee
-            agent-use: "-A"
-            extra-pytest-flags: "-k 'not node_not_available'"
-            # For now we must skip node_not_available. There is a inconsistency with the agent where
-            # the error is "failed to create experiment: slots requested exceeds cluster capacity" instead of the expected message.
-            master_config: |
-                task_container_defaults:
-                  slurm:
-                    sbatch_args:
-                      - --time=04:00:00
-                  environment_variables:
-                    # Some ports are not working, disable them so distributed jobs work.
-                    - NCCL_IB_HCA=mlx6_0:0
-                checkpoint_storage:
-                  type: shared_fs
-                  host_path: /scratch/launcher/.launcher.$HOSTNAME/checkpoints
-                  storage_path: determined-checkpoint
-                  save_experiment_best: 0
-                  save_trial_best: 1
-                  save_trial_latest: 1
-                db:
-                  user: postgres
-                  host: localhost
-                  port: 5432
-                  name: determined
-                  password: ${HPC_DB_PASSWD}
-      - terminate-vpc-circleci:
-            context: ["gcp"]
 
   manual-e2e-react:
     when: << pipeline.parameters.e2e-react >>
@@ -5512,12 +4868,73 @@ workflows:
           context: github-read
       - test-e2e-react:
           ee: << pipeline.parameters.ee >>
+          devcluster-config: react.devcluster.yaml
           playwright-options: << pipeline.parameters.e2e-react >>
           requires:
             - build-go
           context:
             - playwright
             - github-read
+            - dev-ci-cluster-default-user-credentials
+
+  release-dryrun:
+    jobs:
+      - build-helm:
+          filters: *release-dryrun
+
+      - build-proto:
+          filters: *release-dryrun
+
+      - build-react:
+          context: determined-production
+          filters: *release-dryrun
+
+      - build-docs:
+          context: determined-production
+          filters: *release-dryrun
+          requires:
+            - build-helm
+            - build-proto
+
+      - upload-docs-search-index:
+          requires:
+            - build-docs
+          context: determined-production
+          filters: *release-dryrun
+
+      - package-and-push-system-release:
+          dryrun: true
+          requires:
+            - build-react
+            - build-docs
+          context: determined-production
+          filters: *release-dryrun
+
+      - publish-python-package:
+          name: publish-python-package-release
+          matrix:
+            parameters:
+              path: ["harness"]
+              dryrun: [true]
+          context: determined-dryrun
+          filters: *release-dryrun
+          requires:
+            - package-and-push-system-release
+
+      - publish-docs:
+          dryrun: true
+          name: publish-docs
+          requires:
+            - build-docs
+          context: determined-production
+          filters: *release-dryrun
+
+      - publish-helm-gh:
+          dryrun: true
+          requires:
+            - build-helm
+          context: determined-production
+          filters: *release-dryrun
 
   release:
     jobs:
@@ -5526,6 +4943,7 @@ workflows:
       - build-proto:
           filters: *release-and-rc-filters
       - build-react:
+          force: true
           context: determined-production
           filters: *release-and-rc-filters
       - build-docs:
@@ -5552,7 +4970,8 @@ workflows:
           name: publish-python-package-rc
           matrix:
             parameters:
-              path: ["harness", "model_hub"]
+              path:
+                - "harness"
           context: determined-production
           filters: *rc-filters
           requires:
@@ -5569,7 +4988,8 @@ workflows:
           name: publish-python-package-release
           matrix:
             parameters:
-              path: ["harness", "model_hub"]
+              path:
+                - "harness"
           context: determined-production
           filters: *release-filters
           requires:
@@ -5579,7 +4999,7 @@ workflows:
           name: publish-docs-rc
           matrix:
             parameters:
-              dry-run: [true]
+              dryrun: [true]
           requires:
             - build-docs
           context: determined-production
@@ -5597,9 +5017,74 @@ workflows:
           context: determined-production
           filters: *release-filters
 
+      - publish-helm-gh-rc:
+          requires:
+            - build-helm
+          context: determined-production
+          filters: *rc-filters
+
       - upload-try-now-template:
           context: determined-production
           filters: *release-filters
+
+  release-ee-dryrun:
+    jobs:
+      - build-helm:
+          filters: *release-dryrun
+
+      - build-proto:
+          filters: *release-dryrun
+
+      - build-react:
+          context: determined-production
+          matrix:
+            parameters:
+              ee: [true]
+          filters: *release-dryrun
+
+      - build-docs:
+          matrix:
+            parameters:
+              ee: [true]
+          context: determined-production
+          filters: *release-dryrun
+          requires:
+            - build-helm
+            - build-proto
+
+      - upload-docs-search-index:
+          requires:
+            - build-docs
+          context: determined-production
+          filters: *release-dryrun
+
+      - package-and-push-system-release-ee:
+          dryrun: true
+          requires:
+            - build-react
+            - build-docs
+          context: determined-production
+          filters: *release-dryrun
+
+      - publish-docs:
+          matrix:
+            parameters:
+              ee: [true]
+              dryrun: [true]
+          requires:
+            - build-docs
+          context: determined-production
+          filters: *release-dryrun
+
+      - publish-helm-gh:
+          matrix:
+            parameters:
+              ee: [true]
+              dryrun: [true]
+          requires:
+            - build-helm
+          context: determined-production
+          filters: *release-dryrun
 
   release-ee:
     jobs:

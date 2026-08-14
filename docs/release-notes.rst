@@ -7,8 +7,668 @@
 ###############
 
 **************
+ Version 0.38
+**************
+
+Version 0.38.1
+==============
+
+**Release Date:** March 19, 2025
+
+**Security Fixes**
+
+-  Dependency: Update SwaggerUI due to a potential phishing vulnerability behind the "Try-it-out"
+   feature. Refer to the SwaggerUI security advisory `GHSA-qrmm-w75w-3wpx
+   <https://github.com/swagger-api/swagger-ui/security/advisories/GHSA-qrmm-w75w-3wpx>`_.
+
+-  Dependency: Update golang.org/x/crypto.
+
+Version 0.38.0
+==============
+
+**Release Date:** November 22, 2024
+
+**Breaking Changes**
+
+-  ASHA: All experiments using ASHA hyperparameter search must now configure ``max_time`` and
+   ``time_metric`` in the experiment config, instead of ``max_length``. Additionally, training code
+   must report the configured ``time_metric`` in validation metrics. As a convenience, Determined
+   training loops now automatically report ``batches`` and ``epochs`` with metrics, which you can
+   use as your ``time_metric``. ASHA experiments without this modification will no longer run.
+
+-  Custom Searchers: All custom searchers including DeepSpeed Autotune were deprecated in ``0.36.0``
+   and are now being removed. Users are encouraged to use a preset searcher, which can be easily
+   :ref:`configured <experiment-configuration_searcher>` for any experiment.
+
+-  API: Custom Searcher (including DeepSpeed AutoTune) was deprecated in 0.36.0 and is now removed.
+   We will maintain first-class support for a variety of preset searchers, which can be easily
+   configured for any experiment. Visit :ref:`search-methods` for details.
+
+**New Features**
+
+-  API/CLI: Add support for access tokens. Add the ability to create and administer access tokens
+   for users to authenticate in automated workflows. Users can define the lifespan of these tokens,
+   making it easier to securely authenticate and run processes. Users can set global defaults and
+   limits for the validity of access tokens by configuring ``default_lifespan_days`` and
+   ``max_lifespan_days`` in the master configuration. Setting ``max_lifespan_days`` to ``-1``
+   indicates an **infinite** lifespan for the access token. This feature enhances automation while
+   maintaining strong security protocols by allowing tighter control over token usage and
+   expiration. This feature requires Determined Enterprise Edition.
+
+   -  CLI:
+
+      -  ``det token create``: Create a new access token.
+      -  ``det token login``: Sign in with an access token.
+      -  ``det token edit``: Update an access token's description.
+      -  ``det token list``: List all active access tokens, with options for displaying revoked
+         tokens.
+      -  ``det token describe``: Show details of specific access tokens.
+      -  ``det token revoke``: Revoke an access token.
+
+   -  API:
+
+      -  ``POST /api/v1/tokens``: Create a new access token.
+      -  ``GET /api/v1/tokens``: Retrieve a list of access tokens.
+      -  ``PATCH /api/v1/tokens/{token_id}``: Edit an existing access token.
+
+-  API: Introduce ``keras.DeterminedCallback``, a new high-level training API for TF Keras that
+   integrates Keras training code with Determined through a single :ref:`Keras Callback
+   <api-keras-ug>`.
+
+-  API: Introduce ``deepspeed.Trainer``, a new high-level training API for DeepSpeedTrial that
+   allows for Python-side training loop configurations and includes support for local training.
+
+-  Cluster: In the enterprise edition of Determined, add :ref:`config policies <config-policies>` to
+   enable administrators to set limits on how users can define workloads (e.g., experiments,
+   notebooks, TensorBoards, shells, and commands). Administrators can define two types of
+   configurations:
+
+   -  **Invariant Configs for Experiments**: Settings applied to all experiments within a specific
+      scope (global or workspace). Invariant configs for other tasks (e.g. notebooks, TensorBoards,
+      shells, and commands) is not yet supported.
+
+   -  **Constraints**: Restrictions that prevent users from exceeding resource limits within a
+      scope. Constraints can be set independently for experiments and tasks.
+
+-  Helm: Support configuring ``determined_master_host``, ``determined_master_port``, and
+   ``determined_master_scheme``. These control how tasks address the Determined API server and are
+   useful when installations span multiple Kubernetes clusters or there are proxies in between tasks
+   and the master. Also, ``determined_master_host`` now defaults to the service host,
+   ``<det_namespace>.<det_service_name>.svc.cluster.local``, instead of the service IP.
+
+-  Helm: Add support for capturing and restoring snapshots of the database persistent volume. Visit
+   :ref:`helm-config-reference` for more details.
+
+-  New RBAC role: In the enterprise edition of Determined, add a ``TokenCreator`` RBAC role, which
+   allows users to create, view, and revoke their own :ref:`access tokens <access-tokens>`. This
+   role can only be assigned globally.
+
+-  Experiments: Add a ``name`` field to ``log_policies``. When a log policy matches, its name shows
+   as a label in the WebUI, making it easy to spot specific issues during a run. Labels appear in
+   both the run table and run detail views.
+
+   In addition, there is a new format: ``name`` is required, and ``action`` is now a plain string.
+   For more details, refer to :ref:`log_policies <config-log-policies>`.
+
+**Improvements**
+
+-  Master Configuration: Add support for crypto system configuration for ssh connection.
+   ``security.key_type`` now accepts ``RSA``, ``ECDSA`` or ``ED25519``. Default key type is changed
+   from ``1024-bit RSA`` to ``ED25519``, since ``ED25519`` keys are faster and more secure than the
+   old default, and ``ED25519`` is also the default key type for ``ssh-keygen``.
+
+**Removed Features**
+
+-  WebUI: "Continue Training" no longer supports configurable number of batches in the Web UI and
+   will simply resume the trial from the last checkpoint.
+
+**Known Issues**
+
+-  PyTorch has `deprecated
+   <https://pytorch.org/tutorials/intermediate/tensorboard_profiler_tutorial.html#use-tensorboard-to-view-results-and-analyze-model-performance>`
+   their Profiler TensorBoard Plugin (``tb_plugin``), so some features may not be compatible with
+   PyTorch 2.0 and above. Our current default environment image comes with PyTorch 2.3. If users are
+   experiencing issues with this plugin, we suggest using an image with a PyTorch version earlier
+   than 2.0.
+
+**Bug Fixes**
+
+-  Previously, during a grid search, if a hyperparameter contained an empty nested hyperparameter
+   (that is, just an empty map), that hyperparameter would not appear in the hparams passed to the
+   trial.
+
+**Deprecations**
+
+-  Experiment Config: The ``max_length`` field of the searcher configuration section has been
+   deprecated for all experiments and searchers. Users are expected to configure the desired
+   training length directly in training code.
+
+-  Experiment Config: The ``optimizations`` config has been deprecated. Please see :ref:`Training
+   APIs <apis-howto-overview>` to configure supported optimizations through training code directly.
+
+-  Experiment Config: The ``scheduling_unit``, ``min_checkpoint_period``, and
+   ``min_validation_period`` config fields have been deprecated. Instead, these configuration
+   options should be specified in training code.
+
+-  Experiment Config: The ``entrypoint`` field no longer accepts ``model_def:TrialClass`` as trial
+   definitions. Please invoke your training script directly (``python3 train.py``).
+
+-  Core API: The ``SearcherContext`` (``core.searcher``) has been deprecated. Training code no
+   longer requires ``core.searcher.operations`` to run, and progress should be reported through
+   ``core.train.report_progress``.
+
+-  DeepSpeed: The ``num_micro_batches_per_slot`` and ``train_micro_batch_size_per_gpu`` attributes
+   on ``DeepSpeedContext`` have been replaced with ``get_train_micro_batch_size_per_gpu()`` and
+   ``get_num_micro_batches_per_slot()``.
+
+-  Horovod: The Horovod distributed training backend has been deprecated. Users are encouraged to
+   migrate to the native distributed backend of their training framework (``torch.distributed`` or
+   ``tf.distribute``).
+
+-  Trial APIs: ``TFKerasTrial`` has been deprecated. Users are encouraged to migrate to the new
+   :ref:`Keras Callback <api-keras-ug>`.
+
+-  Launchers: The ``--trial`` argument in Determined launchers has been deprecated. Please invoke
+   your training script directly.
+
+-  ASHA: The ``stop_once`` field of the ``searcher`` config for ASHA searchers has been deprecated.
+   All ASHA searches are now early-stopping based (``stop_once: true``) instead of promotion based.
+
+-  CLI: The ``--test`` and ``--local`` flags for ``det experiment create`` have been deprecated. All
+   training APIs now support local execution (``python3 train.py``). Please see ``training apis``
+   for details specific to your framework.
+
+-  Web UI: Previously, trials that reported an ``epoch`` metric enabled an epoch X-axis in the Web
+   UI metrics tab. This metric name has been changed to ``epochs``, with ``epoch`` as a fallback
+   option.
+
+-  Database: After Amazon Aurora V1 reaches End of Life, support for Amazon Aurora V1 in ``det
+   deploy aws`` will be removed. Future deployments will default to the ``simple-rds`` type, which
+   uses Amazon RDS for PostgreSQL. We recommend that users migrate to Amazon RDS for PostgreSQL. For
+   more information, visit the `migration instructions
+   <https://gist.github.com/maxrussell/c67f4f7d586d55c4eb2658cc2dd1c290>`_.
+
+-  Database: As a follow-up to the earlier notice, PostgreSQL 12 will reach End of Life on November
+   14, 2024. Instances still using PostgreSQL 12 or earlier should upgrade to PostgreSQL 13 or later
+   to maintain compatibility. The application will log a warning if it detects a connection to any
+   PostgreSQL version older than 12, and this warning will be updated to include PostgreSQL 12 once
+   it is End of Life.
+
+**************
+ Version 0.37
+**************
+
+Version 0.37.0
+==============
+
+**Release Date:** September 30, 2024
+
+**Breaking Changes**
+
+-  API: Remove the ``model_hub`` library from Determined.
+
+-  Starting with this release, ``MMDetTrial`` and ``BaseTransformerTrial`` are removed. HuggingFace
+   users should refer to the provided `HuggingFace TrainerAPI examples
+   <https://github.com/determined-ai/determined/tree/main/examples/hf_trainer_api>`__, which use a
+   custom callback instead of BaseTransformerTrial. Users of ``MMDetTrial`` can refer to :ref:`Core
+   API <api-core-ug>`.
+
+**New Features**
+
+-  Webhooks: Add support for experiment monitoring and alerting. Capabilities include
+   workspace-level subscriptions for "All experiments" or "Specific experiment(s) with matching
+   configuration" options. New trigger types include ``COMPLETED``, ``ERROR``, ``TASKLOG``, and
+   ``CUSTOM``. Support for custom triggers, code-based alerts, experiment-specific webhook
+   exclusions, and editable webhook URLs is also added. For details, visit
+   :ref:`supported-webhook-triggers`.
+
+-  Master Configuration: Add support for POSIX claims in the master configuration. It now accepts
+   ``agent_uid_attribute_name``, ``agent_gid_attribute_name``, ``agent_user_name_attribute_name``,
+   or ``agent_group_name_attribute_name``. Refer to the :ref:`OIDC master configuration
+   <master-config-oidc>` or :ref:`SAML master configuration <master-config-saml>` for details. If
+   any of these fields are configured, they will sync with the database.
+
+**Improvements**
+
+-  WebUI: Change the "Compute Slots Allocated" label to "Unspecified Slots Allocated" for resource
+   pools with no or multiple slot types. Add error logs for zero or multi-slot-type cases and update
+   the progress bar to include all agents when the slot type is ``TYPE_UNSPECIFIED``.
+
+**Bug Fixes**
+
+-  API/Tasks: Fix a bug where a master-configured ``log_retention_days`` value is not applied to
+   experiments and tasks. The master-configured value is now correctly applied to new experiments,
+   and all pre-existing experiments will also follow the specified ``log_retention_days``.
+
+**************
+ Version 0.36
+**************
+
+Version 0.36.0
+==============
+
+**Release Date:** August 23, 2024
+
+**New Features**
+
+-  WebUI: In the enterprise edition of Determined, when RBAC is enabled, allow Viewer, Editor,
+   GenAI, and Workspace Admin roles to view resource quotas for each workspace in the WebUI. When
+   RBAC is not enabled, any user can view resource quotas.
+
+-  RBAC: Add a pre-canned role called ``EditorProjectRestricted`` that supersedes the ``Viewer``
+   role and precedes the ``Editor`` role.
+
+   -  Like the ``Editor`` role, the ``EditorProjectRestricted`` role grants the permissions to read,
+      create, edit, or delete experiments and NTSC (Notebook, Tensorboard, Shell or Command) type
+      workloads within its scope. However, the ``EditorProjectRestricted`` role lacks the
+      permissions to create or update projects.
+
+-  Kubernetes: Add experimental support for AMD ROCm GPUs. To use, set ``slotType=rocm``. Visit
+   :ref:`helm-config-reference` for more details.
+
+-  Images: Add New ROCm 6.1 images with DeepSpeed for MI300x users. Dev versions of these images can
+   be found in our Docker Hub, under `pytorch-infinityhub-dev
+   <https://hub.docker.com/repository/docker/determinedai/pytorch-infinityhub-dev/tags>`__ and
+   `pytorch-infinityhub-hpc-dev
+   <https://hub.docker.com/repository/docker/determinedai/pytorch-infinityhub-hpc-dev/tags>`__.
+   Users can build these images locally based on the Dockerfiles found in our `environments
+   repository
+   <https://github.com/determined-ai/environments/blob/main/Dockerfile-infinityhub-pytorch>`__.
+
+-  Master: Add a ``ui_customization`` option to the :ref:`master configuration
+   <master-config-reference>` for specifying a custom logo for the WebUI.
+
+**Bug Fixes**
+
+-  Experiments: Report an experiment's status as FAILED if any failure occurs during the shutdown
+   process, before the experiment has completed gracefully.
+
+**Deprecations**
+
+-  Custom Searchers: All custom searchers including DeepSpeed Autotune have been deprecated. This
+   feature will be removed in a future release. We will maintain first-class support for a variety
+   of preset searchers, which can be easily configured for any experiment. Visit
+   :ref:`search-methods` for details.
+
+-  Cluster: Amazon Aurora V1 will reach End of Life at the end of 2024 and will no longer be the
+   default persistent storage for AWS Determined deployments. Users should migrate to Amazon RDS for
+   PostgreSQL.
+
+-  Cluster: After Amazon Aurora V1 reaches End of Life, support for Amazon Aurora V1 in ``det deploy
+   aws`` will be removed. The deployment will default to the ``simple-rds`` type, which uses Amazon
+   RDS.
+
+-  Database: Postgres 12 will reach End of Life on November 14, 2024. Determined instances using
+   Postgres 12 or earlier should upgrade to Postgres 13 or later to ensure continued support.
+
+-  Kubernetes Scheduling: Support for the priority with preemption scheduler for Kubernetes Resource
+   Managers was deprecated in 0.35.0 and is now removed. Users should transition to the default
+   scheduler. Visit :ref:`Kubernetes Default Scheduler <kubernetes-default-scheduler>` for details.
+
+**************
+ Version 0.35
+**************
+
+Version 0.35.0
+==============
+
+**Release Date:** August 08, 2024
+
+**Breaking Changes**
+
+-  Master Configuration: Replace ``resource_manager.name`` with ``resource_manager.cluster_name``
+   for better clarity and to support multiple resource managers.
+
+   -  Resource managers operate relative to the specific cluster providing resources for Determined
+      tasks, so changing the cluster will affect the resource manager's responses.
+
+   -  The ``cluster_name`` must be unique for all resource managers when deploying multiple resource
+      managers in Determined.
+
+   -  When upgrading, specify ``resourceManager.clusterName`` in your ``values.yaml`` to override
+      ``resource_manager.name`` and/or remove the ``name`` field from your ``resource_manager``
+      config altogether.
+
+   -  For additional resource managers, you must change ``additional_resource_manager[i].name`` to
+      ``additional_resource_manager[i].cluster_name`` in your ``values.yaml``.
+
+-  Master Configuration: Replace ``resource_manager.namespace`` with
+   ``resource_manager.default_namespace``.
+
+   -  The namespace field in the Kubernetes Resource Manager configuration is no longer supported
+      and is replaced by ``default_namespace``.
+
+   -  This field serves as the default namespace for deploying namespaced resources when the
+      workspace associated with a workload is not bound to a specific namespace.
+
+   -  If unset, the workloads will be sent to the release namespace during determined helm installs
+      or upgrades and will be sent to the default Kubernetes namespace, "default", during non-helm
+      determined deployments.
+
+-  Tasks: The :ref:`historical usage <historical-cluster-usage-data>` CSV file has been updated. The
+   header row for slot-hours is now named ``slot_hours`` instead of ``gpu_hours`` to accurately
+   reflect the allocation time for resource pools including those without GPUs. In addition, a new
+   column, ``resource_pool``, has been added to provide the resource pool for each allocation.
+
+-  Cluster: The ``kubernetes_namespace`` field in the resource pool configuration is no longer
+   supported. Users can now submit workloads to specific namespaces by binding workspaces to
+   namespaces using the CLI, WebUI, or API.
+
+-  Cluster: The ``resources.agent_label`` task option and the ``label`` option in the agent config
+   have been removed. Beginning with 0.20.0 release, these options have been ignored. Please remove
+   any remaining references from configuration files and use ``resource_pool`` instead.
+
+**New Features**
+
+-  WebUI/CLI/API: Allow admins to bind namespaces to workspaces and manage resource quotas for
+   auto-created namespaces directly.
+
+   -  WebUI: Add a "Namespace Bindings" section to the Create and Edit Workspace modals.
+
+      -  Users can input a namespace for a Kubernetes cluster. If no namespace is specified, the
+         workspace will be bound to the ``resource_manager.default_namespace`` field in the master
+         configuration YAML or the "default" Kubernetes namespace.
+
+      -  In the enterprise edition, users can auto-create namespaces and set resource quotas,
+         limiting GPU requests for that workspace. The Edit Workspace modal displays the lowest GPU
+         limit resource quota within the bound namespace.
+
+      -  Once saved, all workloads in the workspace will be sent to the bound namespace. Changing
+         the binding will affect future workloads, while in-progress workloads remain in their
+         original namespace.
+
+      -  For help with workspace-namespace bindings, visit :ref:`Manage Workspace-Namespace Bindings
+         <k8s-resource-caps>`.
+
+   -  CLI: Add new commands for creating and managing workspace namespace bindings.
+
+      -  Allow creating namespace bindings during workspace creation with ``det w create
+         <workspace-id> --namespace <namespace-name>`` or later with ``det w bindings set
+         <workspace-id> --namespace <namespace-name>``.
+
+      -  In the enterprise edition, users can use additional arguments ``--auto-create-namespace``
+         and ``--auto-create-namespace-all-clusters`` to bind workspaces to auto-created namespaces.
+         Users can set resource quotas during workspace creation with ``det w create
+         <workspace-name> --cluster-name <cluster-name> --auto-create-namespace --resource-quota
+         <resource-quota>``, or later with ``det w resource-quota set <workspace-id> <quota>
+         --cluster-name <cluster-name>`` if their workspace is bound to an auto-created namespace.
+
+      -  Add a command to delete namespace bindings with ``det w bindings delete <workspace-id>
+         --cluster-name <cluster-name>``.
+
+      -  Add a command to list bindings for a workspace with ``det w bindings list
+         <workspace-name>``.
+
+      -  The ``--cluster-name`` field is required only for MultiRM setups when
+         ``--auto-create-namespace-all-clusters`` is omitted.
+
+   -  API: Add new endpoints for creating and managing workspace namespace bindings.
+
+      -  Add POST and DELETE endpoints to ``/api/v1/workspaces/{workspace_id}/namespace-bindings``
+         for setting and deleting workspace namespace bindings.
+      -  Add a GET endpoint ``/api/v1/workspaces/{id}/list-namespace-bindings`` to list namespace
+         bindings for a workspace.
+      -  Add a POST endpoint ``/api/v1/workspaces/{id}/set-resource-quota`` to set resource quotas
+         on workspaces bound to auto-created namespaces.
+      -  Add a GET endpoint ``/api/v1/workspaces/{id}/get-k8s-resource-quotas`` to retrieve enforced
+         Kubernetes GPU resource quotas for workspace bound namespaces.
+
+-  WebUI: Enable users to add or remove hyperparameters during hyperparameter searches.
+
+-  WebUI: Experiments with configured Pachyderm data integration now display a link to the Pachyderm
+   repo in the trial view page. The link is also available when viewing checkpoints derived from the
+   Pachyderm data. For a preview, visit: :ref:`Pachyderm <pachyderm-integration>` data lineage.
+
+-  WebUI: In the Experimental features, Flat Runs View is now "on" by default in the :ref:`WebUI
+   <web-ui-if>`. Users can still toggle this feature "off". This update improves the ability to
+   compare model performance between different trials, based on user feedback that most Determined
+   users run single-trial experiments.
+
+   -  "Experiments" are now called "searches" and "trials" are now called "runs" for better clarity.
+   -  The "experiment list" is now called the "run list", showing all trials from experiments in the
+      project. It functions similarly to the previous new experiment list.
+   -  Multi-trial experiments can be viewed in the new searches view, which allows for sorting,
+      filtering and navigating multi-trial experiments.
+   -  When viewing a multi-trial experiment, a list of trials is displayed, allowing for sorting,
+      filtering and arbitrary comparison between trials.
+
+-  WebUI: Add resource allocation information to the trial details page.
+
+-  WebUI: Allow users to continue a canceled or errored multi-trial experiment for searcher type
+   ``random`` or ``grid``.
+
+-  Master Configuration: Add an ``always_redirect`` option to OIDC and SAML configurations. When
+   enabled, this option bypasses the standard Determined sign-in page and routes users directly to
+   the configured SSO provider. This redirection persists unless the user explicitly signs out
+   within the WebUI.
+
+-  Experiments: Obfuscate subfields of ``data.secrets`` in the :ref:`experiment configuration
+   <experiment-config-data>`.
+
+-  CLI: Add a new command, ``det cmd describe COMMAND_ID`` to allow users to fetch the metadata of a
+   single command.
+
+**Improvements**
+
+-  Switch the default AWS instance type from ``m5.large`` to ``m6i.large``. This change enhances
+   performance without affecting the cost.
+-  WebUI: In the enterprise edition, redirect SSO users to the SSO provider's authentication URIs
+   when their session token has expired, instead of displaying the Determined sign-in page.
+
+**Bug Fixes**
+
+-  WebUI: Fix a bug where the Compare view on the Project Details page did not allow comparison of
+   experiments selected from different pages.
+-  WebUI: Fix endless metrics fetching in "Visualization" tab in experiment details page for
+   cancelled experiments that do not have metrics.
+-  Fix two places where aggregated queued stats could have shown inflated values. The total queued
+   aggregated time and today's queued aggregated time calculations were both affected.
+-  CLI: Fix an error related to ``det cmd list --csv``
+-  WebUI: Fix missing data in Historic Usage Charts due to erroneous date parsing.
+
+**Deprecations**
+
+-  Detached mode: The ``defaults`` and ``unmanaged`` parameters of the ``init`` function for
+   unmanaged experiment have been deprecated and will be removed in a future version. Please use
+   ``config`` instead.
+
+-  Agent and Kubernetes Resource Manager: Jobs can no longer be moved within the same priority
+   group. To reposition a job, update its priority using the CLI or WebUI. For detailed
+   instructions, visit :ref:`modify-job-queue-cli`. This change was announced in version 0.33.0.
+
+-  AgentRM: Support for Singularity, Podman, and Apptainer was deprecated in 0.33.0 and is now
+   removed. Docker is the only container runtime supported by Agent resource manager (AgentRM). It
+   is still possible to use podman with AgentRM by using the podman emulation layer. For detailed
+   instructions, visit: `Emulating Docker CLI with Podman
+   <https://podman-desktop.io/docs/migrating-from-docker/emulating-docker-cli-with-podman>`. You
+   might need to also configure ``checkpoint_storage`` in experiment or master configurations. In
+   the enterprise edition, Slurm resource manager still supports Singularity, Podman, or Apptainer
+   use.
+
+-  Kubernetes Scheduling: Support for the priority scheduler for Kubernetes Resource Managers is
+   discontinued and may be removed in a future release due to limited usage. Users should transition
+   to the default scheduler. Visit :ref:`Kubernetes Default Scheduler
+   <kubernetes-default-scheduler>` for details.
+
+-  API: The ``model_hub`` library is now deprecated. Users of MMDetTrial and BaseTransformerTrial
+   should switch to :ref:`Core API <api-core-ug>` or the :ref:`PyTorch Trainer <pytorch_trainer_ug>`
+   for integrations with ``mmcv`` and ``huggingface``.
+
+**************
+ Version 0.34
+**************
+
+Version 0.34.0
+==============
+
+**Release Date:** June 28, 2024
+
+**Breaking Changes**
+
+-  Images: The default environment includes images that support PyTorch. Therefore, TensorFlow users.
+      must configure their experiments to target our non-default TensorFlow images. Details on this
+      process can be found at :ref:`set-environment-images`.
+
+-  Images: Our new default images are based on Nvidia NGC. While we provide a recommended NGC
+   version, users can build their own images using any NGC version that meets their specific
+   requirements. For more information, visit :ref:`ngc-version`
+
+**New Features**
+
+-  Kubernetes: The system now launches Kubernetes jobs on behalf of users when they submit workloads
+   to Determined, instead of launching Kubernetes pods. This change allows Determined to work
+   properly with other Kubernetes features like resource quotas.
+
+   As a result, permissions are now required to create, get, list, delete, and watch Kubernetes job
+   resources.
+
+-  WebUI: Add the ability for administrators to use the CLI to set a message to be displayed on all
+   pages of the WebUI (for example, ``det master cluster-message set -m "Your message"``). Optional
+   flags are available for scheduling the message with a start time and an end time. Administrators
+   can clear the message anytime using ``det master cluster-message clear``. Only one message can be
+   active at a time, so setting a new message will replace the previous one.
+
+-  Kubernetes: Add a feature where Determined offers the users to provide custom Checkpoint GC pod spec.
+      This configuration is done using the ``task_container_defaults.checkpointGcPodSpec`` field
+      within your ``value.yaml`` file. User can create a custom pod specification for CheckpointGC,
+      it will override the default experiment's pod spec settings. Determined by default uses the
+      experiment's pod spec, but by providing custom pod spec users have the flexibility to
+      customize and configure the pod spec directly in this field. User can tailor the garbage
+      collection settings according to the specific GC needs.
+
+-  Kubernetes: The :ref:`Internal Task Gateway <internal-task-gateway>` feature enables Determined
+   tasks running on remote Kubernetes clusters to be exposed to the Determined master and proxies.
+   This feature facilitates multi-resource manager setups by configuring a Gateway controller in the
+   external Kubernetes cluster.
+
+.. important::
+
+   Enabling this feature exposes Determined tasks to the outside world. It is crucial to implement
+   appropriate security measures to restrict access to exposed tasks and secure communication
+   between the external cluster and the main cluster. Recommended measures include:
+
+      -  Setting up a firewall
+      -  Using a VPN
+      -  Implementing IP whitelisting
+      -  Configuring Kubernetes Network Policies
+      -  Employing other security measures as needed
+
+-  Kubernetes Configuration: Allow Cluster administrators to define Determined resource pools on
+   Kubernetes using node selectors and/or affinities. Configure these settings at the default pod
+   spec level under ``task_container_defaults.cpu_pod_spec`` or
+   ``task_container_defaults.gpu_pod_spec``. This allows a single cluster to be divided into
+   multiple resource pools using node labels.
+
+-  WebUI: Allow resource pool slot counts to reflect the state of the entire cluster. Allow slot
+   counts and scheduling to respect node selectors and affinities. This impacts Determined clusters
+   deployed on Kubernetes with multiple resource pools defined in terms of node selectors and/or
+   affinities.
+
+**Bug Fixes**
+
+-  Kubernetes: Fix an issue where where jobs would remain in "QUEUED" state until all pods were
+   running. Jobs will now correctly show as "SCHEDULED" once all pods have been assigned to nodes.
+-  Notebooks: Fix an issue introduced in 0.30.0 where idle notebooks were not terminated as
+   expected.
+
+**Security Fixes**
+
+   -  CLI: When deploying locally using ``det deploy local`` with ``master-up`` or ``cluster-up``
+      commands and no user accounts have been created yet, an initial password will be automatically
+      generated and shown to the user (with the option to change it) if neither
+      ``security.initial_user_password`` in ``master.yaml`` nor the ``--initial-user-password`` CLI
+      flag is present.
+
+**Deprecations**
+
+-  Agent Resource Manager: Round robin scheduler is removed for Agent Resource Managers. Deprecation
+   was announced in release 0.33.0. Users should transition to priority scheduler.
+-  Machine Architectures: Support for PPC64/POWER builds for all environments has been deprecated
+   and is now being removed. Users should transition to ARM64/AMD64.
+
+**************
+ Version 0.33
+**************
+
+Version 0.33.0
+==============
+
+**Release Date:** May 29, 2024
+
+**Breaking Changes**
+
+-  Helm: An entry for ``initialUserPassword`` is now required when running ``helm install``.
+   Existing deployments are unaffected. See :ref:`Helm Chart <helm-config-reference>`.
+
+-  Web UI: Enforce password requirements for all new non-remote users. See
+   :ref:`password-requirements` for details.
+
+   -  Applies to users created using the **Add User** button in the Web UI for admins.
+   -  Admins can change the passwords of other users using the same interface.
+   -  Does not affect existing users with empty or non-compliant passwords, but setting strong
+      passwords for these users is recommended.
+
+**Improvements**
+
+Kubernetes: Add Determined resource information such as ``workspace`` and ``task ID`` as pod labels.
+This improvement facilitates better resource tracking and management within Kubernetes environments.
+
+Configuration: Introduce a DCGM Helm chart and Prometheus configuration to the
+``tools/observability`` directory. Additionally, two new dashboards, "API Monitoring" and "Resource
+Utilization", have been added to improve observability and operational insight. Visit `Kubernetes
+Observability <https://docs.determined.ai/latest/integrations/observability/_index.html>`__ for a
+complete setup guide.
+
+-  WebUI: Allow users to create and manage configuration templates through the WebUI.
+-  Commands: Commands now support automatically executing a ``startup-hook.sh`` script if it is
+   present in the command's context directory.
+
+**Bug Fixes**
+
+-  Kubernetes: Fix an issue where Determined failed to report slots as occupied when non Determined
+   jobs were running on namespaces besides 'default'. For Determined to detect non Determined jobs
+   they must be running in a namespace that Determined can launch jobs into.
+
+-  Kubernetes: Fix an issue where the cluster page displayed slots out of order on refresh. Slots
+   are now consistently filled from left to right, even with more than 10 GPUs and when using RBAC.
+
+**Deprecations**
+
+To enhance stability and streamline the onboarding process, we may remove the following features in
+future releases. Our goal is for Agent Resource Manager environments to function seamlessly
+out-of-the-box with minimal customization required.
+
+Agent Resource Manager:
+
+-  Container Runtimes: Due to limited usage, we will limit supported container runtimes to Docker
+   for the Agent Resource Manager. This does not impact Kubernetes, Slurm or PBS environments.
+
+-  Job Scheduling: The default scheduler is now ``priority``. Support for round-robin and fair share
+   schedulers has been discontinued. We recommend using the priority scheduler, as it meets most
+   scheduling needs and simplifies configuration. To move a job, you will need to adjust its
+   priority; jobs cannot be shifted within the same priority group.
+
+-  AMD GPUs: Due to limited usage, we will limit supported accelerators to NVIDIA GPUs. If you have
+   a use case requiring AMD GPU support with the Agent Resource Manager, please reach out to us via
+   a `GitHub Issue <https://github.com/determined-ai/determined/issues>`__ or `community slack
+   <https://determined-community.slack.com/join/shared_invite/zt-1f4hj60z5-JMHb~wSr2xksLZVBN61g_Q>`__!
+   This does not impact Kubernetes or Slurm environments.
+
+Machine Architectures: PPC64/POWER builds across all environments are no longer supported.
+
+**************
  Version 0.32
 **************
+
+Version 0.32.1
+==============
+
+**Release Date**: May 10, 2024
+
+**Bug Fixes**
+
+-  Kubernetes: Fix an issue introduced in 0.32.0 where workspaces with names incompatible with
+   Kubernetes naming requirements would cause jobs in that workspace to fail.
 
 Version 0.32.0
 ==============
@@ -936,8 +1596,8 @@ Version 0.23.0
 
 **New Features**
 
--  Experiment: :ref:`Custom hyperparameter searchers <topic-guides_hp-tuning-det_custom>` can
-   include extra directories to pass into the ``client.create_experiment`` context.
+-  Experiment: Custom hyperparameter searchers can include extra directories to pass into the
+   ``client.create_experiment`` context.
 
 -  Checkpoints: Add support for deleting a subset of files from checkpoints.
 
@@ -1591,8 +2251,7 @@ Version 0.19.6
 
 -  Custom Searcher: users can now define their own logic to coordinate across multiple trials within
    an experiment. Examples of use cases are custom hyperparameter searching algorithms, ensembling,
-   active learning, neural architecture search, reinforcement learning. See
-   :ref:`topic-guides_hp-tuning-det_custom` for more information.
+   active learning, neural architecture search, reinforcement learning.
 
 -  Cluster: The enterprise edition of `HPE Machine Learning Development Environment
    <https://www.hpe.com/us/en/hpe-machine-learning-development-environment.html>`_ can now be

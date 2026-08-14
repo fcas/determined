@@ -152,12 +152,15 @@ func runColumnNameToSQL(columnName string) (string, error) {
 		"forkedFrom":            "e.parent_id",
 		"resourcePool":          "e.config->'resources'->>'resource_pool'",
 		"projectId":             "r.project_id",
-		"checkpointSize":        "e.checkpoint_size",
-		"checkpointCount":       "e.checkpoint_count",
+		"checkpointSize":        "r.checkpoint_size",
+		"checkpointCount":       "r.checkpoint_count",
 		"searcherMetricsVal":    "r.searcher_metric_value",
 		"externalExperimentId":  "e.external_experiment_id",
-		"externalTrialId":       "r.external_run_id",
+		"externalRunId":         "r.external_run_id",
 		"experimentId":          "e.id",
+		"localId":               "CONCAT(p.key, '-' , r.local_id::text)",
+		"isExpMultitrial":       "e.config->'searcher'->>'name' != 'single'",
+		"parentArchived":        "(w.archived OR p.archived)",
 	}
 	var exists bool
 	col, exists := filterExperimentColMap[columnName]
@@ -165,6 +168,101 @@ func runColumnNameToSQL(columnName string) (string, error) {
 		return "", fmt.Errorf("invalid run column %s", columnName)
 	}
 	return col, nil
+}
+
+func runMetadataToSQL(c string, filterColumnType *string, filterValue *interface{},
+	op *operator, q *bun.SelectQuery,
+	fc *filterConjunction,
+) (*bun.SelectQuery, error) {
+	queryColumnType := projectv1.ColumnType_COLUMN_TYPE_UNSPECIFIED.String()
+	var o operator
+	var queryValue interface{}
+	if filterValue == nil && op != nil && *op != empty && *op != notEmpty {
+		return nil, fmt.Errorf("metadata field defined without value and without a valid operator")
+	}
+	o = *op
+	if o != empty && o != notEmpty {
+		queryValue = *filterValue
+	}
+	if filterColumnType != nil {
+		queryColumnType = *filterColumnType
+	}
+	var queryArgs []interface{}
+	runMetadata := strings.TrimPrefix(c, "metadata.")
+	queryArgs = append(queryArgs, runMetadata)
+	oSQL, err := o.toSQL()
+	if err != nil {
+		return nil, err
+	}
+	var queryString string
+	switch o {
+	case empty:
+		queryString = fmt.Sprintf(`r.id NOT IN (SELECT run_id FROM runs_metadata_index WHERE flat_key=%s)`, "?")
+	case notEmpty:
+		queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM runs_metadata_index WHERE flat_key=%s)`, "?")
+	case contains:
+		queryLikeValue := `%` + queryValue.(string) + `%`
+		queryArgs = append(queryArgs, queryLikeValue)
+		switch queryColumnType {
+		case projectv1.ColumnType_COLUMN_TYPE_NUMBER.String():
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM runs_metadata_index WHERE flat_key=%s
+			AND (number_value=%s OR float_value=%s))`,
+				"?", "?", "?")
+			queryArgs = append(queryArgs, queryValue)
+		case projectv1.ColumnType_COLUMN_TYPE_TEXT.String():
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM runs_metadata_index WHERE flat_key=%s
+			AND string_value LIKE %s)`,
+				"?", "?")
+		default:
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM runs_metadata_index WHERE flat_key=%s
+			AND boolean_value=%s)`,
+				"?", "?")
+		}
+	case doesNotContain:
+		queryLikeValue := `%` + queryValue.(string) + `%`
+		queryArgs = append(queryArgs, queryLikeValue)
+		switch queryColumnType {
+		case projectv1.ColumnType_COLUMN_TYPE_NUMBER.String():
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM runs_metadata_index WHERE flat_key=%s
+			AND (number_value!=%s AND float_value!=%s))`,
+				"?", "?", "?")
+			queryArgs = append(queryArgs, queryValue)
+		case projectv1.ColumnType_COLUMN_TYPE_TEXT.String():
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM runs_metadata_index WHERE flat_key=%s
+			AND string_value NOT LIKE %s)`,
+				"?", "?")
+		default:
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM runs_metadata_index WHERE flat_key=%s
+			AND boolean_value!=%s)`,
+				"?", "?")
+		}
+	default:
+		queryArgs = append(queryArgs, bun.Safe(oSQL), queryValue)
+		switch queryColumnType {
+		case projectv1.ColumnType_COLUMN_TYPE_NUMBER.String():
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM runs_metadata_index WHERE flat_key=%s
+			AND (integer_value %s %s OR float_value %s %s))`,
+				"?", "?", "?", "?", "?")
+			queryArgs = append(queryArgs, bun.Safe(oSQL), queryValue)
+		case projectv1.ColumnType_COLUMN_TYPE_TEXT.String():
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM runs_metadata_index WHERE flat_key=%s
+			AND string_value %s %s)`,
+				"?", "?", "?")
+		case projectv1.ColumnType_COLUMN_TYPE_DATE.String():
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM runs_metadata_index WHERE flat_key=%s
+			AND timestamp_value %s %s)`,
+				"?", "?", "?")
+		default:
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM runs_metadata_index WHERE flat_key=%s
+			AND boolean_value %s %s)`,
+				"?", "?", "?")
+		}
+	}
+
+	if fc != nil && *fc == or {
+		return q.WhereOr(queryString, queryArgs...), nil
+	}
+	return q.Where(queryString, queryArgs...), nil
 }
 
 func runHpToSQL(c string, filterColumnType *string, filterValue *interface{},
@@ -185,17 +283,8 @@ func runHpToSQL(c string, filterColumnType *string, filterValue *interface{},
 		queryColumnType = *filterColumnType
 	}
 	var queryArgs []interface{}
-	hp := strings.Split(strings.TrimPrefix(c, "hp."), ".")
-	for i := 0; i < len(hp); i++ {
-		queryArgs = append(queryArgs, hp[i])
-		// for last element
-		if i == len(hp)-1 {
-			hp[i] = ">?"
-		} else {
-			hp[i] = "?"
-		}
-	}
-	hpQuery := strings.Join(hp, "->")
+	runHparam := strings.TrimPrefix(c, "hp.")
+	queryArgs = append(queryArgs, runHparam)
 	oSQL, err := o.toSQL()
 	if err != nil {
 		return nil, err
@@ -203,29 +292,49 @@ func runHpToSQL(c string, filterColumnType *string, filterValue *interface{},
 	var queryString string
 	switch o {
 	case empty:
-		queryString = fmt.Sprintf(`r.hparams->%s IS NULL`, hpQuery)
+		queryString = fmt.Sprintf(`r.id NOT IN (SELECT run_id FROM run_hparams WHERE hparam=%s)`, "?")
 	case notEmpty:
-		queryString = fmt.Sprintf(`r.hparams->%s IS NOT NULL`, hpQuery)
+		queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM run_hparams WHERE hparam=%s)`, "?")
 	case contains:
-		queryArgs = append(queryArgs, queryValue)
-		if queryColumnType == projectv1.ColumnType_COLUMN_TYPE_NUMBER.String() {
-			queryString = fmt.Sprintf(`(r.hparams->%s)::float8 = %s`, hpQuery, "?")
-		} else {
-			queryString = fmt.Sprintf(`r.hparams->%s LIKE %s`, hpQuery, "?")
+		queryLikeValue := `%` + queryValue.(string) + `%`
+		queryArgs = append(queryArgs, queryLikeValue)
+		switch queryColumnType {
+		case projectv1.ColumnType_COLUMN_TYPE_NUMBER.String():
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM run_hparams WHERE hparam=%s AND number_val=%s)`,
+				"?", "?")
+		case projectv1.ColumnType_COLUMN_TYPE_TEXT.String():
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM run_hparams WHERE hparam=%s AND text_val LIKE %s)`,
+				"?", "?")
+		default:
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM run_hparams WHERE hparam=%s AND bool_val=%s)`,
+				"?", "?")
 		}
 	case doesNotContain:
-		queryArgs = append(queryArgs, queryValue)
-		if queryColumnType == projectv1.ColumnType_COLUMN_TYPE_NUMBER.String() {
-			queryString = fmt.Sprintf(`(r.hparams->%s)::float8 != %s`, hpQuery, "?")
-		} else {
-			queryString = fmt.Sprintf(`r.hparams->%s NOT LIKE %s`, hpQuery, "?")
+		queryLikeValue := `%` + queryValue.(string) + `%`
+		queryArgs = append(queryArgs, queryLikeValue)
+		switch queryColumnType {
+		case projectv1.ColumnType_COLUMN_TYPE_NUMBER.String():
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM run_hparams WHERE hparam=%s AND number_val!=%s)`,
+				"?", "?")
+		case projectv1.ColumnType_COLUMN_TYPE_TEXT.String():
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM run_hparams WHERE hparam=%s AND text_val NOT LIKE %s)`,
+				"?", "?")
+		default:
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM run_hparams WHERE hparam=%s AND bool_val!=%s)`,
+				"?", "?")
 		}
 	default:
 		queryArgs = append(queryArgs, bun.Safe(oSQL), queryValue)
-		if queryColumnType == projectv1.ColumnType_COLUMN_TYPE_NUMBER.String() {
-			queryString = fmt.Sprintf(`(r.hparams->%s)::float8 %s %s`, hpQuery, "?", "?")
-		} else {
-			queryString = fmt.Sprintf(`r.hparams->%s %s %s`, hpQuery, "?", "?")
+		switch queryColumnType {
+		case projectv1.ColumnType_COLUMN_TYPE_NUMBER.String():
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM run_hparams WHERE hparam=%s AND number_val %s %s)`,
+				"?", "?", "?")
+		case projectv1.ColumnType_COLUMN_TYPE_TEXT.String():
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM run_hparams WHERE hparam=%s AND text_val %s %s)`,
+				"?", "?", "?")
+		default:
+			queryString = fmt.Sprintf(`r.id IN (SELECT run_id FROM run_hparams WHERE hparam=%s AND bool_val %s %s)`,
+				"?", "?", "?")
 		}
 	}
 
@@ -317,7 +426,7 @@ func hpToSQL(c string, filterColumnType *string, filterValue *interface{},
 			queryArgs = append(queryArgs, bun.Safe("?"), queryValue)
 			queryString = fmt.Sprintf(`(CASE
 				WHEN config->'hyperparameters'->%s->>'type' = 'const' THEN config->'hyperparameters'->%s->>'val' NOT LIKE %s
-				WHEN config->'hyperparameters'->%s->>'type' = 'categorical' THEN (config->'hyperparameters'->%s->>'vals')::jsonb %s %s) IS NOT TRUE
+				WHEN config->'hyperparameters'->%s->>'type' = 'categorical' THEN (config->'hyperparameters'->%s->>'vals')::jsonb %s %s IS NOT TRUE
 				ELSE false
 			 END)`, hpQuery, hpQuery, "?", hpQuery, hpQuery, "?", "?")
 		default:
@@ -546,6 +655,8 @@ func (e experimentFilter) toSQL(q *bun.SelectQuery,
 			return hpToSQL(e.ColumnName, e.Type, e.Value, e.Operator, q, c)
 		case projectv1.LocationType_LOCATION_TYPE_RUN_HYPERPARAMETERS.String():
 			return runHpToSQL(e.ColumnName, e.Type, e.Value, e.Operator, q, c)
+		case projectv1.LocationType_LOCATION_TYPE_RUN_METADATA.String():
+			return runMetadataToSQL(e.ColumnName, e.Type, e.Value, e.Operator, q, c)
 		}
 	case group:
 		var co string
@@ -583,15 +694,15 @@ func (e experimentFilter) toSQL(q *bun.SelectQuery,
 // training.loss.min -> avg_metrics, loss, min
 // group_a.value.last -> group_a, value, last
 // group_b.value.a.last -> group_b, value.a, last .
-func parseMetricsName(str string) (string, string, string, error) {
+func parseMetricsName(str string) (metricGroup string, metricName string, metricQualifier string, err error) {
 	matches := metricIDTemplate.FindStringSubmatch(str)
 	if len(matches) < 4 {
 		return "", "", "", fmt.Errorf("%s is not a valid metrics id", str)
 	}
 
-	metricGroup := matches[1]
-	metricName := matches[2]
-	metricQualifier := matches[3]
+	metricGroup = matches[1]
+	metricName = matches[2]
+	metricQualifier = matches[3]
 
 	if metricGroup == metricIDTraining {
 		metricGroup = metricGroupTraining

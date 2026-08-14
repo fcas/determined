@@ -10,6 +10,7 @@ import "determined/api/v1/agent.proto";
 import "determined/api/v1/auth.proto";
 import "determined/api/v1/checkpoint.proto";
 import "determined/api/v1/command.proto";
+import "determined/api/v1/config_policies.proto";
 import "determined/api/v1/experiment.proto";
 import "determined/api/v1/group.proto";
 import "determined/api/v1/job.proto";
@@ -24,6 +25,7 @@ import "determined/api/v1/template.proto";
 import "determined/api/v1/tensorboard.proto";
 import "determined/api/v1/trial.proto";
 import "determined/api/v1/shell.proto";
+import "determined/api/v1/token.proto";
 import "determined/api/v1/user.proto";
 import "determined/api/v1/webhook.proto";
 import "determined/api/v1/workspace.proto";
@@ -275,6 +277,38 @@ service Determined {
   rpc MasterLogs(MasterLogsRequest) returns (stream MasterLogsResponse) {
     option (google.api.http) = {
       get: "/api/v1/master/logs"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Cluster"
+    };
+  }
+  // Get the currently configured cluster-wide message.
+  rpc GetClusterMessage(GetClusterMessageRequest)
+      returns (GetClusterMessageResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/master/cluster_message"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Cluster"
+    };
+  }
+  // Set the cluster-wide message shown to users. Only one can be set at at
+  // time, so any existing message will be disabled.
+  rpc SetClusterMessage(SetClusterMessageRequest)
+      returns (SetClusterMessageResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/master/cluster_message"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Cluster"
+    };
+  }
+  // Clear the cluster-wide message shown to all users.
+  rpc DeleteClusterMessage(DeleteClusterMessageRequest)
+      returns (DeleteClusterMessageResponse) {
+    option (google.api.http) = {
+      delete: "/api/v1/master/cluster_message"
     };
     option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
       tags: "Cluster"
@@ -739,6 +773,18 @@ service Determined {
     };
   }
 
+  // Get the list of trials for an experiment.
+  rpc GetTrialRemainingLogRetentionDays(
+      GetTrialRemainingLogRetentionDaysRequest)
+      returns (GetTrialRemainingLogRetentionDaysResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/trials/{id}/remaining_log_retention_days"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Internal"
+    };
+  }
+
   // Return a downsampled time series of metrics from multiple trials to compare
   // them side-by-side.
   rpc CompareTrials(CompareTrialsRequest) returns (CompareTrialsResponse) {
@@ -1162,28 +1208,6 @@ service Determined {
     };
   }
 
-  // Get the current searcher operation.
-  rpc GetCurrentTrialSearcherOperation(GetCurrentTrialSearcherOperationRequest)
-      returns (GetCurrentTrialSearcherOperationResponse) {
-    option (google.api.http) = {
-      get: "/api/v1/trials/{trial_id}/searcher/operation"
-    };
-    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
-      tags: "Internal"
-    };
-  }
-  // Reports to the searcher that the trial has completed the given searcher
-  // operation.
-  rpc CompleteTrialSearcherValidation(CompleteTrialSearcherValidationRequest)
-      returns (CompleteTrialSearcherValidationResponse) {
-    option (google.api.http) = {
-      post: "/api/v1/trials/{trial_id}/searcher/completed_operation"
-      body: "completed_operation"
-    };
-    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
-      tags: "Internal"
-    };
-  }
   // Reports to the searcher that the trial has completed the current
   // requested amount of training with the given searcher validation
   // metric.
@@ -1203,7 +1227,7 @@ service Determined {
       returns (ReportTrialProgressResponse) {
     option (google.api.http) = {
       post: "/api/v1/trials/{trial_id}/progress"
-      body: "progress"
+      body: "*"
     };
     option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
       tags: "Internal"
@@ -1854,29 +1878,6 @@ service Determined {
     };
   }
 
-  // Get the list of custom searcher events with long polling.
-  rpc GetSearcherEvents(GetSearcherEventsRequest)
-      returns (GetSearcherEventsResponse) {
-    option (google.api.http) = {
-      get: "/api/v1/experiments/{experiment_id}/searcher_events"
-    };
-    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
-      tags: "Experiments"
-    };
-  }
-
-  // Submit operations to a custom searcher.
-  rpc PostSearcherOperations(PostSearcherOperationsRequest)
-      returns (PostSearcherOperationsResponse) {
-    option (google.api.http) = {
-      post: "/api/v1/experiments/{experiment_id}/searcher_operations"
-      body: "*"
-    };
-    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
-      tags: "Experiments"
-    };
-  }
-
   // Get the set of metric names recorded for a list of experiments.
   rpc ExpMetricNames(ExpMetricNamesRequest)
       returns (stream ExpMetricNamesResponse) {
@@ -1927,6 +1928,17 @@ service Determined {
       returns (GetResourcePoolsResponse) {
     option (google.api.http) = {
       get: "/api/v1/resource-pools"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Internal"
+    };
+  }
+
+  // Get a list of all Kubernetes cluster names.
+  rpc GetKubernetesResourceManagers(GetKubernetesResourceManagersRequest)
+      returns (GetKubernetesResourceManagersResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/k8s-resource-managers"
     };
     option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
       tags: "Internal"
@@ -1994,6 +2006,7 @@ service Determined {
       tags: "Workspaces"
     };
   }
+
   // Update a workspace.
   rpc PatchWorkspace(PatchWorkspaceRequest) returns (PatchWorkspaceResponse) {
     option (google.api.http) = {
@@ -2053,10 +2066,103 @@ service Determined {
     };
   }
 
+  // Bind a namespace to a workspace.
+  rpc SetWorkspaceNamespaceBindings(SetWorkspaceNamespaceBindingsRequest)
+      returns (SetWorkspaceNamespaceBindingsResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/workspaces/{workspace_id}/namespace-bindings",
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Workspaces"
+    };
+  }
+
+  // Set a resource quota for a workspace (within a specific cluster).
+  rpc SetResourceQuotas(SetResourceQuotasRequest)
+      returns (SetResourceQuotasResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/workspaces/{id}/set-resource-quota",
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Workspaces"
+    };
+  }
+
+  // List namespaces bound to a workspace.
+  rpc ListWorkspaceNamespaceBindings(ListWorkspaceNamespaceBindingsRequest)
+      returns (ListWorkspaceNamespaceBindingsResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/workspaces/{id}/list-namespace-bindings"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Workspaces"
+    };
+  }
+
+  // Gets the ids of all workspaces that are bound to the default namespace for
+  // atleast one cluster.
+  rpc GetWorkspacesWithDefaultNamespaceBindings(
+      GetWorkspacesWithDefaultNamespaceBindingsRequest)
+      returns (GetWorkspacesWithDefaultNamespaceBindingsResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/namespace-bindings/workspace-ids-with-default-bindings"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Workspaces"
+    };
+  }
+
+  // Binds the given workpaces to new auto-created namespaces.
+  rpc BulkAutoCreateWorkspaceNamespaceBindings(
+      BulkAutoCreateWorkspaceNamespaceBindingsRequest)
+      returns (BulkAutoCreateWorkspaceNamespaceBindingsResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/namespace-bindings/bulk-auto-create",
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Workspaces"
+    };
+  }
+
+  // Deletes workpace namespace bindings.
+  rpc DeleteWorkspaceNamespaceBindings(DeleteWorkspaceNamespaceBindingsRequest)
+      returns (DeleteWorkspaceNamespaceBindingsResponse) {
+    option (google.api.http) = {
+      delete: "/api/v1/workspaces/{workspace_id}/namespace-bindings"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Workspaces"
+    };
+  }
+
+  // Get Kubernetes Resource Quotas for a workspace by the cluster name.
+  rpc GetKubernetesResourceQuotas(GetKubernetesResourceQuotasRequest)
+      returns (GetKubernetesResourceQuotasResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/workspaces/{id}/get-k8s-resource-quotas"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Workspaces"
+    };
+  }
+
   // Get the requested project.
   rpc GetProject(GetProjectRequest) returns (GetProjectResponse) {
     option (google.api.http) = {
       get: "/api/v1/projects/{id}"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Projects"
+    };
+  }
+  // Get the request project by key.
+  rpc GetProjectByKey(GetProjectByKeyRequest)
+      returns (GetProjectByKeyResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/projects/key/{key}"
     };
     option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
       tags: "Projects"
@@ -2194,6 +2300,17 @@ service Determined {
     };
   }
 
+  // Update a webhook.
+  rpc PatchWebhook(PatchWebhookRequest) returns (PatchWebhookResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/webhooks/{id}"
+      body: "webhook"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Webhooks"
+    };
+  }
+
   // Create a webhook.
   // TODO(???): Simplify req/response structs?
   rpc PostWebhook(PostWebhookRequest) returns (PostWebhookResponse) {
@@ -2220,6 +2337,18 @@ service Determined {
   rpc TestWebhook(TestWebhookRequest) returns (TestWebhookResponse) {
     option (google.api.http) = {
       post: "/api/v1/webhooks/{id}/test"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Webhooks"
+    };
+  }
+
+  // Trigger custom trigger of webhooks.
+  rpc PostWebhookEventData(PostWebhookEventDataRequest)
+      returns (PostWebhookEventDataResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/webhooks/custom"
+      body: "*"
     };
     option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
       tags: "Webhooks"
@@ -2412,7 +2541,8 @@ service Determined {
   rpc SearchExperiments(SearchExperimentsRequest)
       returns (SearchExperimentsResponse) {
     option (google.api.http) = {
-      get: "/api/v1/experiments-search"
+      post: "/api/v1/experiments-search"
+      body: "*"
     };
     option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
       tags: [ "Experiments", "Internal" ]
@@ -2526,7 +2656,8 @@ service Determined {
   // Get a list of runs.
   rpc SearchRuns(SearchRunsRequest) returns (SearchRunsResponse) {
     option (google.api.http) = {
-      get: "/api/v1/runs"
+      post: "/api/v1/runs"
+      body: "*"
     };
     option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
       tags: "Internal"
@@ -2544,7 +2675,7 @@ service Determined {
     };
   }
 
-  // Get a list of runs.
+  // Kill runs.
   rpc KillRuns(KillRunsRequest) returns (KillRunsResponse) {
     option (google.api.http) = {
       post: "/api/v1/runs/kill"
@@ -2585,6 +2716,165 @@ service Determined {
     };
     option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
       tags: "Internal"
+    };
+  }
+
+  // Pause experiment associated with provided runs.
+  rpc PauseRuns(PauseRunsRequest) returns (PauseRunsResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/runs/pause"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Internal"
+    };
+  }
+
+  // Unpause experiment associated with provided runs.
+  rpc ResumeRuns(ResumeRunsRequest) returns (ResumeRunsResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/runs/resume"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Internal"
+    };
+  }
+
+  // Get run metadata.
+  rpc GetRunMetadata(GetRunMetadataRequest) returns (GetRunMetadataResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/runs/{run_id}/metadata"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Internal"
+    };
+  }
+
+  // Update run metadata.
+  rpc PostRunMetadata(PostRunMetadataRequest)
+      returns (PostRunMetadataResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/runs/{run_id}/metadata"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Internal"
+    };
+  }
+
+  // Retrieve run metadata values for a given string typed key within
+  // a given project.
+  rpc GetMetadataValues(GetMetadataValuesRequest)
+      returns (GetMetadataValuesResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/projects/{project_id}/metadata/{key}"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Internal"
+    };
+  }
+
+  // Add or update workspace task config policies.
+  rpc PutWorkspaceConfigPolicies(PutWorkspaceConfigPoliciesRequest)
+      returns (PutWorkspaceConfigPoliciesResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/config-policies/workspaces/{workspace_id}/{workload_type}"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Alpha"
+    };
+  }
+
+  // Add or update global task config policies.
+  rpc PutGlobalConfigPolicies(PutGlobalConfigPoliciesRequest)
+      returns (PutGlobalConfigPoliciesResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/config-policies/global/{workload_type}"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Alpha"
+    };
+  }
+
+  // Get workspace task config policies.
+  rpc GetWorkspaceConfigPolicies(GetWorkspaceConfigPoliciesRequest)
+      returns (GetWorkspaceConfigPoliciesResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/config-policies/workspaces/{workspace_id}/{workload_type}"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Alpha"
+    };
+  }
+
+  // Get global task config policies.
+  rpc GetGlobalConfigPolicies(GetGlobalConfigPoliciesRequest)
+      returns (GetGlobalConfigPoliciesResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/config-policies/global/{workload_type}"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Alpha"
+    };
+  }
+
+  // Delete workspace task config policies.
+  rpc DeleteWorkspaceConfigPolicies(DeleteWorkspaceConfigPoliciesRequest)
+      returns (DeleteWorkspaceConfigPoliciesResponse) {
+    option (google.api.http) = {
+      delete: "/api/v1/config-policies/workspaces/{workspace_id}/{workload_type}"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Alpha"
+    };
+  }
+
+  // Delete global task config policies.
+  rpc DeleteGlobalConfigPolicies(DeleteGlobalConfigPoliciesRequest)
+      returns (DeleteGlobalConfigPoliciesResponse) {
+    option (google.api.http) = {
+      delete: "/api/v1/config-policies/global/{workload_type}"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Alpha"
+    };
+  }
+
+  // Create and get a user's access token
+  rpc PostAccessToken(PostAccessTokenRequest)
+      returns (PostAccessTokenResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/tokens",
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Tokens"
+    };
+  }
+
+  // Get a list of all access token records.
+  rpc GetAccessTokens(GetAccessTokensRequest)
+      returns (GetAccessTokensResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/tokens"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Tokens"
+    };
+  }
+
+  // Patch an access token's mutable fields.
+  rpc PatchAccessToken(PatchAccessTokenRequest)
+      returns (PatchAccessTokenResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/tokens/{token_id}"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_swagger.options.openapiv2_operation) = {
+      tags: "Tokens"
     };
   }
 }

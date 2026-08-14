@@ -1,139 +1,76 @@
+import { Alert } from 'antd';
 import Hermes, { DimensionType } from 'hermes-parallel-coordinates';
-import Alert from 'hew/Alert';
 import Message from 'hew/Message';
 import Spinner from 'hew/Spinner';
+import _ from 'lodash';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import ParallelCoordinates from 'components/ParallelCoordinates';
-import Section from 'components/Section';
-import { useGlasbey } from 'hooks/useGlasbey';
-import { useSettings } from 'hooks/useSettings';
-import { ExperimentVisualizationType } from 'pages/ExperimentDetails/ExperimentVisualization';
-import ExperimentVisualizationFilters, {
-  VisualizationFilters,
-} from 'pages/ExperimentDetails/ExperimentVisualization/ExperimentVisualizationFilters';
-import { TrialMetricData } from 'pages/TrialDetails/useTrialMetrics';
+import { MapOfIdsToColors } from 'hooks/useGlasbey';
+import { RunMetricData } from 'hooks/useMetrics';
 import {
   ExperimentWithTrial,
+  FlatRun,
   HpTrialData,
   Hyperparameter,
   HyperparameterType,
   Primitive,
-  Range,
   Scale,
   TrialItem,
   XAxisDomain,
+  XOR,
 } from 'types';
-import { defaultNumericRange, getNumericRange, updateRange } from 'utils/chart';
+import { getNumericRange } from 'utils/chart';
 import { flattenObject, isPrimitive } from 'utils/data';
 import { metricToKey, metricToStr } from 'utils/metric';
+import { isRun } from 'utils/run';
 import { numericSorter } from 'utils/sort';
 
-import {
-  ExperimentHyperparametersSettings,
-  settingsConfigForExperimentHyperparameters,
-} from './CompareParallelCoordinates.settings';
+import { CompareHyperparametersSettings } from './CompareHyperparameters.settings';
 import css from './HpParallelCoordinates.module.scss';
 
-interface Props {
+export const COMPARE_PARALLEL_COORDINATES = 'compare-parallel-coordinates';
+
+interface BaseProps {
+  colorMap: MapOfIdsToColors;
   projectId: number;
-  selectedExperiments: ExperimentWithTrial[];
-  trials: TrialItem[];
-  metricData: TrialMetricData;
+  metricData: RunMetricData;
+  settings: CompareHyperparametersSettings;
+  fullHParams: string[];
 }
 
+type Props = XOR<
+  { selectedExperiments: ExperimentWithTrial[]; trials: TrialItem[] },
+  { selectedRuns: FlatRun[] }
+> &
+  BaseProps;
+
 const CompareParallelCoordinates: React.FC<Props> = ({
+  colorMap,
   selectedExperiments,
   trials,
-  projectId,
+  settings,
   metricData,
+  fullHParams,
+  selectedRuns,
 }: Props) => {
   const [chartData, setChartData] = useState<HpTrialData | undefined>();
   const [hermesCreatedFilters, setHermesCreatedFilters] = useState<Hermes.Filters>({});
 
-  const fullHParams: string[] = useMemo(() => {
-    const hpParams = new Set<string>();
-    trials.forEach((trial) => Object.keys(trial.hyperparameters).forEach((hp) => hpParams.add(hp)));
-    return Array.from(hpParams);
-  }, [trials]);
-
-  const settingsConfig = useMemo(
-    () => settingsConfigForExperimentHyperparameters(fullHParams, projectId),
-    [fullHParams, projectId],
-  );
-
-  const { settings, updateSettings, resetSettings } =
-    useSettings<ExperimentHyperparametersSettings>(settingsConfig);
-
   const { metrics, data, isLoaded, setScale } = metricData;
 
-  const colorMap = useGlasbey(selectedExperiments.map((e) => e.experiment.id));
   const selectedScale = settings.scale;
 
   useEffect(() => {
     setScale(selectedScale);
   }, [selectedScale, setScale]);
 
-  const filters: VisualizationFilters = useMemo(
-    () => ({
-      hParams: settings.hParams,
-      metric: settings.metric,
-      scale: settings.scale,
-    }),
-    [settings.hParams, settings.metric, settings.scale],
-  );
-
-  const handleFiltersChange = useCallback(
-    (filters: Partial<VisualizationFilters>) => {
-      updateSettings(filters);
-    },
-    [updateSettings],
-  );
-
-  const handleFiltersReset = useCallback(() => {
-    resetSettings();
-  }, [resetSettings]);
-
-  useEffect(() => {
-    const activeMetricFound = metrics.find(
-      (metric) =>
-        metric.name === settings?.metric?.name && metric.group === settings?.metric?.group,
-    );
-    updateSettings({ metric: activeMetricFound ?? metrics.first() });
-  }, [selectedExperiments, metrics, settings.metric, updateSettings]);
-
-  useEffect(() => {
-    if (settings.hParams !== undefined) {
-      if (settings.hParams.length === 0 && fullHParams.length > 0) {
-        updateSettings({ hParams: fullHParams.slice(0, 10) });
-      } else {
-        const activeHParams = settings.hParams.filter((hp) => fullHParams.includes(hp));
-        updateSettings({ hParams: activeHParams });
-      }
-    } else {
-      updateSettings({ hParams: fullHParams });
-    }
-  }, [selectedExperiments, fullHParams, settings.hParams, updateSettings]);
-
-  const visualizationFilters = useMemo(() => {
-    return (
-      <ExperimentVisualizationFilters
-        filters={filters}
-        fullHParams={fullHParams}
-        metrics={metrics}
-        type={ExperimentVisualizationType.HpParallelCoordinates}
-        onChange={handleFiltersChange}
-        onReset={handleFiltersReset}
-      />
-    );
-  }, [fullHParams, handleFiltersChange, handleFiltersReset, metrics, filters]);
-
   const selectedMetric = settings.metric;
   const selectedHParams = settings.hParams;
 
   const experimentHyperparameters = useMemo(() => {
     const hpMap: Record<string, Hyperparameter> = {};
-    selectedExperiments.forEach((exp) => {
+    selectedExperiments?.forEach((exp) => {
       const hps = Object.keys(exp.experiment.hyperparameters);
       hps.forEach((hp) => (hpMap[hp] = exp.experiment.hyperparameters[hp]));
     });
@@ -152,9 +89,9 @@ const CompareParallelCoordinates: React.FC<Props> = ({
       style: {
         axes: { label: { placement: 'after' } },
         data: {
-          series: chartData?.trialIds.map((trial) => ({
+          series: chartData?.recordIds.map((id) => ({
             lineWidth: 1,
-            strokeStyle: colorMap[trial],
+            strokeStyle: colorMap[id],
           })),
           targetDimensionKey: selectedMetric ? metricToStr(selectedMetric) : '',
         },
@@ -162,7 +99,7 @@ const CompareParallelCoordinates: React.FC<Props> = ({
         padding: [4, 120, 4, 16],
       },
     }),
-    [colorMap, hermesCreatedFilters, selectedMetric, chartData?.trialIds],
+    [colorMap, hermesCreatedFilters, selectedMetric, chartData?.recordIds],
   );
 
   const dimensions = useMemo(() => {
@@ -210,69 +147,109 @@ const CompareParallelCoordinates: React.FC<Props> = ({
     selectedHParams,
   ]);
 
-  useEffect(() => {
-    if (!selectedMetric) return;
-    const trialMetricsMap: Record<number, number> = {};
-    const trialHpMap: Record<string, Record<number, Primitive>> = {};
-
-    const trialHpdata: Record<string, Primitive[]> = {};
-    let trialMetricRange: Range<number> = defaultNumericRange(true);
-
-    trials?.forEach((trial) => {
-      const expId = trial.experimentId;
+  const extractHyperparams = useCallback(
+    (
+      record: TrialItem | FlatRun,
+      metricsMap: Record<number, number>,
+      hpMap: Record<string, Record<number, Primitive>>,
+    ) => {
+      if (!selectedMetric) return;
+      const idKey = isRun(record) ? record.id : record.experimentId;
       const key = metricToKey(selectedMetric);
 
       // Choose the final metric value for each trial
-      const metricValue = data?.[trial.id]?.[key]?.data?.[XAxisDomain.Batches]?.at(-1)?.[1];
-
+      const metricValue = data?.[record.id]?.[key]?.data?.[XAxisDomain.Batches]?.at(-1)?.[1];
       if (!metricValue) return;
-      trialMetricsMap[expId] = metricValue;
+      metricsMap[idKey] = metricValue;
 
-      trialMetricRange = updateRange<number>(trialMetricRange, metricValue);
       const flatHParams = {
-        ...trial?.hyperparameters,
-        ...flattenObject(trial?.hyperparameters || {}),
+        ...record.hyperparameters,
+        ...flattenObject(record.hyperparameters || {}),
       };
 
       Object.keys(flatHParams).forEach((hpKey) => {
         const hpValue = flatHParams[hpKey];
-        trialHpMap[hpKey] = trialHpMap[hpKey] ?? {};
-        trialHpMap[hpKey][expId] = isPrimitive(hpValue)
-          ? (hpValue as Primitive)
-          : JSON.stringify(hpValue);
+        hpMap[hpKey] ??= {};
+        hpMap[hpKey][idKey] = isPrimitive(hpValue) ? hpValue : JSON.stringify(hpValue);
       });
-    });
+    },
+    [data, selectedMetric],
+  );
 
-    const trialIds = Object.keys(trialMetricsMap)
+  useEffect(() => {
+    if (!selectedMetric) return;
+    const metricsMap: Record<number, number> = {};
+    const hpMap: Record<string, Record<number, Primitive>> = selectedHParams.reduce(
+      (acc, cur) => Object.assign(acc, { [cur]: {} }),
+      {},
+    );
+
+    trials?.forEach((trial) => extractHyperparams(trial, metricsMap, hpMap));
+    selectedRuns?.forEach((run) => extractHyperparams(run, metricsMap, hpMap));
+
+    const selectedHpSet = new Set(selectedHParams);
+
+    // Hermes currently breaks if you try plotting records without values for every hyperparameter, so this filters them out.
+    const comparableIds = _.intersection<string>(
+      ...Object.entries(hpMap)
+        .filter(([hpName]) => selectedHpSet.has(hpName))
+        .map(([, hpRecords]) => Object.keys(hpRecords)),
+    )
       .map((id) => parseInt(id))
+      .filter((id) => id in metricsMap)
       .sort(numericSorter);
 
-    Object.keys(trialHpMap).forEach((hpKey) => {
-      trialHpdata[hpKey] = trialIds.map((trialId) => trialHpMap[hpKey][trialId]);
-    });
-
     const metricKey = metricToStr(selectedMetric);
-    const metricValues = trialIds.map((id) => trialMetricsMap[id]);
-    trialHpdata[metricKey] = metricValues;
+    const metricValues = comparableIds.map((id) => metricsMap[id]);
+
+    const hpData = Object.keys(hpMap).reduce((acc: Record<string, Primitive[]>, hpKey) => {
+      const hpArray = comparableIds.map((recordId) => hpMap[hpKey][recordId]);
+      if (selectedHpSet.has(hpKey) && hpArray.every((val) => val !== undefined)) {
+        acc[hpKey] = hpArray;
+      }
+      return acc;
+    }, {});
+
+    hpData[metricKey] = metricValues;
 
     const metricRange = getNumericRange(metricValues);
     setChartData({
-      data: trialHpdata,
+      data: hpData,
       metricRange,
       metricValues,
-      trialIds,
+      recordIds: comparableIds,
     });
-  }, [selectedExperiments, selectedMetric, fullHParams, metricData, selectedScale, trials, data]);
+  }, [
+    selectedExperiments,
+    selectedMetric,
+    fullHParams,
+    metricData,
+    selectedScale,
+    trials,
+    data,
+    selectedRuns,
+    extractHyperparams,
+    selectedHParams,
+  ]);
 
   if (!isLoaded) {
     return <Spinner center spinning />;
   }
 
-  if (trials.length === 0) {
+  if ((trials ?? selectedRuns).length === 0) {
     return <Message title="No data available." />;
   }
 
-  if (!chartData || (selectedExperiments.length !== 0 && metrics.length === 0)) {
+  if (chartData?.recordIds.length === 0 && (selectedExperiments ?? selectedRuns).length !== 0) {
+    return (
+      <Alert
+        description="Please modify the selected metric or hyperparameters."
+        message="Records are not comparable using current parameters."
+      />
+    );
+  }
+
+  if (!chartData || ((selectedExperiments ?? selectedRuns).length !== 0 && metrics.length === 0)) {
     return (
       <div className={css.waiting}>
         <Alert
@@ -285,19 +262,17 @@ const CompareParallelCoordinates: React.FC<Props> = ({
   }
 
   return (
-    <Section bodyBorder bodyScroll filters={visualizationFilters}>
-      <div className={css.container}>
-        <div className={css.chart}>
-          {selectedExperiments.length > 0 && (
-            <ParallelCoordinates
-              config={config}
-              data={chartData?.data ?? {}}
-              dimensions={dimensions}
-            />
-          )}
+    <div className={css.container}>
+      {(selectedExperiments ?? selectedRuns).length > 0 && (
+        <div className={css.chart} data-testid={COMPARE_PARALLEL_COORDINATES}>
+          <ParallelCoordinates
+            config={config}
+            data={chartData?.data ?? {}}
+            dimensions={dimensions}
+          />
         </div>
-      </div>
-    </Section>
+      )}
+    </div>
   );
 };
 

@@ -5,6 +5,7 @@ import {
   addResourcePoolBindings,
   deleteResourcePoolBindings,
   getAgents,
+  getKubernetesResourceManagers,
   getResourcePoolBindings,
   getResourcePools,
   overwriteResourcePoolBindings,
@@ -18,7 +19,7 @@ import {
   ResourcePool,
   ResourceType,
 } from 'types';
-import handleError from 'utils/error';
+import handleError, { ErrorLevel, ErrorType } from 'utils/error';
 import { percent } from 'utils/number';
 import { deepObservable, immutableObservable, Observable } from 'utils/observable';
 
@@ -48,18 +49,7 @@ export const maxPoolSlotCapacity = (pool: ResourcePool): number => {
   if (pool.maxAgents > 0 && pool.slotsPerAgent && pool.slotsPerAgent > 0) {
     return pool.maxAgents * pool.slotsPerAgent;
   }
-  /**
-   * On-premise deployments don't have dynamic agents and we don't know how many
-   * agents might connect.
-   *
-   * This is a work around for dynamic agents such as Kubernetes where `slotsAvailable`,
-   * `slotsPerAgents` and `maxAgents` are all zero. This value is used for form
-   * validation and it is too strict to allow anything to run experiments. Intentially
-   * generalized and not matching against Kubernetes, in case other schedulers return
-   * zeroes, and this would at least unblock experiments, and the backend would be able
-   * to return capacity issues.
-   */
-  return pool.slotsAvailable || Infinity;
+  return pool.slotsAvailable;
 };
 
 /**
@@ -119,13 +109,14 @@ class ClusterStore extends PollingStore {
   #resourcePools = deepObservable<Loadable<ResourcePool[]>>(NotLoaded);
   #unboundResourcePools = deepObservable<Loadable<ResourcePool[]>>(NotLoaded);
   #resourcePoolBindings = immutableObservable<Map<string, OrderedSet<number>>>(Map());
+  #kubernetesResourceManagers = deepObservable<Loadable<string[]>>(NotLoaded);
 
   public readonly agents = this.#agents.readOnly();
   public readonly resourcePoolBindings = this.#resourcePoolBindings.select((bindings) =>
     bindings.map((workspaceIds) => workspaceIds.toJS()),
   );
   public readonly multiResourceManagers = this.#resourcePools.select((pools) =>
-    pools.map((p) => new Set(p.map((pp) => pp.resourceManagerName)).size > 1),
+    pools.map((p) => new Set(p.map((pp) => pp.clusterName)).size > 1),
   );
 
   public readonly resourcePools = this.#resourcePools.select((loadable) => {
@@ -135,6 +126,7 @@ class ClusterStore extends PollingStore {
   });
 
   public readonly unboundResourcePools = this.#unboundResourcePools.readOnly();
+  public readonly kubernetesResourceManagers = this.#kubernetesResourceManagers.readOnly();
 
   public readonly clusterOverview = this.#agents.select((agents) =>
     Loadable.map(agents, (agents) => {
@@ -237,6 +229,23 @@ class ClusterStore extends PollingStore {
       })
       .catch(handleError);
 
+    return () => canceler.abort();
+  }
+
+  public fetchKubernetesResourceManagers(signal?: AbortSignal): () => void {
+    const canceler = new AbortController();
+    getKubernetesResourceManagers(undefined, { signal: signal ?? canceler.signal })
+      .then((response) => {
+        this.#kubernetesResourceManagers.set(Loaded(response.names));
+      })
+      .catch((e) => {
+        handleError(e, {
+          level: ErrorLevel.Error,
+          publicMessage: 'Failed to fetch Resource Managers.',
+          silent: false,
+          type: ErrorType.Server,
+        });
+      });
     return () => canceler.abort();
   }
 

@@ -1,6 +1,6 @@
 import os
 import pathlib
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List
 
 from determined.common import api, util
 
@@ -14,19 +14,19 @@ MAX_TASK_SCHEDULED_SECS = 30
 MAX_TRIAL_BUILD_SECS = 90
 
 
-DEFAULT_TF2_CPU_IMAGE = "determinedai/tensorflow-ngc-dev:8b3bea3"
-DEFAULT_TF2_GPU_IMAGE = "determinedai/tensorflow-ngc-dev:8b3bea3"
-DEFAULT_PT_CPU_IMAGE = "determinedai/pytorch-tensorflow-cpu-dev:8b3bea3"
-DEFAULT_PT_GPU_IMAGE = "determinedai/pytorch-tensorflow-cuda-dev:8b3bea3"
-DEFAULT_PT2_CPU_IMAGE = "determinedai/pytorch-ngc-dev:8b3bea3"
-DEFAULT_PT2_GPU_IMAGE = "determinedai/pytorch-ngc-dev:8b3bea3"
+DEFAULT_TF2_CPU_IMAGE = "determinedai/tensorflow-ngc-dev:0736b6d"
+DEFAULT_TF2_GPU_IMAGE = "determinedai/tensorflow-ngc-dev:0736b6d"
+DEFAULT_PT_CPU_IMAGE = "determinedai/pytorch-tensorflow-cpu-dev:0736b6d"
+DEFAULT_PT_GPU_IMAGE = "determinedai/pytorch-tensorflow-cuda-dev:0736b6d"
+DEFAULT_PT2_CPU_IMAGE = "determinedai/pytorch-ngc-dev:0736b6d"
+DEFAULT_PT2_GPU_IMAGE = "determinedai/pytorch-ngc-dev:0736b6d"
 
-TF2_CPU_IMAGE = DEFAULT_TF2_CPU_IMAGE
-TF2_GPU_IMAGE = DEFAULT_TF2_GPU_IMAGE
-PT_CPU_IMAGE = DEFAULT_PT_CPU_IMAGE
-PT_GPU_IMAGE = DEFAULT_PT_GPU_IMAGE
-PT2_CPU_IMAGE = DEFAULT_PT2_CPU_IMAGE
-PT2_GPU_IMAGE = DEFAULT_PT2_GPU_IMAGE
+TF2_CPU_IMAGE = os.environ.get("TF2_CPU_IMAGE") or DEFAULT_TF2_CPU_IMAGE
+TF2_GPU_IMAGE = os.environ.get("TF2_GPU_IMAGE") or DEFAULT_TF2_GPU_IMAGE
+PT_CPU_IMAGE = os.environ.get("PT_CPU_IMAGE") or DEFAULT_PT_CPU_IMAGE
+PT_GPU_IMAGE = os.environ.get("PT_GPU_IMAGE") or DEFAULT_PT_GPU_IMAGE
+PT2_CPU_IMAGE = os.environ.get("PT2_CPU_IMAGE") or DEFAULT_PT2_CPU_IMAGE
+PT2_GPU_IMAGE = os.environ.get("PT2_GPU_IMAGE") or DEFAULT_PT2_GPU_IMAGE
 GPU_ENABLED = os.environ.get("DET_TEST_GPU_ENABLED", "1") not in ("0", "false")
 
 PROJECT_ROOT_PATH = pathlib.Path(__file__).resolve().parents[2]
@@ -37,6 +37,13 @@ SCIM_PASSWORD = "password"
 
 ALL_NTSC = set(api.NTSC_Kind.__members__.values())
 PROXIED_NTSC = {api.NTSC_Kind.notebook, api.NTSC_Kind.tensorboard}
+
+DEFAULT_RM_CLUSTER_NAME = "defaultrm"
+DEFAULT_RM_KUBECONFIG = "/tmp/defaultrm-kubeconf"
+ADDITIONAL_RM_CLUSTER_NAME = "additionalrm"
+ADDITIONAL_RM_KUBECONFIG = "/tmp/additionalrm-kubeconf"
+DEFAULT_KUBECONFIG = "~/.kube/config"
+DEFAULT_KUBERNETES_NAMESPACE = "default"
 
 
 def fixtures_path(path: str) -> str:
@@ -63,10 +70,6 @@ def deepspeed_examples_path(path: str) -> str:
     return os.path.join(os.path.dirname(__file__), "../../examples/deepspeed", path)
 
 
-def deepspeed_autotune_examples_path(path: str) -> str:
-    return os.path.join(os.path.dirname(__file__), "../../examples/deepspeed_autotune", path)
-
-
 def hf_trainer_examples_path(path: str) -> str:
     return os.path.join(os.path.dirname(__file__), "../../examples/hf_trainer_api", path)
 
@@ -91,14 +94,6 @@ def set_slots_per_trial(config: Dict[Any, Any], slots: int) -> Dict[Any, Any]:
     config = config.copy()
     config.setdefault("resources", {})
     config["resources"]["slots_per_trial"] = slots
-    return config
-
-
-def set_max_length(
-    config: Dict[Any, Any], max_length: Union[Dict[str, int], int]
-) -> Dict[Any, Any]:
-    config = config.copy()
-    config["searcher"]["max_length"] = max_length
     return config
 
 
@@ -161,12 +156,6 @@ def set_random_seed(config: Dict[Any, Any], seed: int) -> Dict[Any, Any]:
 def set_hparam(config: Dict[Any, Any], name: str, value: Any) -> Dict[Any, Any]:
     config = config.copy()
     config["hyperparameters"][name] = {"type": "const", "val": value}
-    return config
-
-
-def set_perform_initial_validation(config: Dict[Any, Any], init_val: bool) -> Dict[Any, Any]:
-    config = config.copy()
-    config["perform_initial_validation"] = init_val
     return config
 
 

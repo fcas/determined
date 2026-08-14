@@ -32,6 +32,7 @@ type TaskContainerDefaultsConfig struct {
 	// TODO(DET-9855) we should move these over to KubernetesTaskContainerDefaults.
 	CPUPodSpec           *k8sV1.Pod           `json:"cpu_pod_spec"`
 	GPUPodSpec           *k8sV1.Pod           `json:"gpu_pod_spec"`
+	CheckpointGCPodSpec  *k8sV1.Pod           `json:"checkpoint_gc_pod_spec"`
 	Image                *RuntimeItem         `json:"image,omitempty"`
 	RegistryAuth         *registry.AuthConfig `json:"registry_auth,omitempty"`
 	ForcePullImage       bool                 `json:"force_pull_image,omitempty"`
@@ -50,16 +51,22 @@ type TaskContainerDefaultsConfig struct {
 
 	LogPolicies expconf.LogPoliciesConfig `json:"log_policies"`
 
+	PreemptionTimeout int `json:"preemption_timeout,omitempty"`
+
 	// TODO(DET-9856) we should probably eventually move this to expconf and allow setting
 	// on a per task level.
 	Kubernetes *KubernetesTaskContainerDefaults `json:"kubernetes"`
 }
 
+// DefaultPreemptionTimeout is the number of seconds to wait for preempted task to exit gracefully.
+const DefaultPreemptionTimeout = 60 * 60
+
 // DefaultTaskContainerDefaults returns the default for TaskContainerDefaultsConfig.
 func DefaultTaskContainerDefaults() *TaskContainerDefaultsConfig {
 	return &TaskContainerDefaultsConfig{
-		ShmSizeBytes: 4294967296,
-		NetworkMode:  "bridge",
+		ShmSizeBytes:      4294967296,
+		NetworkMode:       "bridge",
+		PreemptionTimeout: DefaultPreemptionTimeout,
 	}
 }
 
@@ -73,6 +80,7 @@ func DefaultTaskContainerDefaults() *TaskContainerDefaultsConfig {
 func (c *TaskContainerDefaultsConfig) UnmarshalJSON(data []byte) error {
 	c.ShmSizeBytes = 4294967296
 	c.NetworkMode = "bridge"
+	c.PreemptionTimeout = DefaultPreemptionTimeout
 	type DefaultParser *TaskContainerDefaultsConfig
 	if err := json.Unmarshal(data, DefaultParser(c)); err != nil {
 		return errors.Wrap(err, "failed to parse task container defaults")
@@ -92,6 +100,7 @@ func (c *TaskContainerDefaultsConfig) Validate() []error {
 
 	errs = append(errs, validatePodSpec(c.CPUPodSpec)...)
 	errs = append(errs, validatePodSpec(c.GPUPodSpec)...)
+	errs = append(errs, validatePodSpec(c.CheckpointGCPodSpec)...)
 
 	return errs
 }
@@ -163,6 +172,8 @@ func (c *TaskContainerDefaultsConfig) MergeIntoExpConfig(config *expconf.Experim
 		config.RawPbsConfig.RawSbatchArgs = append(
 			c.Pbs.SbatchArgs(), configRawPbsConfig.SbatchArgs()...)
 	}
+
+	config.RawPreemptionTimeout = schemas.Merge(config.RawPreemptionTimeout, &c.PreemptionTimeout)
 }
 
 var mergeCopier = copier.Option{IgnoreEmpty: true, DeepCopy: true}
@@ -204,6 +215,10 @@ func (c TaskContainerDefaultsConfig) Merge(
 
 	if other.GPUPodSpec != nil {
 		res.GPUPodSpec = other.GPUPodSpec.DeepCopy()
+	}
+
+	if other.CheckpointGCPodSpec != nil {
+		res.CheckpointGCPodSpec = other.CheckpointGCPodSpec.DeepCopy()
 	}
 
 	if other.Image != nil {
@@ -308,8 +323,12 @@ func (c TaskContainerDefaultsConfig) Merge(
 		if res.LogPolicies == nil {
 			res.LogPolicies = other.LogPolicies
 		} else {
-			res.LogPolicies = res.LogPolicies.Merge(other.LogPolicies)
+			res.LogPolicies = other.LogPolicies.Merge(res.LogPolicies)
 		}
+	}
+
+	if other.PreemptionTimeout > 0 {
+		res.PreemptionTimeout = other.PreemptionTimeout
 	}
 
 	return res, nil

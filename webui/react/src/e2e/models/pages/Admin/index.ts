@@ -1,12 +1,11 @@
-import { BasePage } from 'e2e/models/BasePage';
-import { Pivot } from 'e2e/models/hew/Pivot';
+import { DeterminedPage } from 'e2e/models/common/base/BasePage';
+import { Pivot } from 'e2e/models/common/hew/Pivot';
 
 /**
- * Returns a representation of an Admin page.
- * This constructor represents the contents in src/pages/Admin/UserManagement.tsx.
- * @param {Page} page - The '@playwright/test' Page being used by a test
+ * Represents the admin page from src/pages/Admin/index.tsx
  */
-export abstract class AdminPage extends BasePage {
+export abstract class AdminPage extends DeterminedPage {
+  readonly title = '';
   readonly pivot = new Pivot({ parent: this });
   readonly userTab = this.pivot.tab('user-management');
   readonly groupTab = this.pivot.tab('group-management');

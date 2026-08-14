@@ -50,7 +50,13 @@ enable user auto-provisioning and the remote management of any information attac
              client_id: "xx0xx0"
              client_secret: "xx0xx0"
              auto_provision_users: true
+             always_redirect: true
+             posix_user_claim: "preferred_username"
              display_name_attribute_name: "XYZ"
+             agent_uid_attribute_name: "user_id_key"
+             agent_gid_attribute_name: "group_id_key"
+             agent_user_name_attribute_name: "agent_user_key"
+             agent_group_name_attribute_name: "agent_group_key"
 
    .. tab::
 
@@ -75,9 +81,27 @@ enable user auto-provisioning and the remote management of any information attac
              idp_sso_url: "https://myorg.okta.com/app/...sso/saml"
              idp_metadata_path: "https://myorg.okta.com/app/.../sso/saml/metadata"
              auto_provision_users: true
+             always_redirect: true
+             posix_user_attribute: "uid"
+             agent_uid_attribute_name: "user_id_key"
+             agent_gid_attribute_name: "group_id_key"
+             agent_user_name_attribute_name: "agent_user_key"
+             agent_group_name_attribute_name: "agent_group_key"
 
 Determined sets the username of the user to the IdP email address. You cannot set the username
 independently.
+
+To automatically link custom claims, you can configure the attribute name with the relevant field.
+For example:
+
+``agent_uid_attribute_name: "custom_uid_attribute_name"``
+
+.. note::
+
+   Once this feature is enabled and an agent UID/GID is assigned to a user, it can only be reset
+   manually. To revert the UID or GID back to the default value specified by
+   ``security.default_task.uid(gid)``, an admin must manually remove the agent UID/GID settings for
+   that user.
 
 Set the Groups Claim Name Option
 ================================
@@ -160,3 +184,18 @@ You can also manage user groups.
 
 To find out how to manage remote users via the WebUI, including adding a new remote user, visit
 :ref:`managing RBAC via the WebUI <manage-users-groups-webui>`.
+
+*****************************
+ Handling SSO Session Expiry
+*****************************
+
+SSO users are redirected to the SSO provider's authentication URIs when their session token has
+expired, rather than displaying the Determined sign-in page. This ensures a continuous user
+experience without manual intervention when sessions expire.
+
+.. note::
+
+   The ``always_redirect`` option enables this behavior. If a user does not have a session token,
+   this option generally bypasses the Determined sign-in page, except when the user signs out
+   through the WebUI. If multiple SSO providers have ``always_redirect`` enabled, the system will
+   attempt to use each provider. This differs from the session expiry handling described above.

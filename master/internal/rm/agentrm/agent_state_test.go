@@ -70,9 +70,10 @@ func TestAgentStatePersistence(t *testing.T) {
 		Version:              "",
 		Devices:              devices,
 		ContainersReattached: []aproto.ContainerReattachAck{},
+		ResourcePoolName:     defaultResourcePoolName,
 	}
 	state.agentStarted(started)
-	require.Equal(t, 2, len(state.getSlotsSummary("/myagent")))
+	require.Len(t, state.getSlotsSummary("/myagent"), 2)
 
 	// Run through some container states.
 	tID := model.TaskID(uuid.NewString())
@@ -146,7 +147,6 @@ func TestAgentStatePersistence(t *testing.T) {
 	require.Len(t, states, 1)
 	var restored *agentState
 	for _, s := range states {
-		s := s
 		restored = &s
 		break
 	}
@@ -156,14 +156,14 @@ func TestAgentStatePersistence(t *testing.T) {
 	// And test restoring the existence of containers.
 	err = restored.restoreContainersField()
 	require.NoError(t, err)
-	require.Equal(t, 1, len(restored.containerAllocation))
+	require.Len(t, restored.containerAllocation, 1)
 
 	// And it is correctly kept if it is recovered.
 	err = state.clearUnlessRecovered(map[cproto.ID]aproto.ContainerReattachAck{
 		cID: {Container: container},
 	})
 	require.NoError(t, err)
-	require.Equal(t, 1, len(restored.containerAllocation))
+	require.Len(t, restored.containerAllocation, 1)
 
 	// Containers removed after exit.
 	state.containerStateChanged(aproto.ContainerStateChanged{
@@ -312,9 +312,68 @@ func Test_agentState_checkAgentStartedDevicesMatch(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.state.checkAgentStartedDevicesMatch(tt.agentStarted)
+			if tt.wantErrContains == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tt.wantErrContains)
+		})
+	}
+}
+
+func Test_agentState_checkAgentResourcePoolMatch(t *testing.T) {
+	const (
+		poolOne = "pool1"
+		poolTwo = "pool2"
+	)
+	tests := []struct {
+		name            string
+		state           agentState
+		agentStarted    *aproto.AgentStarted
+		wantErrContains string
+	}{
+		{
+			name: "resource pool name match",
+			state: agentState{
+				resourcePoolName: poolOne,
+			},
+			agentStarted: &aproto.AgentStarted{
+				ResourcePoolName: poolOne,
+			},
+			wantErrContains: "",
+		},
+		{
+			name: "resource pool name is missing",
+			state: agentState{
+				resourcePoolName: poolOne,
+			},
+			agentStarted:    &aproto.AgentStarted{ResourcePoolName: defaultResourcePoolName},
+			wantErrContains: "resource pool has changed",
+		},
+		{
+			name: "resource pool name is missing",
+			state: agentState{
+				resourcePoolName: defaultResourcePoolName,
+			},
+			agentStarted:    &aproto.AgentStarted{ResourcePoolName: poolOne},
+			wantErrContains: "resource pool has changed",
+		},
+		{
+			name: "mismatched resource pool name",
+			state: agentState{
+				resourcePoolName: poolOne,
+			},
+			agentStarted: &aproto.AgentStarted{
+				ResourcePoolName: poolTwo,
+			},
+			wantErrContains: "resource pool has changed",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.state.checkAgentResourcePoolMatch(tt.agentStarted)
 			if tt.wantErrContains == "" {
 				require.NoError(t, err)
 				return
@@ -347,6 +406,7 @@ func TestSlotStates(t *testing.T) {
 		Version:              "",
 		Devices:              devices,
 		ContainersReattached: []aproto.ContainerReattachAck{},
+		ResourcePoolName:     defaultResourcePoolName,
 	}
 	state.agentStarted(started)
 	slots := state.getSlotsSummary("/")
@@ -362,14 +422,14 @@ func TestSlotStates(t *testing.T) {
 		drain:   ptrs.Ptr(true),
 	})
 	require.NoError(t, err)
-	require.Equal(t, true, slot.Draining)
-	require.Equal(t, false, slot.Enabled)
+	require.True(t, slot.Draining)
+	require.False(t, slot.Enabled)
 	require.Equal(t, 2, state.numSlots())
 
 	slots = state.patchAllSlotsState(patchAllSlotsState{
 		enabled: ptrs.Ptr(true),
 	})
-	require.Equal(t, 2, len(slots))
+	require.Len(t, slots, 2)
 	for _, s := range slots {
 		require.True(t, s.Enabled)
 	}
@@ -380,10 +440,10 @@ func TestSlotStates(t *testing.T) {
 	require.Equal(t, 1, state.numSlots())
 
 	state.Devices[devices[0]] = nil
-	require.Equal(t, 0, state.numSlots())
+	require.Zero(t, state.numSlots())
 
 	state.disable(false)
-	require.Equal(t, 0, state.numSlots())
+	require.Zero(t, state.numSlots())
 
 	state.enable()
 	require.Equal(t, 2, state.numSlots())

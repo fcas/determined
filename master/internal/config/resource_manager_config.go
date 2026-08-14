@@ -11,7 +11,11 @@ import (
 	"github.com/determined-ai/determined/master/pkg/union"
 )
 
-const defaultResourcePoolName = "default"
+const (
+	defaultResourcePoolName = "default"
+	validGWPortRangeStart   = 1025
+	validGWPortRangeEnd     = 65535
+)
 
 // ResourceManagerConfig hosts configuration fields for the resource manager.
 type ResourceManagerConfig struct {
@@ -21,34 +25,47 @@ type ResourceManagerConfig struct {
 	PbsRM        *DispatcherResourceManagerConfig `union:"type,pbs" json:"-"`
 }
 
-// Name returns the name for the resource manager.
-func (r ResourceManagerConfig) Name() string {
+// ClusterName returns the cluster name associated with the resource manager. If the cluster name
+// is empty, it gets assigned to the (possibly) assigned resource manager name.
+func (r ResourceManagerConfig) ClusterName() string {
 	if agentRM := r.AgentRM; agentRM != nil {
-		return agentRM.Name
+		if len(agentRM.ClusterName) == 0 {
+			agentRM.ClusterName = agentRM.Name
+		}
+		return agentRM.ClusterName
 	}
 	if k8RM := r.KubernetesRM; k8RM != nil {
-		return k8RM.Name
+		if len(k8RM.ClusterName) == 0 {
+			k8RM.ClusterName = k8RM.Name
+		}
+		return k8RM.ClusterName
 	}
 	if dis := r.DispatcherRM; dis != nil {
-		return dis.Name
+		if len(dis.ClusterName) == 0 {
+			dis.ClusterName = dis.Name
+		}
+		return dis.ClusterName
 	}
 	if pbs := r.PbsRM; pbs != nil {
-		return pbs.Name
+		if len(pbs.ClusterName) == 0 {
+			pbs.ClusterName = pbs.Name
+		}
+		return pbs.ClusterName
 	}
 
 	panic(fmt.Sprintf("unknown rm type %+v", r))
 }
 
-func (r *ResourceManagerConfig) setName(name string) {
+func (r *ResourceManagerConfig) setClusterName(clusterName string) {
 	switch {
 	case r.AgentRM != nil:
-		r.AgentRM.Name = name
+		r.AgentRM.ClusterName = clusterName
 	case r.KubernetesRM != nil:
-		r.KubernetesRM.Name = name
+		r.KubernetesRM.ClusterName = clusterName
 	case r.DispatcherRM != nil:
-		r.DispatcherRM.Name = name
+		r.DispatcherRM.ClusterName = clusterName
 	case r.PbsRM != nil:
-		r.PbsRM.Name = name
+		r.PbsRM.ClusterName = clusterName
 	default:
 		panic(fmt.Sprintf("unknown rm type %+v", r))
 	}
@@ -85,6 +102,7 @@ func (r *ResourceManagerConfig) UnmarshalJSON(data []byte) error {
 
 // AgentResourceManagerConfig hosts configuration fields for the determined resource manager.
 type AgentResourceManagerConfig struct {
+	ClusterName                string           `json:"cluster_name"`
 	Scheduler                  *SchedulerConfig `json:"scheduler"`
 	DefaultAuxResourcePool     string           `json:"default_aux_resource_pool"`
 	DefaultComputeResourcePool string           `json:"default_compute_resource_pool"`
@@ -97,6 +115,7 @@ type AgentResourceManagerConfig struct {
 	RequireAuthentication bool   `json:"require_authentication"`
 	ClientCA              string `json:"client_ca"`
 
+	// Deprecated: use ClusterName.
 	Name     string            `json:"name"`
 	Metadata map[string]string `json:"metadata"`
 }
@@ -146,16 +165,19 @@ func (a AgentResourceManagerConfig) Validate() []error {
 	return append(errors,
 		check.NotEmpty(a.DefaultAuxResourcePool, "default_aux_resource_pool should be non-empty"),
 		check.NotEmpty(a.DefaultComputeResourcePool, "default_compute_resource_pool should be non-empty"),
-		check.NotEmpty(a.Name, "name is required"),
+		check.NotEmpty(a.ClusterName, "cluster_name is required"),
 	)
 }
 
 // KubernetesResourceManagerConfig hosts configuration fields for the kubernetes resource manager.
 type KubernetesResourceManagerConfig struct {
-	Namespace string `json:"namespace"`
+	// Changed from "Namespace" to "DefaultNamespace". DefaultNamespace is an optional field that
+	// allows the user to specify the default namespace to bind a workspace to, for each RM.
+	DefaultNamespace string `json:"default_namespace"`
 
 	MaxSlotsPerPod *int `json:"max_slots_per_pod"`
 
+	ClusterName              string                  `json:"cluster_name"`
 	MasterServiceName        string                  `json:"master_service_name"`
 	LeaveKubernetesResources bool                    `json:"leave_kubernetes_resources"`
 	DefaultScheduler         string                  `json:"default_scheduler"`
@@ -164,24 +186,86 @@ type KubernetesResourceManagerConfig struct {
 	// deprecated, no longer in use.
 	Fluent         FluentConfig `json:"fluent"`
 	KubeconfigPath string       `json:"kubeconfig_path"`
-	DetMasterIP    string       `json:"determined_master_ip,omitempty"`
-	DetMasterPort  int32        `json:"determined_master_port,omitempty"`
+
+	DetMasterScheme string `json:"determined_master_scheme,omitempty"`
+	DetMasterHost   string `json:"determined_master_host,omitempty"`
+	DetMasterPort   int32  `json:"determined_master_port,omitempty"`
 
 	DefaultAuxResourcePool     string `json:"default_aux_resource_pool"`
 	DefaultComputeResourcePool string `json:"default_compute_resource_pool"`
 	NoDefaultResourcePools     bool   `json:"no_default_resource_pools"`
 
-	Name     string            `json:"name"`
+	InternalTaskGateway *InternalTaskGatewayConfig `json:"internal_task_gateway"`
+
+	// Deprecated: use ClusterName.
+	Name string `json:"name"`
+
 	Metadata map[string]string `json:"metadata"`
+}
+
+// InternalTaskGatewayConfig is config for exposing Determined tasks to outside of the cluster.
+// Useful for multirm when we can only be running in a single cluster.
+type InternalTaskGatewayConfig struct {
+	// GatewayName as defined in the k8s cluster.
+	GatewayName string `json:"gateway_name"`
+	// GatewayNamespace as defined in the k8s cluster.
+	GatewayNamespace string `json:"gateway_namespace"`
+	GatewayIP        string `json:"gateway_ip"`
+	// GWPortStart denotes the inclusive start of the available and exclusive port range to
+	// MLDE for InternalTaskGateway.
+	GWPortStart int `json:"gateway_port_range_start"`
+	// GWPortEnd denotes the inclusive end of the available and exclusive port range to
+	// MLDE for InternalTaskGateway.
+	GWPortEnd int `json:"gateway_port_range_end"`
+}
+
+var defaultInternalTaskGatewayConfig = InternalTaskGatewayConfig{
+	GWPortStart: 32768,
+	GWPortEnd:   65535,
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+func (i *InternalTaskGatewayConfig) UnmarshalJSON(data []byte) error {
+	*i = defaultInternalTaskGatewayConfig
+	type DefaultParser *InternalTaskGatewayConfig
+	return json.Unmarshal(data, DefaultParser(i))
+}
+
+// Validate implements the check.Validatable interface.
+func (i *InternalTaskGatewayConfig) Validate() []error {
+	var errs []error
+
+	if err := check.IsValidK8sLabel(i.GatewayName); err != nil {
+		errs = append(errs, fmt.Errorf("invalid gateway_name: %w", err))
+	}
+
+	if err := check.IsValidK8sLabel(i.GatewayNamespace); err != nil {
+		errs = append(errs, fmt.Errorf("invalid gateway_namespace: %w", err))
+	}
+
+	// Don't validate the IP just check it is not empty so hostnames and the like can be used.
+	if err := check.NotEmpty(i.GatewayIP); err != nil {
+		errs = append(errs, fmt.Errorf("invalid gateway_ip: %w", err))
+	}
+
+	if err := check.BetweenInclusive(
+		i.GWPortStart, validGWPortRangeStart, validGWPortRangeEnd); err != nil {
+		errs = append(errs, fmt.Errorf("invalid gateway_port_range_start: %w", err))
+	}
+
+	if err := check.BetweenInclusive(
+		i.GWPortEnd, validGWPortRangeStart, validGWPortRangeEnd); err != nil {
+		errs = append(errs, fmt.Errorf("invalid gateway_port_range_end: %w", err))
+	}
+
+	if i.GWPortStart >= i.GWPortEnd {
+		errs = append(errs, fmt.Errorf("gateway_port_range_start must be less than or equal to gateway_port_range_end"))
+	}
+	return errs
 }
 
 var defaultKubernetesResourceManagerConfig = KubernetesResourceManagerConfig{
 	SlotType: device.CUDA, // default to CUDA-backed slots.
-}
-
-// GetPreemption returns whether the RM is set to preempt.
-func (k *KubernetesResourceManagerConfig) GetPreemption() bool {
-	return k.DefaultScheduler == PreemptionScheduler
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
@@ -210,27 +294,27 @@ func (k *KubernetesResourceManagerConfig) UnmarshalJSON(data []byte) error {
 
 // Validate implements the check.Validatable interface.
 func (k KubernetesResourceManagerConfig) Validate() []error {
-	var checkSlotType error
+	var errs []error
 	switch k.SlotType {
-	case device.CPU, device.CUDA:
-		break
-	case device.ROCM:
-		checkSlotType = errors.Errorf("rocm slot_type is not supported yet on k8s")
+	case device.CPU, device.CUDA, device.ROCM:
 	default:
-		checkSlotType = errors.Errorf("slot_type must be either cuda or cpu")
+		errs = append(errs, errors.New("slot_type must be cuda, cpu, or rocm"))
 	}
 
-	var checkCPUResource error
 	if k.SlotType == device.CPU {
-		checkCPUResource = check.GreaterThan(
-			k.SlotResourceRequests.CPU, float32(0), "slot_resource_requests.cpu must be > 0")
+		errs = append(errs, check.GreaterThan(
+			k.SlotResourceRequests.CPU, float32(0), "slot_resource_requests.cpu must be > 0"))
 	}
 
-	return []error{
-		checkSlotType,
-		checkCPUResource,
-		check.NotEmpty(k.Name, "name is required"),
+	if k.DefaultScheduler == PriorityScheduling {
+		errs = append(errs, errors.New("the ``priority`` scheduler was deprecated, please "+
+			"use the default Kubernetes scheduler or coscheduler"))
+	} else if k.DefaultScheduler != "" && k.DefaultScheduler != "coscheduler" {
+		errs = append(errs, errors.New("only blank or ``coscheduler`` values allowed for Kubernetes scheduler"))
 	}
+
+	errs = append(errs, check.NotEmpty(k.ClusterName, "cluster_name is required"))
+	return errs
 }
 
 // PodSlotResourceRequests contains the per-slot container requests.
@@ -244,8 +328,3 @@ type FluentConfig struct {
 	UID   int    `json:"uid"`
 	GID   int    `json:"gid"`
 }
-
-// PreemptionScheduler is the name of the preemption scheduler for k8.
-// HACK(Brad): Here because circular imports; Kubernetes probably needs its own
-// configuration package.
-const PreemptionScheduler = "preemption"

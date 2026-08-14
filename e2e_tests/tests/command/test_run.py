@@ -65,6 +65,20 @@ def test_basic_workflows(tmp_path: pathlib.Path) -> None:
         "non-existent-path' doesn't exist",
     )
 
+    output = detproc.check_json(sess, ["det", "cmd", "list", "--json"])
+
+    id0 = output[0]["id"]
+    filtered_output = detproc.check_output(sess, ["det", "cmd", "describe", id0])
+    assert len(filtered_output.split("\n")) == 4  # header, divider, record * 1, empty line
+    assert id0 in filtered_output
+
+    filtered_output = detproc.check_output(sess, ["det", "cmd", "describe", id0, "--csv"])
+    assert len(filtered_output.split("\n")) == 3  # header, record * 1, empty line
+    assert id0 in filtered_output
+
+    output = detproc.check_json(sess, ["det", "cmd", "describe", id0, "--json"])
+    assert id0 == output["id"]
+
 
 @pytest.mark.slow
 @pytest.mark.e2e_cpu
@@ -121,11 +135,14 @@ def test_environment_variables_command() -> None:
 
 
 @pytest.mark.e2e_cpu
-def test_command_startup_hook_works() -> None:
+def test_command_startup_hook_works(tmp_path: pathlib.Path) -> None:
     sess = api_utils.user_session()
+    path = tmp_path / "startup-hook.sh"
+    with path.open("w") as f:
+        f.write("touch startup-hook-ran")
     _run_cmd(
         sess,
-        ["--context", conf.fixtures_path("no_op/"), '[ -e "startup-hook-ran" ]'],
+        ["--include", str(path), '[ -e "startup-hook-ran" ]'],
         expect_success=True,
     )
 

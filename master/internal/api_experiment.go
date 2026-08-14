@@ -30,6 +30,7 @@ import (
 
 	"github.com/determined-ai/determined/master/internal/api"
 	"github.com/determined-ai/determined/master/internal/authz"
+	"github.com/determined-ai/determined/master/internal/configpolicy"
 	"github.com/determined-ai/determined/master/internal/db"
 	"github.com/determined-ai/determined/master/internal/db/bunutils"
 	"github.com/determined-ai/determined/master/internal/experiment"
@@ -41,7 +42,7 @@ import (
 	"github.com/determined-ai/determined/master/internal/trials"
 	"github.com/determined-ai/determined/master/internal/user"
 	"github.com/determined-ai/determined/master/internal/workspace"
-	command "github.com/determined-ai/determined/master/pkg/command"
+	"github.com/determined-ai/determined/master/pkg/command"
 	"github.com/determined-ai/determined/master/pkg/model"
 	"github.com/determined-ai/determined/master/pkg/protoutils"
 	"github.com/determined-ai/determined/master/pkg/protoutils/protoless"
@@ -49,7 +50,6 @@ import (
 	"github.com/determined-ai/determined/master/pkg/schemas"
 	"github.com/determined-ai/determined/master/pkg/schemas/expconf"
 	"github.com/determined-ai/determined/master/pkg/searcher"
-	"github.com/determined-ai/determined/master/pkg/tasks"
 	"github.com/determined-ai/determined/proto/pkg/apiv1"
 	"github.com/determined-ai/determined/proto/pkg/checkpointv1"
 	"github.com/determined-ai/determined/proto/pkg/experimentv1"
@@ -157,7 +157,7 @@ func (a *apiServer) getExperiment(
 func (a *apiServer) getExperimentTx(
 	ctx context.Context, idb bun.IDB, curUser model.User, experimentID int,
 ) (*experimentv1.Experiment, error) {
-	expNotFound := api.NotFoundErrs("experiment", fmt.Sprint(experimentID), true)
+	expNotFound := api.NotFoundErrs("experiment", strconv.Itoa(experimentID), true)
 	exp := &experimentv1.Experiment{}
 	expMap := map[string]interface{}{}
 	query := `
@@ -215,8 +215,7 @@ func (a *apiServer) getExperimentTx(
 	// Cast string -> []byte `ParseMapToProto` magic.
 	jsonFields := []string{"config", "trial_ids", "labels", "pachyderm_integration"}
 	for _, field := range jsonFields {
-		switch sVal := expMap[field].(type) {
-		case string:
+		if sVal, ok := expMap[field].(string); ok {
 			expMap[field] = []byte(sVal)
 		}
 	}
@@ -237,6 +236,10 @@ func (a *apiServer) getExperimentTx(
 		return nil, err
 	}
 
+	if err = authz.ObfuscateExperiments(exp); err != nil {
+		return nil, err
+	}
+
 	return exp, nil
 }
 
@@ -246,85 +249,6 @@ func (a *apiServer) getExperimentAndCheckCanDoActions(
 	actions ...func(context.Context, model.User, *model.Experiment) error,
 ) (*model.Experiment, model.User, error) {
 	return experiment.GetExperimentAndCheckCanDoActions(ctx, expID, actions...)
-}
-
-func (a *apiServer) GetSearcherEvents(
-	ctx context.Context, req *apiv1.GetSearcherEventsRequest,
-) (*apiv1.GetSearcherEventsResponse, error) {
-	curUser, _, err := grpcutil.GetUser(ctx)
-	if err != nil {
-		return nil, err
-	}
-	exp, err := a.getExperiment(ctx, *curUser, int(req.ExperimentId))
-	if err != nil {
-		return nil, err
-	}
-	if !isActiveExperimentState(exp.State) {
-		return &apiv1.GetSearcherEventsResponse{
-			SearcherEvents: []*experimentv1.SearcherEvent{{
-				Id: -1,
-				Event: &experimentv1.SearcherEvent_ExperimentInactive{
-					ExperimentInactive: &experimentv1.ExperimentInactive{
-						ExperimentState: exp.State,
-					},
-				},
-			}},
-		}, nil
-	}
-
-	e, ok := experiment.ExperimentRegistry.Load(int(req.ExperimentId))
-	if !ok {
-		return nil, api.NotFoundErrs("experiment", fmt.Sprint(req.ExperimentId), true)
-	}
-	w, err := e.GetSearcherEventsWatcher()
-	if err != nil {
-		return nil, status.Errorf(codes.Internal,
-			"failed to get searcher events: long polling %v", err)
-	}
-	defer func() {
-		if err := e.UnwatchEvents(w.ID); err != nil {
-			log.WithError(err).Errorf("error unwatching searcher events")
-		}
-	}()
-
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(60)*time.Second)
-	defer cancel()
-
-	select {
-	case events := <-w.C:
-		return &apiv1.GetSearcherEventsResponse{
-			SearcherEvents: events,
-		}, nil
-	case <-ctx.Done():
-		return &apiv1.GetSearcherEventsResponse{
-			SearcherEvents: nil,
-		}, nil
-	}
-}
-
-func (a *apiServer) PostSearcherOperations(
-	ctx context.Context,
-	req *apiv1.PostSearcherOperationsRequest,
-) (
-	resp *apiv1.PostSearcherOperationsResponse, err error,
-) {
-	_, _, err = a.getExperimentAndCheckCanDoActions(
-		ctx, int(req.ExperimentId), experiment.AuthZProvider.Get().CanRunCustomSearch,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "fetching experiment from database")
-	}
-
-	e, ok := experiment.ExperimentRegistry.Load(int(req.ExperimentId))
-	if !ok {
-		return nil, api.NotFoundErrs("experiment", fmt.Sprint(req.ExperimentId), true)
-	}
-	if err := e.PerformSearcherOperations(req); err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to post operations: %v", err)
-	}
-
-	log.Infof("posted operations %v", req.SearcherOperations)
-	return &apiv1.PostSearcherOperationsResponse{}, nil
 }
 
 func (a *apiServer) GetExperiment(
@@ -475,9 +399,7 @@ func (a *apiServer) deleteExperiments(exps []*model.Experiment, userModel *model
 
 	sema := make(chan struct{}, maxConcurrentDeletes)
 	g, _ := errgroup.WithContext(context.Background())
-	for i, e := range exps {
-		i := i
-		exp := e
+	for i, exp := range exps {
 		g.Go(func() error {
 			sema <- struct{}{}
 			defer func() { <-sema }()
@@ -493,15 +415,16 @@ func (a *apiServer) deleteExperiments(exps []*model.Experiment, userModel *model
 				log.WithError(err).Errorf("failed to delete experiment: %d", exp.ID)
 				return err
 			}
-			if len(checkpoints) > 0 {
-				if err := runCheckpointGCForCheckpoints(
-					a.m.rm, a.m.db, exp.JobID, exp.StartTime,
-					&taskSpec, exp.ID, exp.Config, checkpoints,
-					[]string{fullDeleteGlob}, true, agentUserGroup, userModel, nil,
-				); err != nil {
-					log.WithError(err).Errorf("failed to gc checkpoints for experiment: %d", exp.ID)
-					return err
-				}
+
+			// Unfortunately we can't be clever and not run if there aren't checkpoints since we can't
+			// know if there are tensorboards to GC or not.
+			if err := runCheckpointGCForCheckpoints(
+				a.m.rm, a.m.db, exp.JobID, exp.StartTime,
+				&taskSpec, exp.ID, exp.Config, checkpoints,
+				[]string{fullDeleteGlob}, true, agentUserGroup, userModel, nil,
+			); err != nil {
+				log.WithError(err).Errorf("failed to gc checkpoints for experiment: %d", exp.ID)
+				return err
 			}
 
 			// delete jobs per experiment
@@ -509,11 +432,11 @@ func (a *apiServer) deleteExperiments(exps []*model.Experiment, userModel *model
 				JobID: exp.JobID,
 			})
 			if err != nil {
-				log.WithError(err).Errorf("requesting cleanup of resource mananger resources")
+				log.WithError(err).Errorf("requesting cleanup of resource manager resources")
 				return err
 			}
 			if err = <-resp.Err; err != nil {
-				log.WithError(err).Errorf("cleaning up resource mananger resources")
+				log.WithError(err).Errorf("cleaning up resource manager resources")
 				return err
 			}
 			return nil
@@ -851,7 +774,7 @@ func (a *apiServer) GetExperimentValidationHistory(
 	var resp apiv1.GetExperimentValidationHistoryResponse
 	switch err := a.m.db.QueryProto("proto_experiment_validation_history", &resp, req.ExperimentId); {
 	case err == db.ErrNotFound:
-		return nil, api.NotFoundErrs("experiment", fmt.Sprint(req.ExperimentId), true)
+		return nil, api.NotFoundErrs("experiment", strconv.Itoa(int(req.ExperimentId)), true)
 	case err != nil:
 		return nil, errors.Wrapf(err,
 			"error fetching validation history for experiment from database: %d", req.ExperimentId)
@@ -911,44 +834,14 @@ func (a *apiServer) PreviewHPSearch(
 		return nil, errors.Wrap(err, "invalid experiment configuration")
 	}
 
-	sm := searcher.NewSearchMethod(sc)
-	s := searcher.NewSearcher(req.Seed, sm, hc)
-	sim, err := searcher.Simulate(s, nil, searcher.RandomValidation, true, sc.Metric())
+	sim, err := searcher.Simulate(sc, hc)
 	if err != nil {
 		return nil, err
 	}
-	protoSim := &experimentv1.ExperimentSimulation{Seed: req.Seed}
-	indexes := make(map[string]int, len(sim.Results))
-	toProto := func(op searcher.ValidateAfter) ([]*experimentv1.RunnableOperation, error) {
-		return []*experimentv1.RunnableOperation{
-			{
-				Type:   experimentv1.RunnableType_RUNNABLE_TYPE_TRAIN,
-				Length: op.Length,
-			},
-			{
-				Type: experimentv1.RunnableType_RUNNABLE_TYPE_VALIDATE,
-			},
-		}, nil
-	}
-	for _, result := range sim.Results {
-		var operations []*experimentv1.RunnableOperation
-		for _, msg := range result {
-			ops, err := toProto(msg)
-			if err != nil {
-				return nil, errors.Wrapf(err, "error converting msg in simultion result %s", msg)
-			}
-			operations = append(operations, ops...)
-		}
-		hash := fmt.Sprint(operations)
-		if i, ok := indexes[hash]; ok {
-			protoSim.Trials[i].Occurrences++
-		} else {
-			protoSim.Trials = append(protoSim.Trials,
-				&experimentv1.TrialSimulation{Operations: operations, Occurrences: 1})
-			indexes[hash] = len(protoSim.Trials) - 1
-		}
-	}
-	return &apiv1.PreviewHPSearchResponse{Simulation: protoSim}, nil
+
+	return &apiv1.PreviewHPSearchResponse{
+		Summary: sim.Proto(),
+	}, nil
 }
 
 func (a *apiServer) ActivateExperiment(
@@ -961,7 +854,7 @@ func (a *apiServer) ActivateExperiment(
 
 	e, ok := experiment.ExperimentRegistry.Load(int(req.Id))
 	if !ok {
-		return nil, api.NotFoundErrs("experiment", fmt.Sprint(req.Id), true)
+		return nil, api.NotFoundErrs("experiment", strconv.Itoa(int(req.Id)), true)
 	}
 	if err := e.ActivateExperiment(); err != nil {
 		return nil, err
@@ -1216,6 +1109,7 @@ func (a *apiServer) PatchExperiment(
 			}
 			activeConfig.SetResources(resources)
 		}
+
 		newCheckpointStorage := req.Experiment.CheckpointStorage
 
 		if newCheckpointStorage != nil {
@@ -1229,21 +1123,64 @@ func (a *apiServer) PatchExperiment(
 			storage.SetSaveTrialBest(int(newCheckpointStorage.SaveTrialBest))
 			storage.SetSaveTrialLatest(int(newCheckpointStorage.SaveTrialLatest))
 			activeConfig.SetCheckpointStorage(storage)
-		}
 
-		// `patch` represents the allowed mutations that can be performed on an experiment, in JSON
-		if err := a.m.db.SaveExperimentConfig(modelExp.ID, activeConfig); err != nil {
-			return nil, errors.Wrapf(err, "patching experiment %d", modelExp.ID)
+			// Only allow checkpoint storage changes if it is not specified as an invariant config.
+			w, err := getWorkspaceByConfig(activeConfig)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, fmt.Sprintf("failed to get workspace %s",
+					activeConfig.Workspace()))
+			}
+
+			enforcedChkptConf, err := configpolicy.GetConfigPolicyField[expconf.CheckpointStorageConfig](
+				ctx, &w.ID, []string{"checkpoint_storage"}, "invariant_config",
+				model.ExperimentType)
+			if err != nil {
+				return nil, fmt.Errorf("unable to fetch task config policies: %w", err)
+			}
+
+			if enforcedChkptConf != nil {
+				enforcedSaveExpBest := enforcedChkptConf.RawSaveExperimentBest
+				enforcedSaveTrialBest := enforcedChkptConf.RawSaveTrialBest
+				enforcedSaveTrialLatest := enforcedChkptConf.RawSaveTrialLatest
+
+				if enforcedSaveExpBest != nil &&
+					int(newCheckpointStorage.SaveExperimentBest) != *enforcedSaveExpBest {
+					return nil,
+						fmt.Errorf("save_experiment_best is enforced as an invariant config policy of %d",
+							*enforcedSaveExpBest)
+				}
+				if enforcedSaveTrialBest != nil &&
+					int(newCheckpointStorage.SaveTrialBest) != *enforcedSaveTrialBest {
+					return nil,
+						fmt.Errorf("save_trial_best is enforced as an invariant config policy of %d",
+							*enforcedSaveTrialBest)
+				}
+				if enforcedSaveTrialLatest != nil &&
+					int(newCheckpointStorage.SaveTrialLatest) != *enforcedSaveTrialLatest {
+					return nil,
+						fmt.Errorf("save_trial_latest is enforced as an invariant config policy of %d",
+							*enforcedSaveTrialLatest)
+				}
+			}
 		}
 
 		if newResources != nil {
 			e, ok := experiment.ExperimentRegistry.Load(int(exp.Id))
 			if !ok {
-				return nil, api.NotFoundErrs("experiment", fmt.Sprint(exp.Id), true)
+				return nil, api.NotFoundErrs("experiment", strconv.Itoa(int(exp.Id)), true)
 			}
 
 			if newResources.MaxSlots != nil {
 				msg := sproto.SetGroupMaxSlots{MaxSlots: ptrs.Ptr(int(*newResources.MaxSlots))}
+				w, err := getWorkspaceByConfig(activeConfig)
+				if err != nil {
+					return nil, status.Errorf(codes.Internal, err.Error())
+				}
+
+				err = configpolicy.CanSetMaxSlots(msg.MaxSlots, w.ID)
+				if err != nil {
+					return nil, status.Errorf(codes.InvalidArgument, err.Error())
+				}
 				e.SetGroupMaxSlots(msg)
 			}
 			if newResources.Weight != nil {
@@ -1258,6 +1195,10 @@ func (a *apiServer) PatchExperiment(
 					return nil, errors.Wrapf(err, "cannot change experiment priority to %v", *newResources.Priority)
 				}
 			}
+		}
+
+		if err := a.m.db.SaveExperimentConfig(modelExp.ID, activeConfig); err != nil {
+			return nil, errors.Wrapf(err, "patching experiment %d", modelExp.ID)
 		}
 
 		if newCheckpointStorage != nil {
@@ -1337,7 +1278,7 @@ func (a *apiServer) GetExperimentCheckpoints(
 	resp.Checkpoints = []*checkpointv1.Checkpoint{}
 	switch err = a.m.db.QueryProto("get_checkpoints_for_experiment", &resp.Checkpoints, req.Id); {
 	case err == db.ErrNotFound:
-		return nil, api.NotFoundErrs("checkpoints for experiment", fmt.Sprint(req.Id), true)
+		return nil, api.NotFoundErrs("checkpoints for experiment", strconv.Itoa(int(req.Id)), true)
 	case err != nil:
 		return nil,
 			errors.Wrapf(err, "error fetching checkpoints for experiment %d from database", req.Id)
@@ -1403,9 +1344,9 @@ func (a *apiServer) GetExperimentCheckpoints(
 
 func (a *apiServer) createUnmanagedExperimentTx(
 	ctx context.Context, idb bun.IDB, dbExp *model.Experiment, modelDef []byte,
-	activeConfig expconf.ExperimentConfigV0, taskSpec *tasks.TaskSpec, user *model.User,
+	activeConfig expconf.ExperimentConfigV0, user *model.User,
 ) (*apiv1.CreateExperimentResponse, error) {
-	e, _, err := newUnmanagedExperiment(ctx, idb, a.m, dbExp, modelDef, activeConfig, taskSpec)
+	e, _, err := newUnmanagedExperiment(ctx, idb, dbExp, modelDef, activeConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make new unmanaged experiment: %w", err)
 	}
@@ -1442,14 +1383,6 @@ func (a *apiServer) parseAndMergeContinueConfig(expID int, overrideConfig string
 
 	providedConfig, err := expconf.ParseAnyExperimentConfigYAML([]byte(overrideConfig))
 	if err != nil {
-		// Add a helpful error message if a user just submits
-		// searcher.max_length.batches = 2. They would also need
-		// searcher.name = "single", which all experiments will always be here.
-		if strings.Contains(err.Error(), `unknown field "max_length"`) {
-			return nil, false, status.Errorf(codes.InvalidArgument,
-				`unknown field "max_length", you might also need to specify searcher.name=single`)
-		}
-
 		return nil, false, status.Errorf(codes.InvalidArgument,
 			fmt.Errorf("parsing override config: %w", err).Error())
 	}
@@ -1468,12 +1401,38 @@ func (a *apiServer) parseAndMergeContinueConfig(expID int, overrideConfig string
 			fmt.Sprintf("override config must have single searcher type got '%s' instead", overrideName))
 	}
 
+	// Merge the config with the optionally specified invariant config specified by task config
+	// policies.
+	w, err := getWorkspaceByConfig(activeConfig)
+	if err != nil {
+		return nil, false, status.Errorf(codes.Internal,
+			fmt.Sprintf("failed to get workspace %s", activeConfig.Workspace()))
+	}
+
+	configWithInvariantDefaults, err := configpolicy.MergeWithInvariantExperimentConfigs(
+		context.TODO(),
+		w.ID, mergedConfig)
+	if err != nil {
+		return nil, false,
+			fmt.Errorf("failed to merge invariant experiment configs: %w", err)
+	}
+	mergedConfig = *configWithInvariantDefaults
+
 	bytes, err := mergedConfig.Value()
 	if err != nil {
 		return nil, false, fmt.Errorf("getting value of merged config: %w", err)
 	}
 
 	return bytes.([]byte), isSingle, nil
+}
+
+func getWorkspaceByConfig(config expconf.ExperimentConfig) (*model.Workspace, error) {
+	wkspName := config.Workspace()
+	if wkspName == "" {
+		wkspName = model.DefaultWorkspaceName
+	}
+	ctx := context.TODO()
+	return workspace.WorkspaceByName(ctx, wkspName)
 }
 
 var errContinueHPSearchCompleted = status.Error(codes.FailedPrecondition,
@@ -1681,6 +1640,18 @@ func (a *apiServer) CreateExperiment(
 		return nil, status.Errorf(codes.PermissionDenied, err.Error())
 	}
 
+	wkspIDs, err := workspace.WorkspaceIDsFromNames(ctx, []string{taskSpec.Workspace})
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, err.Error())
+	}
+	if len(wkspIDs) != 1 {
+		return nil, status.Error(codes.InvalidArgument, "expected exactly one workspace")
+	}
+	err = configpolicy.CheckExperimentConstraints(ctx, int(wkspIDs[0]), activeConfig, a.m.rm)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, err.Error())
+	}
+
 	if req.ValidateOnly {
 		return &apiv1.CreateExperimentResponse{
 			Experiment: &experimentv1.Experiment{},
@@ -1688,7 +1659,7 @@ func (a *apiServer) CreateExperiment(
 	}
 
 	if req.Unmanaged != nil && *req.Unmanaged {
-		return a.createUnmanagedExperimentTx(ctx, db.Bun(), dbExp, modelDef, activeConfig, taskSpec, user)
+		return a.createUnmanagedExperimentTx(ctx, db.Bun(), dbExp, modelDef, activeConfig, user)
 	}
 	// Check user has permission for what they are trying to do
 	// before actually saving the experiment.
@@ -1729,7 +1700,7 @@ func (a *apiServer) CreateExperiment(
 func (a *apiServer) PutExperimentRetainLogs(
 	ctx context.Context, req *apiv1.PutExperimentRetainLogsRequest,
 ) (*apiv1.PutExperimentRetainLogsResponse, error) {
-	results, err := experiment.BulkUpdateLogRentention(
+	results, err := experiment.BulkUpdateLogRetention(
 		ctx,
 		a.m.db,
 		experiment.GlobalProjectID,
@@ -1751,7 +1722,7 @@ func (a *apiServer) PutExperimentRetainLogs(
 func (a *apiServer) PutExperimentsRetainLogs(
 	ctx context.Context, req *apiv1.PutExperimentsRetainLogsRequest,
 ) (*apiv1.PutExperimentsRetainLogsResponse, error) {
-	results, err := experiment.BulkUpdateLogRentention(
+	results, err := experiment.BulkUpdateLogRetention(
 		ctx,
 		a.m.db,
 		req.ProjectId,
@@ -1769,11 +1740,11 @@ func (a *apiServer) PutExperiment(
 	ctx context.Context, req *apiv1.PutExperimentRequest,
 ) (*apiv1.PutExperimentResponse, error) {
 	if req.CreateExperimentRequest.Unmanaged == nil || !*req.CreateExperimentRequest.Unmanaged {
-		return nil, errors.New("only unmanaged experiments are supported")
+		return nil, fmt.Errorf("only unmanaged experiments are supported")
 	}
 
 	if req.CreateExperimentRequest.ParentId != 0 {
-		return nil, errors.New("can't fork into an unmanaged experiment")
+		return nil, fmt.Errorf("can't fork into an unmanaged experiment")
 	}
 
 	user, _, err := grpcutil.GetUser(ctx)
@@ -1781,7 +1752,7 @@ func (a *apiServer) PutExperiment(
 		return nil, status.Errorf(codes.Internal, "failed to get the user: %s", err)
 	}
 
-	dbExp, modelDef, activeConfig, p, taskSpec, err := a.m.parseCreateExperiment(ctx,
+	dbExp, modelDef, activeConfig, p, _, err := a.m.parseCreateExperiment(ctx,
 		req.CreateExperimentRequest, user,
 	)
 	if err != nil {
@@ -1796,7 +1767,7 @@ func (a *apiServer) PutExperiment(
 	dbExp.ExternalExperimentID = &req.ExternalExperimentId
 
 	innerResp, err = a.createUnmanagedExperimentTx(
-		ctx, db.Bun(), dbExp, modelDef, activeConfig, taskSpec, user,
+		ctx, db.Bun(), dbExp, modelDef, activeConfig, user,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create unmanaged experiment: %w", err)
@@ -1818,6 +1789,10 @@ var (
 func (a *apiServer) ExpMetricNames(req *apiv1.ExpMetricNamesRequest,
 	resp apiv1.Determined_ExpMetricNamesServer,
 ) error {
+	// remove duplicate ids to improve performance
+	slices.Sort(req.Ids)
+	req.Ids = slices.Compact(req.Ids)
+
 	if len(req.Ids) == 0 {
 		return status.Error(codes.InvalidArgument, "must specify at least one experiment id")
 	}
@@ -1844,7 +1819,7 @@ func (a *apiServer) ExpMetricNames(req *apiv1.ExpMetricNamesRequest,
 					return err
 				}
 
-				if timeSinceLastAuth == (time.Time{}) { // Initialization.
+				if timeSinceLastAuth.Equal((time.Time{})) { // Initialization.
 					searcherMetric := exp.Config.Searcher.Metric
 
 					if seen := seenSearcher[searcherMetric]; !seen {
@@ -2084,38 +2059,38 @@ func (a *apiServer) topTrials(
 ) (trials []int32, err error) {
 	type Ranking int
 	const (
-		ByMetricOfInterest Ranking = 1
-		ByTrainingLength   Ranking = 2
+		byMetricOfInterest Ranking = 1
+		byTrainingLength   Ranking = 2
 	)
 	var ranking Ranking
 
 	switch s.Name {
 	case "random":
-		ranking = ByMetricOfInterest
+		ranking = byMetricOfInterest
 	case "grid":
-		ranking = ByMetricOfInterest
+		ranking = byMetricOfInterest
 	case "custom":
-		ranking = ByMetricOfInterest
+		ranking = byMetricOfInterest
 	case "async_halving":
-		ranking = ByTrainingLength
+		ranking = byTrainingLength
 	case "adaptive_asha":
-		ranking = ByTrainingLength
+		ranking = byTrainingLength
 	case "single":
-		return nil, errors.New("single-trial experiments are not supported for trial sampling")
+		return nil, fmt.Errorf("single-trial experiments are not supported for trial sampling")
 	// EOL searcher configs:
 	case "adaptive":
-		ranking = ByTrainingLength
+		ranking = byTrainingLength
 	case "adaptive_simple":
-		ranking = ByTrainingLength
+		ranking = byTrainingLength
 	case "sync_halving":
-		ranking = ByTrainingLength
+		ranking = byTrainingLength
 	default:
 		return nil, errors.Errorf("unable to detect a searcher algorithm for trial sampling")
 	}
 	switch ranking {
-	case ByMetricOfInterest:
+	case byMetricOfInterest:
 		return db.TopTrialsByMetric(ctx, experimentID, maxTrials, s.Metric, s.SmallerIsBetter)
-	case ByTrainingLength:
+	case byTrainingLength:
 		return a.m.db.TopTrialsByTrainingLength(experimentID, maxTrials, s.Metric, s.SmallerIsBetter)
 	default:
 		panic("Invalid state in trial sampling")
@@ -2131,7 +2106,6 @@ func (a *apiServer) fetchTrialSample(trialID int32, metricName string, metricGro
 	var err error
 	var trial apiv1.TrialsSampleResponse_Trial
 	var metricMeasurements []db.MetricMeasurements
-	xAxisLabelMetrics := []string{"epoch"}
 
 	trial.TrialId = trialID
 
@@ -2150,7 +2124,7 @@ func (a *apiServer) fetchTrialSample(trialID int32, metricName string, metricGro
 	}
 	metricMeasurements, err = trials.MetricsTimeSeries(trialID, startTime,
 		[]string{metricName},
-		startBatches, endBatches, xAxisLabelMetrics, maxDatapoints,
+		startBatches, endBatches, maxDatapoints,
 		"batches", nil, metricGroup)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error fetching time series of metrics")
@@ -2232,7 +2206,7 @@ func (a *apiServer) TrialsSample(req *apiv1.TrialsSampleRequest,
 				return err
 			}
 
-			if timeSinceLastAuth == (time.Time{}) { // Initialzation.
+			if timeSinceLastAuth.IsZero() { // Initialzation.
 				searcherConfig = exp.Config.Searcher
 			}
 			timeSinceLastAuth = time.Now()
@@ -2345,7 +2319,7 @@ func (a *apiServer) GetModelDef(
 func (a *apiServer) GetTaskContextDirectory(
 	ctx context.Context, req *apiv1.GetTaskContextDirectoryRequest,
 ) (*apiv1.GetTaskContextDirectoryResponse, error) {
-	if err := a.canDoActionsOnTask(ctx, model.TaskID(req.TaskId),
+	if _, _, err := a.canDoActionsOnTask(ctx, model.TaskID(req.TaskId),
 		experiment.AuthZProvider.Get().CanGetExperimentArtifacts); err != nil {
 		return nil, err
 	}
@@ -2574,6 +2548,7 @@ func (a *apiServer) SearchExperiments(
 		Model(&experiments).
 		ModelTableExpr("experiments as e").
 		Column("e.best_trial_id").
+		Where("e.state != ?", model.DeletingState).
 		Apply(getExperimentColumns)
 
 	curUser, _, err := grpcutil.GetUser(ctx)
@@ -2700,6 +2675,8 @@ func (a *apiServer) SearchExperiments(
 		ColumnExpr("null::jsonb AS wall_clock_time").
 		Column("searcher_metric_value").
 		Column("trials.external_trial_id").
+		ColumnExpr("nullif(trials.metadata, 'null') as metadata").
+		ColumnExpr("NULL as log_policy_matched").
 		Join("LEFT JOIN validations bv ON trials.best_validation_id = bv.id").
 		Join("LEFT JOIN validations lv ON trials.latest_validation_id = lv.id").
 		Join("LEFT JOIN checkpoints_v2 new_ckpt ON new_ckpt.id = trials.warm_start_checkpoint_id").
@@ -2743,7 +2720,7 @@ func (a *apiServer) createTrialTx(
 	ctx context.Context, tx bun.Tx, req *apiv1.CreateTrialRequest, externalTrialID *string,
 ) (*apiv1.CreateTrialResponse, error) {
 	if !req.Unmanaged {
-		return nil, errors.New("only unmanaged trials are supported")
+		return nil, fmt.Errorf("only unmanaged trials are supported")
 	}
 
 	exp, _, err := a.getExperimentAndCheckCanDoActions(ctx, int(req.ExperimentId),
@@ -2753,7 +2730,7 @@ func (a *apiServer) createTrialTx(
 	}
 
 	if !exp.Unmanaged {
-		return nil, errors.New("trials can only be created on unmanaged experiments")
+		return nil, fmt.Errorf("trials can only be created on unmanaged experiments")
 	}
 
 	var taskIDSuffix string
@@ -2829,7 +2806,7 @@ func (a *apiServer) PutTrial(ctx context.Context, req *apiv1.PutTrialRequest) (
 	*apiv1.PutTrialResponse, error,
 ) {
 	if !req.CreateTrialRequest.Unmanaged {
-		return nil, errors.New("only unmanaged trials are supported")
+		return nil, fmt.Errorf("only unmanaged trials are supported")
 	}
 
 	_, _, err := a.getExperimentAndCheckCanDoActions(ctx, int(req.CreateTrialRequest.ExperimentId),
@@ -2848,7 +2825,6 @@ func (a *apiServer) PutTrial(ctx context.Context, req *apiv1.PutTrialRequest) (
 		trial = innerResp.Trial
 		return nil
 	})
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to run create trial tx: %w", err)
 	}
@@ -2885,7 +2861,7 @@ func (a *apiServer) PatchTrial(ctx context.Context, req *apiv1.PatchTrialRequest
 	}
 
 	if !exp.Unmanaged {
-		return nil, errors.New("only unmanaged trials are supported")
+		return nil, fmt.Errorf("only unmanaged trials are supported")
 	}
 
 	obj := model.Run{

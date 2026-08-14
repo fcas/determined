@@ -173,8 +173,8 @@ const UserActionDropdown = ({ fetchUsers, user, groups, userManagementEnabled }:
       <Dropdown menu={menuItems} placement="bottomRight" onClick={handleDropdown}>
         <Button icon={<Icon name="overflow-vertical" size="small" title="Action menu" />} />
       </Dropdown>
-      <ViewUserModal.Component user={user} userRoles={userRoles} viewOnly onClose={fetchUsers} />
-      <EditUserModal.Component user={user} userRoles={userRoles} onClose={fetchUsers} />
+      <ViewUserModal.Component user={user} userRoles={userRoles} viewOnly onSuccess={fetchUsers} />
+      <EditUserModal.Component user={user} userRoles={userRoles} onSuccess={fetchUsers} />
       <ManageGroupsModal.Component
         groupOptions={groups}
         user={user}
@@ -207,12 +207,17 @@ const columnSettings = {
 };
 
 const userManagementSettings = userSettings.get(UserManagementSettings, 'user-management');
-const UserManagement: React.FC = () => {
+
+interface Props {
+  onUserCreate: () => void;
+}
+
+const UserManagement: React.FC<Props> = ({ onUserCreate }: Props) => {
   const [selectedUserIds, setSelectedUserIds] = useState<React.Key[]>([]);
   const [refresh, setRefresh] = useState<Record<string, never>>({});
   const [nameFilter, setNameFilter] = useState<string>('');
-  const [roleFilter, setRoleFilter] = useState<UserRole | number[] | ''>('');
-  const [statusFilter, setStatusFilter] = useState<UserStatus | ''>('');
+  const [roleFilter, setRoleFilter] = useState<UserRole | number[]>();
+  const [statusFilter, setStatusFilter] = useState<UserStatus>();
   const pageRef = useRef<HTMLElement>(null);
   const currentUser = Loadable.getOrElse(undefined, useObservable(userStore.currentUser));
   const loadableSettings = useObservable(userManagementSettings);
@@ -227,6 +232,11 @@ const UserManagement: React.FC = () => {
       userSettings.setPartial(UserManagementSettings, 'user-management', p),
     [],
   );
+
+  const handleUserCreate = () => {
+    onUserCreate();
+    fetchUsers();
+  };
 
   const userResponse = useAsync(async () => {
     try {
@@ -473,36 +483,34 @@ const UserManagement: React.FC = () => {
     <>
       <Section className={css.usersTable}>
         <div className={css.actionBar} data-testid="actionRow">
-          <Row>
-            <Column>
-              <Row>
-                {/* input is uncontrolled */}
-                <Input
-                  allowClear
-                  data-testid="search"
-                  defaultValue={nameFilter}
-                  placeholder="Find user"
-                  prefix={<Icon color="cancel" decorative name="search" size="tiny" />}
-                  onChange={handleNameSearchApply}
-                />
-                <Select
-                  data-testid="roleSelect"
-                  options={roleOptions}
-                  searchable={false}
-                  value={roleFilter}
-                  width={120}
-                  onChange={handleRoleFilterApply}
-                />
-                <Select
-                  data-testid="statusSelect"
-                  options={statusOptions}
-                  searchable={false}
-                  value={statusFilter}
-                  width={170}
-                  onChange={handleStatusFilterApply}
-                />
-              </Row>
-            </Column>
+          <Input
+            allowClear
+            data-testid="search"
+            defaultValue={nameFilter}
+            placeholder="Find user"
+            prefix={<Icon color="cancel" decorative name="search" size="tiny" />}
+            width={'100%'}
+            onChange={handleNameSearchApply}
+          />
+          <Select
+            data-testid="roleSelect"
+            options={roleOptions}
+            placeholder="Role"
+            searchable={false}
+            value={roleFilter}
+            width={'100%'}
+            onChange={handleRoleFilterApply}
+          />
+          <Select
+            data-testid="statusSelect"
+            options={statusOptions}
+            placeholder="Status"
+            searchable={false}
+            value={statusFilter}
+            width={'100%'}
+            onChange={handleStatusFilterApply}
+          />
+          <div className={css.gridButtons}>
             <Column align="right">
               <Row>
                 {selectedUserIds.length > 0 && (
@@ -519,7 +527,7 @@ const UserManagement: React.FC = () => {
                 </Button>
               </Row>
             </Column>
-          </Row>
+          </div>
         </div>
         {settings ? (
           <InteractiveTable<DetailedUser, UserManagementSettingsWithColumns>
@@ -560,7 +568,7 @@ const UserManagement: React.FC = () => {
           <SkeletonTable columns={columns.length} />
         )}
       </Section>
-      <CreateUserModal.Component onClose={fetchUsers} />
+      <CreateUserModal.Component onSuccess={handleUserCreate} />
       <ChangeUserStatusModal.Component
         clearTableSelection={clearTableSelection}
         fetchUsers={fetchUsers}

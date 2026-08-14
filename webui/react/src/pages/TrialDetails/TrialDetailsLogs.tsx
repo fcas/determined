@@ -7,6 +7,7 @@ import useConfirm from 'hew/useConfirm';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import useUI from 'components/ThemeProvider';
+import useFeature from 'hooks/useFeature';
 import { useSettings } from 'hooks/useSettings';
 import { DateString, decode, optional } from 'ioTypes';
 import { serverAddress } from 'routes/utils';
@@ -16,6 +17,7 @@ import { readStream } from 'services/utils';
 import { ExperimentBase, TrialDetails } from 'types';
 import { downloadTrialLogs } from 'utils/browser';
 import handleError, { ErrorType } from 'utils/error';
+import mergeAbortControllers from 'utils/mergeAbortControllers';
 
 import css from './TrialDetailsLogs.module.scss';
 
@@ -26,25 +28,12 @@ export interface Props {
 
 type OrderBy = 'ORDER_BY_UNSPECIFIED' | 'ORDER_BY_ASC' | 'ORDER_BY_DESC';
 
-const mergeAbortControllers = (...controllers: AbortController[]) => {
-  const mergedController = new AbortController();
-
-  controllers.forEach((c) => {
-    const abort = () => {
-      mergedController.abort();
-      c.signal.removeEventListener('abort', abort);
-    };
-    c.signal.addEventListener('abort', abort);
-  });
-
-  return mergedController;
-};
-
 const TrialDetailsLogs: React.FC<Props> = ({ experiment, trial }: Props) => {
   const { ui } = useUI();
   const [filterOptions, setFilterOptions] = useState<Filters>({});
   const confirm = useConfirm();
   const canceler = useRef(new AbortController());
+  const f_flat_runs = useFeature().isOn('flat_runs');
 
   const trialSettingsConfig = useMemo(() => settingsConfigForTrial(trial?.id || -1), [trial?.id]);
   const { resetSettings, settings, updateSettings } = useSettings<Settings>(trialSettingsConfig);
@@ -91,14 +80,14 @@ const TrialDetailsLogs: React.FC<Props> = ({ experiment, trial }: Props) => {
     } catch (e) {
       handleError(e, {
         publicMessage: `
-          Failed to download trial ${trial.id} logs.
+          Failed to download ${f_flat_runs ? 'run' : 'trial'} ${trial.id} logs.
           If the problem persists please try our CLI "det trial logs ${trial.id}"
         `,
-        publicSubject: 'Trial log download failed.',
+        publicSubject: `${f_flat_runs ? 'Run' : 'Trial'} log download failed.`,
         type: ErrorType.Ui,
       });
     }
-  }, [trial?.id]);
+  }, [f_flat_runs, trial?.id]);
 
   const handleDownloadLogs = useCallback(() => {
     if (!trial?.id) return;
@@ -117,9 +106,9 @@ const TrialDetailsLogs: React.FC<Props> = ({ experiment, trial }: Props) => {
       onConfirm: handleDownloadConfirm,
       onError: handleError,
       size: 'medium',
-      title: `Confirm Download for Trial ${trial.id} Logs`,
+      title: `Confirm Download for ${f_flat_runs ? 'Run' : 'Trial'} ${trial.id} Logs`,
     });
-  }, [confirm, experiment.id, handleDownloadConfirm, trial?.id]);
+  }, [confirm, experiment.id, f_flat_runs, handleDownloadConfirm, trial?.id]);
 
   const handleFetch = useCallback(
     (config: FetchConfig, type: FetchType) => {
@@ -163,6 +152,7 @@ const TrialDetailsLogs: React.FC<Props> = ({ experiment, trial }: Props) => {
         decode(optional(DateString), options.timestampAfter),
         options.orderBy as OrderBy,
         settings.searchText,
+        false,
         { signal },
       );
     },

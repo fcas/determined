@@ -3,10 +3,11 @@ import Spinner from 'hew/Spinner';
 import { Loadable } from 'hew/utils/loadable';
 import _ from 'lodash';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 
 import Page, { BreadCrumbRoute } from 'components/Page';
 import { terminalRunStates } from 'constants/states';
+import useFeature from 'hooks/useFeature';
 import usePolling from 'hooks/usePolling';
 import ExperimentDetailsHeader from 'pages/ExperimentDetails/ExperimentDetailsHeader';
 import ExperimentMultiTrialTabs from 'pages/ExperimentDetails/ExperimentMultiTrialTabs';
@@ -14,6 +15,7 @@ import ExperimentSingleTrialTabs from 'pages/ExperimentDetails/ExperimentSingleT
 import { TrialInfoBoxMultiTrial } from 'pages/TrialDetails/TrialInfoBox';
 import { paths } from 'routes/utils';
 import { getExperimentDetails } from 'services/api';
+import userSettings from 'stores/userSettings';
 import workspaceStore from 'stores/workspaces';
 import { ExperimentBase, TrialItem, Workspace } from 'types';
 import { isSingleTrialExperiment } from 'utils/experiment';
@@ -27,6 +29,8 @@ type Params = {
 export const INVALID_ID_MESSAGE = 'Invalid Experiment ID';
 export const ERROR_MESSAGE = 'Unable to fetch Experiment';
 
+const settingsLoadedObs = userSettings.getAll().select((l) => l.isLoaded);
+
 const ExperimentDetails: React.FC = () => {
   const { experimentId } = useParams<Params>();
   const [experiment, setExperiment] = useState<ExperimentBase>();
@@ -37,6 +41,13 @@ const ExperimentDetails: React.FC = () => {
   const canceler = useRef<AbortController>();
   const workspaces = Loadable.getOrElse([], useObservable(workspaceStore.workspaces));
   const id = parseInt(experimentId ?? '');
+  const navigate = useNavigate();
+  const f_flat_runs = useFeature().isOn('flat_runs');
+  const isSettingsLoaded = useObservable(settingsLoadedObs);
+
+  if (isSettingsLoaded && f_flat_runs) {
+    navigate(paths.searchDetails(id), { replace: true });
+  }
 
   const fetchExperimentDetails = useCallback(async () => {
     try {

@@ -1,27 +1,38 @@
-import { BasePage } from 'e2e/models/BasePage';
+import { expect } from 'e2e/fixtures/global-fixtures';
+import { DeterminedPage } from 'e2e/models/common/base/BasePage';
 import { DynamicTabs } from 'e2e/models/components/DynamicTabs';
-import { F_ExperiementList } from 'e2e/models/components/F_ExperiementList';
+import { F_ExperimentList } from 'e2e/models/components/F_ExperimentList';
 import { PageComponent } from 'e2e/models/components/Page';
 
 /**
- * Returns a representation of the admin User Management page.
- * This constructor represents the contents in src/pages/ProjectDetails.tsx.
- * @param {Page} page - The '@playwright/test' Page being used by a test
+ * Represents the SignIn page from src/pages/ProjectDetails.tsx
  */
-export class ProjectDetails extends BasePage {
-  readonly title = new RegExp(
-    ProjectDetails.getTitle('(Uncategorized Experiments|Project Details)'),
-    'g',
-  );
-  readonly url: RegExp = /projects\/\d+/;
+export class ProjectDetails extends DeterminedPage {
+  readonly title = /Uncategorized Experiments|Project Details/;
+  readonly url = /projects\/(\d+)/;
 
   /**
-   * Returns this so we can chain. Visits the page.
-   * ie. await expect(thePage.goto().theElement.pwLocator()).toBeVisible()
+   * Visits the project details page.
    * @param {string} [projectID] - The Project to visit. Defaults to '1' for uncategorized
    */
-  async gotoProject(projectID: string = '1', args = {}): Promise<BasePage> {
-    return await this.goto({ ...args, url: `projects/${projectID}` });
+  async gotoProject(projectID: number = 1, args = {}): Promise<this> {
+    const retVal = await this.goto({ ...args, url: `projects/${projectID}` });
+    await this.f_experimentList.tableActionBar.pwLocator.waitFor({ timeout: 10_000 });
+    await expect(
+      this.f_experimentList.dataGrid.rows.pwLocator.or(
+        this.f_experimentList.noExperimentsMessage.pwLocator,
+      ),
+    ).not.toHaveCount(0, {
+      timeout: 10_000,
+    });
+    return retVal;
+  }
+
+  async getIdFromUrl(): Promise<number> {
+    await this._page.waitForURL(this.url);
+    const matches = new URL(this._page.url()).pathname.match(this.url);
+    if (matches === null) throw new Error('No ID found in the URL');
+    return Number(matches[1]);
   }
 
   readonly pageComponent = new PageComponent({ parent: this });
@@ -30,6 +41,6 @@ export class ProjectDetails extends BasePage {
   readonly experimentsTab = this.dynamicTabs.pivot.tab('experiments');
   readonly searchesTab = this.dynamicTabs.pivot.tab('searches');
   readonly notesTab = this.dynamicTabs.pivot.tab('notes');
-  readonly f_experiemntList = new F_ExperiementList({ parent: this.dynamicTabs.pivot.tabContent });
+  readonly f_experimentList = new F_ExperimentList({ parent: this.dynamicTabs.pivot.tabContent });
   // TODO add models for other tabs
 }

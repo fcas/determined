@@ -6,20 +6,41 @@ package internal
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	a "github.com/determined-ai/determined/master/internal/api"
 	"github.com/determined-ai/determined/master/internal/db"
+	runService "github.com/determined-ai/determined/master/internal/run"
 	"github.com/determined-ai/determined/master/pkg/model"
 	"github.com/determined-ai/determined/master/pkg/ptrs"
 	"github.com/determined-ai/determined/master/pkg/schemas"
+	"github.com/determined-ai/determined/master/pkg/schemas/expconf"
 	"github.com/determined-ai/determined/proto/pkg/apiv1"
+	"github.com/determined-ai/determined/proto/pkg/runv1"
 	"github.com/determined-ai/determined/proto/pkg/taskv1"
 )
+
+// Retrieves the hyperparameters of a given project.
+func getTestProjectHyperparmeters(ctx context.Context, t *testing.T, projectID int) []string {
+	var hyperparameters []string
+	err := db.Bun().NewSelect().
+		Table("project_hparams").
+		Column("hparam").
+		Where("project_id = ?", projectID).
+		Scan(ctx, &hyperparameters)
+	require.NoError(t, err)
+
+	return hyperparameters
+}
 
 func TestSearchRunsArchivedExperiment(t *testing.T) {
 	api, curUser, ctx := setupAPITest(t, nil)
@@ -65,7 +86,66 @@ func TestSearchRunsArchivedExperiment(t *testing.T) {
 	// Run should not be in result
 	resp, err = api.SearchRuns(ctx, req)
 	require.NoError(t, err)
-	require.Len(t, resp.Runs, 0)
+	require.Empty(t, resp.Runs)
+}
+
+func TestSearchRunsSortAndFilterAllDefaultColumns(t *testing.T) {
+	api, curUser, ctx := setupAPITest(t, nil)
+	_, projectIDInt := createProjectAndWorkspace(ctx, t, api)
+	projectID := int32(projectIDInt)
+
+	req := &apiv1.SearchRunsRequest{
+		ProjectId: &projectID,
+		Sort:      ptrs.Ptr("id=asc"),
+	}
+
+	hyperparameters := map[string]any{"global_batch_size": 1, "test1": map[string]any{"test2": 1}}
+
+	exp := createTestExpWithProjectID(t, api, curUser, projectIDInt)
+
+	task := &model.Task{TaskType: model.TaskTypeTrial, TaskID: model.NewTaskID()}
+	require.NoError(t, db.AddTask(ctx, task))
+	require.NoError(t, db.AddTrial(ctx, &model.Trial{
+		State:        model.PausedState,
+		ExperimentID: exp.ID,
+		StartTime:    time.Now(),
+		HParams:      hyperparameters,
+	}, task.TaskID))
+
+	resp, err := api.SearchRuns(ctx, req)
+	require.NoError(t, err)
+	require.Len(t, resp.Runs, 1)
+
+	hyperparameters2 := map[string]any{"global_batch_size": 2, "test1": map[string]any{"test2": 5}}
+
+	// Add second experiment
+	exp2 := createTestExpWithProjectID(t, api, curUser, projectIDInt)
+
+	task2 := &model.Task{TaskType: model.TaskTypeTrial, TaskID: model.NewTaskID()}
+	require.NoError(t, db.AddTask(ctx, task2))
+	require.NoError(t, db.AddTrial(ctx, &model.Trial{
+		State:        model.PausedState,
+		ExperimentID: exp2.ID,
+		StartTime:    time.Now(),
+		HParams:      hyperparameters2,
+	}, task2.TaskID))
+
+	for _, c := range defaultRunsTableColumns {
+		if c.Column == "tags" {
+			continue
+		}
+
+		filter := fmt.Sprintf(`{"filterGroup":{"children":[{"columnName":"%s","kind":"field",`+
+			`"location":"%s","operator":"=","type":"%s","value":null}],`+
+			`"conjunction":"and","kind":"group"},"showArchived":false}`, c.Column, c.Location.String(), c.Type.String())
+		_, err = api.SearchRuns(ctx, &apiv1.SearchRunsRequest{
+			ProjectId: req.ProjectId,
+			Sort:      ptrs.Ptr(c.Column + "=asc"),
+			Filter:    ptrs.Ptr(filter),
+		})
+
+		require.NoError(t, err)
+	}
 }
 
 func TestSearchRunsSort(t *testing.T) {
@@ -80,7 +160,7 @@ func TestSearchRunsSort(t *testing.T) {
 	}
 	resp, err := api.SearchRuns(ctx, req)
 	require.NoError(t, err)
-	require.Len(t, resp.Runs, 0)
+	require.Empty(t, resp.Runs)
 
 	hyperparameters := map[string]any{"global_batch_size": 1, "test1": map[string]any{"test2": 1}}
 
@@ -113,35 +193,81 @@ func TestSearchRunsSort(t *testing.T) {
 		HParams:      hyperparameters2,
 	}, task2.TaskID))
 
-	// Sort by start time
-	resp, err = api.SearchRuns(ctx, &apiv1.SearchRunsRequest{
-		ProjectId: req.ProjectId,
-		Sort:      ptrs.Ptr("startTime=asc"),
-	})
-
+	// Get runs in project
+	resp, err = api.SearchRuns(ctx, req)
 	require.NoError(t, err)
-	require.Equal(t, int32(exp.ID), resp.Runs[0].Experiment.Id)
-	require.Equal(t, int32(exp2.ID), resp.Runs[1].Experiment.Id)
+	require.Len(t, resp.Runs, 2)
 
-	// Sort by hyperparameter
-	resp, err = api.SearchRuns(ctx, &apiv1.SearchRunsRequest{
-		ProjectId: req.ProjectId,
-		Sort:      ptrs.Ptr("hp.global_batch_size=desc"),
+	// add metadata
+	rawMetadata := map[string]any{
+		"number_key": 1,
+		"nested": map[string]any{
+			"number_key": 1,
+		},
+	}
+	metadata := newProtoStruct(t, rawMetadata)
+	_, err = api.PostRunMetadata(ctx, &apiv1.PostRunMetadataRequest{
+		RunId:    resp.Runs[0].Id,
+		Metadata: metadata,
 	})
-
 	require.NoError(t, err)
-	require.Equal(t, int32(exp2.ID), resp.Runs[0].Experiment.Id)
-	require.Equal(t, int32(exp.ID), resp.Runs[1].Experiment.Id)
 
-	// Sort by nested hyperparameter
-	resp, err = api.SearchRuns(ctx, &apiv1.SearchRunsRequest{
-		ProjectId: req.ProjectId,
-		Sort:      ptrs.Ptr("hp.test1.test2=desc"),
+	rawMetadata = map[string]any{
+		"number_key": 2,
+		"nested": map[string]any{
+			"number_key": 2,
+		},
+	}
+	metadata = newProtoStruct(t, rawMetadata)
+	_, err = api.PostRunMetadata(ctx, &apiv1.PostRunMetadataRequest{
+		RunId:    resp.Runs[1].Id,
+		Metadata: metadata,
 	})
-
 	require.NoError(t, err)
-	require.Equal(t, int32(exp2.ID), resp.Runs[0].Experiment.Id)
-	require.Equal(t, int32(exp.ID), resp.Runs[1].Experiment.Id)
+
+	tests := map[string]struct {
+		sortBy  string
+		reverse bool
+	}{
+		"StartTime": {
+			sortBy:  "startTime=asc",
+			reverse: false,
+		},
+		"Hyperparameter": {
+			sortBy:  "hp.global_batch_size=desc",
+			reverse: true,
+		},
+		"HyperparameterNested": {
+			sortBy:  "hp.test1.test2=desc",
+			reverse: true,
+		},
+		"Metadata": {
+			sortBy:  "metadata.number_key=desc",
+			reverse: true,
+		},
+		"MetadataNested": {
+			sortBy:  "metadata.nested.number_key=desc",
+			reverse: true,
+		},
+	}
+
+	for testCase, testVars := range tests {
+		t.Run(testCase, func(t *testing.T) {
+			resp, err = api.SearchRuns(ctx, &apiv1.SearchRunsRequest{
+				ProjectId: &projectID,
+				Sort:      ptrs.Ptr(testVars.sortBy),
+			})
+
+			require.NoError(t, err)
+			if testVars.reverse {
+				require.Equal(t, int32(exp2.ID), resp.Runs[0].Experiment.Id)
+				require.Equal(t, int32(exp.ID), resp.Runs[1].Experiment.Id)
+			} else {
+				require.Equal(t, int32(exp.ID), resp.Runs[0].Experiment.Id)
+				require.Equal(t, int32(exp2.ID), resp.Runs[1].Experiment.Id)
+			}
+		})
+	}
 }
 
 func TestSearchRunsFilter(t *testing.T) {
@@ -156,9 +282,12 @@ func TestSearchRunsFilter(t *testing.T) {
 	}
 	resp, err := api.SearchRuns(ctx, req)
 	require.NoError(t, err)
-	require.Len(t, resp.Runs, 0)
+	require.Empty(t, resp.Runs)
 
-	hyperparameters := map[string]any{"global_batch_size": 1, "test1": map[string]any{"test2": 1}}
+	hyperparameters := map[string]any{
+		"global_batch_size": 1, "test1": map[string]any{"test2": 1},
+		"stringVal": "apple", "test3": map[string]any{"stringVal": "apple"},
+	}
 
 	exp := createTestExpWithProjectID(t, api, curUser, projectIDInt)
 
@@ -175,7 +304,10 @@ func TestSearchRunsFilter(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.Runs, 1)
 
-	hyperparameters2 := map[string]any{"global_batch_size": 2, "test1": map[string]any{"test2": 5}}
+	hyperparameters2 := map[string]any{
+		"global_batch_size": 2, "test1": map[string]any{"test2": 5},
+		"stringVal": "bright", "test3": map[string]any{"stringVal": "bright"},
+	}
 
 	// Add second experiment
 	exp2 := createTestExpWithProjectID(t, api, curUser, projectIDInt)
@@ -188,6 +320,40 @@ func TestSearchRunsFilter(t *testing.T) {
 		StartTime:    time.Now(),
 		HParams:      hyperparameters2,
 	}, task2.TaskID))
+
+	resp, err = api.SearchRuns(ctx, req)
+	require.NoError(t, err)
+	require.Len(t, resp.Runs, 2)
+
+	rawMetadata := map[string]any{
+		"string_key": "apple",
+		"number_key": 1,
+		"nested": map[string]any{
+			"string_key": "apple",
+			"number_key": 1,
+		},
+	}
+	metadata := newProtoStruct(t, rawMetadata)
+	_, err = api.PostRunMetadata(ctx, &apiv1.PostRunMetadataRequest{
+		RunId:    resp.Runs[0].Id,
+		Metadata: metadata,
+	})
+	require.NoError(t, err)
+
+	rawMetadata = map[string]any{
+		"string_key": "bright",
+		"number_key": 2,
+		"nested": map[string]any{
+			"string_key": "bright",
+			"number_key": 2,
+		},
+	}
+	metadata = newProtoStruct(t, rawMetadata)
+	_, err = api.PostRunMetadata(ctx, &apiv1.PostRunMetadataRequest{
+		RunId:    resp.Runs[1].Id,
+		Metadata: metadata,
+	})
+	require.NoError(t, err)
 
 	tests := map[string]struct {
 		expectedNumRuns int
@@ -237,14 +403,14 @@ func TestSearchRunsFilter(t *testing.T) {
 		},
 		"HyperParamContains": {
 			expectedNumRuns: 1,
-			filter: `{"filterGroup":{"children":[{"columnName":"hp.global_batch_size","kind":"field",` +
-				`"location":"LOCATION_TYPE_RUN_HYPERPARAMETERS","operator":"contains","type":"COLUMN_TYPE_NUMBER","value":1}],` +
+			filter: `{"filterGroup":{"children":[{"columnName":"hp.stringVal","kind":"field",` +
+				`"location":"LOCATION_TYPE_RUN_HYPERPARAMETERS","operator":"contains","type":"COLUMN_TYPE_TEXT","value":"a"}],` +
 				`"conjunction":"and","kind":"group"},"showArchived":false}`,
 		},
 		"HyperParamNotContains": {
 			expectedNumRuns: 1,
-			filter: `{"filterGroup":{"children":[{"columnName":"hp.global_batch_size","kind":"field",` +
-				`"location":"LOCATION_TYPE_RUN_HYPERPARAMETERS","operator":"notContains","type":"COLUMN_TYPE_NUMBER","value":1}],` +
+			filter: `{"filterGroup":{"children":[{"columnName":"hp.stringVal","kind":"field",` +
+				`"location":"LOCATION_TYPE_RUN_HYPERPARAMETERS","operator":"notContains","type":"COLUMN_TYPE_TEXT","value":"a"}],` +
 				`"conjunction":"and","kind":"group"},"showArchived":false}`,
 		},
 		"HyperParamOperator": {
@@ -267,20 +433,80 @@ func TestSearchRunsFilter(t *testing.T) {
 		},
 		"HyperParamNestedContains": {
 			expectedNumRuns: 1,
-			filter: `{"filterGroup":{"children":[{"columnName":"hp.test1.test2","kind":"field",` +
-				`"location":"LOCATION_TYPE_RUN_HYPERPARAMETERS","operator":"contains","type":"COLUMN_TYPE_NUMBER","value":1}],` +
+			filter: `{"filterGroup":{"children":[{"columnName":"hp.test3.stringVal","kind":"field",` +
+				`"location":"LOCATION_TYPE_RUN_HYPERPARAMETERS","operator":"contains","type":"COLUMN_TYPE_TEXT","value":"a"}],` +
 				`"conjunction":"and","kind":"group"},"showArchived":false}`,
 		},
 		"HyperParamNestedNotContains": {
 			expectedNumRuns: 1,
-			filter: `{"filterGroup":{"children":[{"columnName":"hp.test1.test2","kind":"field",` +
-				`"location":"LOCATION_TYPE_RUN_HYPERPARAMETERS","operator":"notContains","type":"COLUMN_TYPE_NUMBER","value":1}],` +
+			filter: `{"filterGroup":{"children":[{"columnName":"hp.test3.stringVal","kind":"field",` +
+				`"location":"LOCATION_TYPE_RUN_HYPERPARAMETERS","operator":"notContains","type":"COLUMN_TYPE_TEXT","value":"a"}],` +
 				`"conjunction":"and","kind":"group"},"showArchived":false}`,
 		},
 		"HyperParamNestedOperator": {
 			expectedNumRuns: 1,
 			filter: `{"filterGroup":{"children":[{"columnName":"hp.test1.test2","kind":"field",` +
 				`"location":"LOCATION_TYPE_RUN_HYPERPARAMETERS","operator":"<=","type":"COLUMN_TYPE_NUMBER","value":1}],` +
+				`"conjunction":"and","kind":"group"},"showArchived":false}`,
+		},
+		"MetadataEmpty": {
+			expectedNumRuns: 0,
+			filter: `{"filterGroup":{"children":[{"columnName":"metadata.number_key","kind":"field",` +
+				`"location":"LOCATION_TYPE_RUN_METADATA","operator":"isEmpty","type":"COLUMN_TYPE_NUMBER","value":1}],` +
+				`"conjunction":"and","kind":"group"},"showArchived":false}`,
+		},
+		"MetadataNotEmpty": {
+			expectedNumRuns: 2,
+			filter: `{"filterGroup":{"children":[{"columnName":"metadata.number_key","kind":"field",` +
+				`"location":"LOCATION_TYPE_RUN_METADATA","operator":"notEmpty","type":"COLUMN_TYPE_NUMBER","value":1}],` +
+				`"conjunction":"and","kind":"group"},"showArchived":false}`,
+		},
+		"MetadataContains": {
+			expectedNumRuns: 1,
+			filter: `{"filterGroup":{"children":[{"columnName":"metadata.string_key","kind":"field",` +
+				`"location":"LOCATION_TYPE_RUN_METADATA","operator":"contains","type":"COLUMN_TYPE_TEXT","value":"a"}],` +
+				`"conjunction":"and","kind":"group"},"showArchived":false}`,
+		},
+		"MetadataNotContains": {
+			expectedNumRuns: 1,
+			filter: `{"filterGroup":{"children":[{"columnName":"metadata.string_key","kind":"field",` +
+				`"location":"LOCATION_TYPE_RUN_METADATA","operator":"notContains","type":"COLUMN_TYPE_TEXT","value":"a"}],` +
+				`"conjunction":"and","kind":"group"},"showArchived":false}`,
+		},
+		"MetadataOperator": {
+			expectedNumRuns: 1,
+			filter: `{"filterGroup":{"children":[{"columnName":"metadata.number_key","kind":"field",` +
+				`"location":"LOCATION_TYPE_RUN_METADATA","operator":"<=","type":"COLUMN_TYPE_NUMBER","value":1}],` +
+				`"conjunction":"and","kind":"group"},"showArchived":false}`,
+		},
+		"MetadataNestedEmpty": {
+			expectedNumRuns: 0,
+			filter: `{"filterGroup":{"children":[{"columnName":"metadata.nested.number_key","kind":"field",` +
+				`"location":"LOCATION_TYPE_RUN_METADATA","operator":"isEmpty","type":"COLUMN_TYPE_NUMBER","value":1}],` +
+				`"conjunction":"and","kind":"group"},"showArchived":false}`,
+		},
+		"MetadataNestedNotEmpty": {
+			expectedNumRuns: 2,
+			filter: `{"filterGroup":{"children":[{"columnName":"metadata.nested.number_key","kind":"field",` +
+				`"location":"LOCATION_TYPE_RUN_METADATA","operator":"notEmpty","type":"COLUMN_TYPE_NUMBER","value":1}],` +
+				`"conjunction":"and","kind":"group"},"showArchived":false}`,
+		},
+		"MetadataNestedContains": {
+			expectedNumRuns: 1,
+			filter: `{"filterGroup":{"children":[{"columnName":"metadata.nested.string_key","kind":"field",` +
+				`"location":"LOCATION_TYPE_RUN_METADATA","operator":"contains","type":"COLUMN_TYPE_TEXT","value":"a"}],` +
+				`"conjunction":"and","kind":"group"},"showArchived":false}`,
+		},
+		"MetadataNestedNotContains": {
+			expectedNumRuns: 1,
+			filter: `{"filterGroup":{"children":[{"columnName":"metadata.nested.string_key","kind":"field",` +
+				`"location":"LOCATION_TYPE_RUN_METADATA","operator":"notContains","type":"COLUMN_TYPE_TEXT","value":"a"}],` +
+				`"conjunction":"and","kind":"group"},"showArchived":false}`,
+		},
+		"MetadataNestedOperator": {
+			expectedNumRuns: 1,
+			filter: `{"filterGroup":{"children":[{"columnName":"metadata.nested.number_key","kind":"field",` +
+				`"location":"LOCATION_TYPE_RUN_METADATA","operator":"<=","type":"COLUMN_TYPE_NUMBER","value":1}],` +
 				`"conjunction":"and","kind":"group"},"showArchived":false}`,
 		},
 	}
@@ -344,19 +570,42 @@ func TestMoveRunsIds(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.Runs, 1)
 	require.Equal(t, moveIds[0], resp.Runs[0].Id)
+	i := strings.Index(resp.Runs[0].LocalId, "-")
+	localID := resp.Runs[0].LocalId[i+1:]
+	require.Equal(t, "1", localID)
 
 	// Experiment in new project
 	exp, err := api.getExperiment(ctx, curUser, run1.ExperimentID)
 	require.NoError(t, err)
-	require.Equal(t, destprojectID, exp.ProjectId)
+	require.Equal(t, exp.ProjectId, destprojectID)
+}
+
+func TestMoveRunsSameIds(t *testing.T) {
+	api, curUser, ctx := setupAPITest(t, nil)
+	sourceprojectID := int32(1)
+
+	run1, _ := createTestTrial(t, api, curUser)
+
+	moveIds := []int32{int32(run1.ID)}
+
+	moveReq := &apiv1.MoveRunsRequest{
+		RunIds:               moveIds,
+		SourceProjectId:      sourceprojectID,
+		DestinationProjectId: sourceprojectID,
+		SkipMultitrial:       false,
+	}
+
+	moveResp, err := api.MoveRuns(ctx, moveReq)
+	require.NoError(t, err)
+	require.Empty(t, moveResp.Results)
 }
 
 func setUpMultiTrialExperiments(ctx context.Context, t *testing.T, api *apiServer, curUser model.User,
-) (int32, int32, int32, int32, int32) {
+) (sourceprojectID int32, destprojectID int32, runID1 int32, runID2 int32, expID int32) {
 	_, projectIDInt := createProjectAndWorkspace(ctx, t, api)
 	_, projectID2Int := createProjectAndWorkspace(ctx, t, api)
-	sourceprojectID := int32(projectIDInt)
-	destprojectID := int32(projectID2Int)
+	sourceprojectID = int32(projectIDInt)
+	destprojectID = int32(projectID2Int)
 
 	exp := createTestExpWithProjectID(t, api, curUser, projectIDInt)
 
@@ -388,7 +637,52 @@ func setUpMultiTrialExperiments(ctx context.Context, t *testing.T, api *apiServe
 
 func TestMoveRunsMultiTrialSkip(t *testing.T) {
 	api, curUser, ctx := setupAPITest(t, nil)
-	sourceprojectID, destprojectID, runID1, runID2, _ := setUpMultiTrialExperiments(ctx, t, api, curUser)
+	_, projectIDInt := createProjectAndWorkspace(ctx, t, api)
+	_, projectID2Int := createProjectAndWorkspace(ctx, t, api)
+	sourceprojectID := int32(projectIDInt)
+	destprojectID := int32(projectID2Int)
+
+	// nolint: exhaustruct
+	experimentConfig := expconf.ExperimentConfig{
+		RawDescription: ptrs.Ptr("descnew"),
+		RawName:        expconf.Name{RawString: ptrs.Ptr("name")},
+		RawSearcher: &expconf.SearcherConfigV0{
+			RawRandomConfig: &expconf.RandomConfigV0{
+				RawMaxLength: &expconf.LengthV0{
+					Unit:  expconf.Batches,
+					Units: 1,
+				},
+			},
+		},
+	}
+
+	activeConfig := schemas.WithDefaults(schemas.Merge(experimentConfig, minExpConfig))
+
+	exp := createTestExpWithActiveConfig(t, api, curUser, projectIDInt, activeConfig)
+
+	task1 := &model.Task{TaskType: model.TaskTypeTrial, TaskID: model.NewTaskID()}
+	require.NoError(t, db.AddTask(ctx, task1))
+	require.NoError(t, db.AddTrial(ctx, &model.Trial{
+		State:        model.CompletedState,
+		ExperimentID: exp.ID,
+		StartTime:    time.Now(),
+	}, task1.TaskID))
+
+	task2 := &model.Task{TaskType: model.TaskTypeTrial, TaskID: model.NewTaskID()}
+	require.NoError(t, db.AddTask(ctx, task2))
+	require.NoError(t, db.AddTrial(ctx, &model.Trial{
+		State:        model.CompletedState,
+		ExperimentID: exp.ID,
+		StartTime:    time.Now(),
+	}, task2.TaskID))
+
+	req := &apiv1.SearchRunsRequest{
+		ProjectId: &sourceprojectID,
+		Sort:      ptrs.Ptr("id=asc"),
+	}
+	resp, err := api.SearchRuns(ctx, req)
+	require.NoError(t, err)
+	runID1, runID2 := resp.Runs[0].Id, resp.Runs[1].Id
 
 	moveIds := []int32{runID1}
 
@@ -406,11 +700,11 @@ func TestMoveRunsMultiTrialSkip(t *testing.T) {
 		moveResp.Results[0].Error)
 
 	// run still in old project
-	req := &apiv1.SearchRunsRequest{
+	req = &apiv1.SearchRunsRequest{
 		ProjectId: &sourceprojectID,
 		Sort:      ptrs.Ptr("id=asc"),
 	}
-	resp, err := api.SearchRuns(ctx, req)
+	resp, err = api.SearchRuns(ctx, req)
 	require.NoError(t, err)
 	require.Len(t, resp.Runs, 2)
 	require.Equal(t, runID1, resp.Runs[0].Id)
@@ -424,12 +718,22 @@ func TestMoveRunsMultiTrialSkip(t *testing.T) {
 
 	resp, err = api.SearchRuns(ctx, req)
 	require.NoError(t, err)
-	require.Len(t, resp.Runs, 0)
+	require.Empty(t, resp.Runs)
 }
 
 func TestMoveRunsMultiTrialNoSkip(t *testing.T) {
 	api, curUser, ctx := setupAPITest(t, nil)
 	sourceprojectID, destprojectID, runID1, runID2, expID := setUpMultiTrialExperiments(ctx, t, api, curUser)
+
+	// add a run in the destination project to test local run id
+	exp := createTestExpWithProjectID(t, api, curUser, int(destprojectID))
+	task0 := &model.Task{TaskType: model.TaskTypeTrial, TaskID: model.NewTaskID()}
+	require.NoError(t, db.AddTask(ctx, task0))
+	require.NoError(t, db.AddTrial(ctx, &model.Trial{
+		State:        model.CompletedState,
+		ExperimentID: exp.ID,
+		StartTime:    time.Now(),
+	}, task0.TaskID))
 
 	moveIds := []int32{runID1}
 
@@ -442,8 +746,9 @@ func TestMoveRunsMultiTrialNoSkip(t *testing.T) {
 
 	moveResp, err := api.MoveRuns(ctx, moveReq)
 	require.NoError(t, err)
-	require.Len(t, moveResp.Results, 1)
+	require.Len(t, moveResp.Results, 2)
 	require.Equal(t, "", moveResp.Results[0].Error)
+	require.Equal(t, "", moveResp.Results[1].Error)
 
 	// runs no longer in old project
 	req := &apiv1.SearchRunsRequest{
@@ -452,7 +757,7 @@ func TestMoveRunsMultiTrialNoSkip(t *testing.T) {
 	}
 	resp, err := api.SearchRuns(ctx, req)
 	require.NoError(t, err)
-	require.Len(t, resp.Runs, 0)
+	require.Empty(t, resp.Runs)
 
 	// runs in new project
 	req = &apiv1.SearchRunsRequest{
@@ -462,12 +767,23 @@ func TestMoveRunsMultiTrialNoSkip(t *testing.T) {
 
 	resp, err = api.SearchRuns(ctx, req)
 	require.NoError(t, err)
-	require.Len(t, resp.Runs, 2)
+	require.Len(t, resp.Runs, 3)
 	// Check if other run moved as well
 	require.Equal(t, runID2, resp.Runs[1].Id)
 	// Check if runs in same experiment
 	require.Equal(t, expID, resp.Runs[0].Experiment.Id)
 	require.Equal(t, expID, resp.Runs[1].Experiment.Id)
+
+	i := strings.Index(resp.Runs[0].LocalId, "-")
+	localID1 := resp.Runs[0].LocalId[i+1:]
+	i = strings.Index(resp.Runs[1].LocalId, "-")
+	localID2 := resp.Runs[1].LocalId[i+1:]
+	i = strings.Index(resp.Runs[2].LocalId, "-")
+	localID3 := resp.Runs[2].LocalId[i+1:]
+	require.Equal(t, "2", localID1)
+	require.Equal(t, "3", localID2)
+	// original run should keeps the same local id
+	require.Equal(t, "1", localID3)
 }
 
 func TestMoveRunsFilter(t *testing.T) {
@@ -491,7 +807,7 @@ func TestMoveRunsFilter(t *testing.T) {
 		HParams:      hyperparameters1,
 	}, task1.TaskID))
 
-	hyperparameters2 := map[string]any{"global_batch_size": 1, "test1": map[string]any{"test2": 5}}
+	hyperparameters2 := map[string]any{"test1": map[string]any{"test2": 5}}
 	task2 := &model.Task{TaskType: model.TaskTypeTrial, TaskID: model.NewTaskID()}
 	require.NoError(t, db.AddTask(ctx, task2))
 	require.NoError(t, db.AddTrial(ctx, &model.Trial{
@@ -500,6 +816,11 @@ func TestMoveRunsFilter(t *testing.T) {
 		StartTime:    time.Now(),
 		HParams:      hyperparameters2,
 	}, task2.TaskID))
+
+	projHparam := getTestProjectHyperparmeters(ctx, t, projectIDInt)
+	require.Len(t, projHparam, 2)
+	require.True(t, slices.Contains(projHparam, "test1.test2"))
+	require.True(t, slices.Contains(projHparam, "global_batch_size"))
 
 	req := &apiv1.SearchRunsRequest{
 		ProjectId: &sourceprojectID,
@@ -540,6 +861,21 @@ func TestMoveRunsFilter(t *testing.T) {
 	resp, err = api.SearchRuns(ctx, req)
 	require.NoError(t, err)
 	require.Len(t, resp.Runs, 1)
+
+	// Hyperparam moved out of project A
+	projHparam = getTestProjectHyperparmeters(ctx, t, projectIDInt)
+	require.Len(t, projHparam, 1)
+	require.Equal(t, "test1.test2", projHparam[0])
+
+	// Hyperparams moved into project B
+	projHparam = getTestProjectHyperparmeters(ctx, t, projectID2Int)
+	require.Len(t, projHparam, 2)
+	require.True(t, slices.Contains(projHparam, "test1.test2"))
+	require.True(t, slices.Contains(projHparam, "global_batch_size"))
+
+	i := strings.Index(resp.Runs[0].LocalId, "-")
+	localID := resp.Runs[0].LocalId[i+1:]
+	require.Equal(t, "1", localID)
 }
 
 func TestDeleteRunsNonTerminal(t *testing.T) {
@@ -620,7 +956,7 @@ func TestDeleteRunsIds(t *testing.T) {
 
 	searchResp, err := api.SearchRuns(ctx, searchReq)
 	require.NoError(t, err)
-	require.Len(t, searchResp.Runs, 0)
+	require.Empty(t, searchResp.Runs)
 }
 
 func TestDeleteRunsIdsNonExistant(t *testing.T) {
@@ -659,7 +995,7 @@ func TestDeleteRunsFilter(t *testing.T) {
 		HParams:      hyperparameters1,
 	}, task1.TaskID))
 
-	hyperparameters2 := map[string]any{"global_batch_size": 1, "test1": map[string]any{"test2": 5}}
+	hyperparameters2 := map[string]any{"test1": map[string]any{"test2": 5}}
 	task2 := &model.Task{TaskType: model.TaskTypeTrial, TaskID: model.NewTaskID()}
 	require.NoError(t, db.AddTask(ctx, task2))
 	require.NoError(t, db.AddTrial(ctx, &model.Trial{
@@ -668,6 +1004,11 @@ func TestDeleteRunsFilter(t *testing.T) {
 		StartTime:    time.Now(),
 		HParams:      hyperparameters2,
 	}, task2.TaskID))
+
+	projHparam := getTestProjectHyperparmeters(ctx, t, projectIDInt)
+	require.Len(t, projHparam, 2)
+	require.True(t, slices.Contains(projHparam, "test1.test2"))
+	require.True(t, slices.Contains(projHparam, "global_batch_size"))
 
 	filter := `{
 		"filterGroup": {
@@ -701,6 +1042,10 @@ func TestDeleteRunsFilter(t *testing.T) {
 		Filter:    ptrs.Ptr(`{"showArchived":true}`),
 		Sort:      ptrs.Ptr("id=asc"),
 	}
+
+	projHparam = getTestProjectHyperparmeters(ctx, t, projectIDInt)
+	require.Len(t, projHparam, 1)
+	require.Equal(t, "test1.test2", projHparam[0])
 
 	searchResp, err := api.SearchRuns(ctx, searchReq)
 	require.NoError(t, err)
@@ -785,11 +1130,11 @@ func TestDeleteRunsLogs(t *testing.T) {
 
 	searchResp, err = api.SearchRuns(ctx, searchReq)
 	require.NoError(t, err)
-	require.Len(t, searchResp.Runs, 0)
+	require.Empty(t, searchResp.Runs)
 	// ensure all logs are deleted
 	total, err := api.m.taskLogBackend.TaskLogsCount(task1.TaskID, []a.Filter{})
 	require.NoError(t, err)
-	require.Equal(t, 0, total)
+	require.Zero(t, total)
 }
 
 func TestDeleteRunsOverfillInput(t *testing.T) {
@@ -805,7 +1150,7 @@ func TestDeleteRunsOverfillInput(t *testing.T) {
 	}
 	expectedError := fmt.Errorf("if filter is provided run id list must be empty")
 	_, err := api.DeleteRuns(ctx, req)
-	require.Equal(t, expectedError, err)
+	require.Equal(t, expectedError.Error(), err.Error())
 }
 
 func TestDeleteRunsNoInput(t *testing.T) {
@@ -817,7 +1162,7 @@ func TestDeleteRunsNoInput(t *testing.T) {
 	}
 	resp, err := api.DeleteRuns(ctx, req)
 	require.NoError(t, err)
-	require.Len(t, resp.Results, 0)
+	require.Empty(t, resp.Results)
 }
 
 func TestArchiveUnarchiveIds(t *testing.T) {
@@ -844,7 +1189,7 @@ func TestArchiveUnarchiveIds(t *testing.T) {
 
 	searchResp, err := api.SearchRuns(ctx, searchReq)
 	require.NoError(t, err)
-	require.Len(t, searchResp.Runs, 0)
+	require.Empty(t, searchResp.Runs)
 
 	// Unarchive runs
 	unarchReq := &apiv1.UnarchiveRunsRequest{
@@ -954,7 +1299,7 @@ func TestArchiveAlreadyArchived(t *testing.T) {
 
 	searchResp, err := api.SearchRuns(ctx, searchReq)
 	require.NoError(t, err)
-	require.Len(t, searchResp.Runs, 0)
+	require.Empty(t, searchResp.Runs)
 
 	// Try to archive again
 	archRes, err = api.ArchiveRuns(ctx, archReq)
@@ -1028,7 +1373,7 @@ func TestArchiveUnarchiveOverfilledInput(t *testing.T) {
 		Filter:    ptrs.Ptr("nonempty"),
 	}
 	_, err := api.ArchiveRuns(ctx, archReq)
-	require.Equal(t, expectedError, err)
+	require.Equal(t, expectedError.Error(), err.Error())
 
 	// Unarchive runs
 	unarchReq := &apiv1.UnarchiveRunsRequest{
@@ -1037,7 +1382,7 @@ func TestArchiveUnarchiveOverfilledInput(t *testing.T) {
 		Filter:    ptrs.Ptr("nonempty"),
 	}
 	_, err = api.UnarchiveRuns(ctx, unarchReq)
-	require.Equal(t, expectedError, err)
+	require.Equal(t, expectedError.Error(), err.Error())
 }
 
 func TestArchiveUnarchiveNoInput(t *testing.T) {
@@ -1049,7 +1394,7 @@ func TestArchiveUnarchiveNoInput(t *testing.T) {
 	}
 	archRes, err := api.ArchiveRuns(ctx, archReq)
 	require.NoError(t, err)
-	require.Len(t, archRes.Results, 0)
+	require.Empty(t, archRes.Results)
 
 	// Unarchive runs
 	unarchReq := &apiv1.UnarchiveRunsRequest{
@@ -1058,5 +1403,378 @@ func TestArchiveUnarchiveNoInput(t *testing.T) {
 	}
 	unarchRes, err := api.UnarchiveRuns(ctx, unarchReq)
 	require.NoError(t, err)
-	require.Len(t, unarchRes.Results, 0)
+	require.Empty(t, unarchRes.Results)
+}
+
+func createTestRun(ctx context.Context, t *testing.T, api *apiServer, curUser model.User) *runv1.FlatRun {
+	_, projectIDInt := createProjectAndWorkspace(ctx, t, api)
+	projectID := int32(projectIDInt)
+	exp := createTestExpWithProjectID(t, api, curUser, int(projectID))
+	task := &model.Task{TaskType: model.TaskTypeTrial, TaskID: model.NewTaskID()}
+	require.NoError(t, db.AddTask(context.Background(), task))
+	require.NoError(t, db.AddTrial(context.Background(), &model.Trial{
+		State:        model.PausedState,
+		ExperimentID: exp.ID,
+		StartTime:    time.Now(),
+	}, task.TaskID))
+
+	resp, err := api.SearchRuns(ctx, &apiv1.SearchRunsRequest{ProjectId: &projectID})
+	require.NoError(t, err)
+	require.Len(t, resp.Runs, 1)
+
+	return resp.Runs[0]
+}
+
+func TestPostRunMetadata(t *testing.T) {
+	api, curUser, ctx := setupAPITest(t, nil)
+	r := createTestRun(ctx, t, api, curUser)
+
+	// Add metadata
+	rawMetadata := map[string]any{
+		"test_key": "test_value",
+		"nested": map[string]any{
+			"nested_key": "nested_value",
+		},
+	}
+	metadata := newProtoStruct(t, rawMetadata)
+	metadataResp, err := api.PostRunMetadata(ctx, &apiv1.PostRunMetadataRequest{
+		RunId:    r.Id,
+		Metadata: metadata,
+	})
+	require.NoError(t, err)
+	require.Equal(t, rawMetadata, metadataResp.Metadata.AsMap())
+
+	// empty metadata
+	metadataResp, err = api.PostRunMetadata(ctx, &apiv1.PostRunMetadataRequest{
+		RunId:    r.Id,
+		Metadata: &structpb.Struct{},
+	})
+	require.NoError(t, err)
+	require.Empty(t, metadataResp.Metadata.AsMap())
+
+	// nil metadata
+	metadataResp, err = api.PostRunMetadata(ctx, &apiv1.PostRunMetadataRequest{
+		RunId:    r.Id,
+		Metadata: nil,
+	})
+	require.NoError(t, err)
+	require.Empty(t, metadataResp.Metadata.AsMap())
+}
+
+func TestRunMetadata(t *testing.T) {
+	api, curUser, ctx := setupAPITest(t, nil)
+	r := createTestRun(ctx, t, api, curUser)
+
+	// Add metadata
+	rawMetadata := map[string]any{
+		"test_key": "test_value",
+		"nested": map[string]any{
+			"nested_key": "nested_value",
+		},
+	}
+	metadata := newProtoStruct(t, rawMetadata)
+	metadataResp, err := api.PostRunMetadata(ctx, &apiv1.PostRunMetadataRequest{
+		RunId:    r.Id,
+		Metadata: metadata,
+	})
+	require.NoError(t, err)
+	require.Equal(t, rawMetadata, metadataResp.Metadata.AsMap())
+
+	// Get metadata
+	getResp, err := api.GetRunMetadata(ctx, &apiv1.GetRunMetadataRequest{RunId: r.Id})
+	require.NoError(t, err)
+	actualMetadata := getResp.Metadata.AsMap()
+	require.Equal(t, len(actualMetadata), len(rawMetadata))
+	require.Equal(t, rawMetadata, actualMetadata)
+
+	// additional metadata post.
+	rawMetadata2 := map[string]any{
+		"test_key2": "test_value2",
+		"nested2": map[string]any{
+			"nested_key2": "nested_value2",
+		},
+	}
+	metadata2 := newProtoStruct(t, rawMetadata2)
+	require.NoError(t, err)
+	metadataResp2, err := api.PostRunMetadata(ctx, &apiv1.PostRunMetadataRequest{
+		RunId:    r.Id,
+		Metadata: metadata2,
+	})
+	require.NoError(t, err)
+	require.Equal(t, rawMetadata2, metadataResp2.Metadata.AsMap())
+
+	// Get latest metadata
+	getResp, err = api.GetRunMetadata(ctx, &apiv1.GetRunMetadataRequest{RunId: r.Id})
+	require.NoError(t, err)
+	actualMetadata = getResp.Metadata.AsMap()
+	require.Equal(t, len(rawMetadata2), len(actualMetadata))
+	require.Equal(t, rawMetadata2, actualMetadata)
+}
+
+func TestConcurrentMetadataPostRequests(t *testing.T) {
+	api, curUser, ctx := setupAPITest(t, nil)
+	r := createTestRun(ctx, t, api, curUser)
+	numRoutines := 25
+
+	concurrentMetadataList := make([]*structpb.Struct, numRoutines)
+	for i := 0; i < numRoutines; i++ {
+		rawMetadata := map[string]interface{}{
+			fmt.Sprintf("test_key%d", i): fmt.Sprintf("test_value%d", i),
+			fmt.Sprintf("nested%d", i): map[string]interface{}{
+				fmt.Sprintf("nested_key%d", i): fmt.Sprintf("nested_value%d", i),
+			},
+		}
+		concurrentMetadataList[i] = newProtoStruct(t, rawMetadata)
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(numRoutines)
+
+	for i := 0; i < numRoutines; i++ {
+		tempMetadata := concurrentMetadataList[i]
+		go func() {
+			defer wg.Done()
+			_, subErr := api.PostRunMetadata(ctx, &apiv1.PostRunMetadataRequest{
+				RunId:    r.Id,
+				Metadata: tempMetadata,
+			})
+			require.NoError(t, subErr)
+		}()
+	}
+	wg.Wait()
+
+	keyCount := 0
+	err := db.Bun().NewSelect().
+		Table("runs_metadata_index").
+		ColumnExpr("count(*)").
+		Where("run_id = ?", r.Id).
+		Group("run_id").
+		Scan(ctx, &keyCount)
+	require.NoError(t, err)
+	require.Equal(t, 2, keyCount) // 2 keys are added in the metadata
+}
+
+func TestConcurrentMetadataPostsMultipleRuns(t *testing.T) {
+	api, curUser, ctx := setupAPITest(t, nil)
+	numRuns := 5
+
+	runs := make([]*runv1.FlatRun, numRuns)
+	for i := 0; i < numRuns; i++ {
+		runs[i] = createTestRun(ctx, t, api, curUser)
+	}
+
+	rawMetadata := map[string]interface{}{
+		"test_key": "test_value",
+		"nested": map[string]interface{}{
+			"nested_key": "nested_value",
+		},
+	}
+	metadata := newProtoStruct(t, rawMetadata)
+
+	wg := sync.WaitGroup{}
+	wg.Add(numRuns)
+	for _, run := range runs {
+		rID := run.Id
+		go func() {
+			defer wg.Done()
+			_, subErr := api.PostRunMetadata(ctx, &apiv1.PostRunMetadataRequest{
+				RunId:    rID,
+				Metadata: metadata,
+			})
+			require.NoError(t, subErr)
+		}()
+	}
+	wg.Wait()
+
+	for _, run := range runs {
+		getResp, err := api.GetRunMetadata(ctx, &apiv1.GetRunMetadataRequest{RunId: run.Id})
+		require.NoError(t, err)
+		actualMetadata := getResp.Metadata.AsMap()
+		require.Equal(t, len(rawMetadata), len(actualMetadata))
+		require.Equal(t, rawMetadata, actualMetadata)
+	}
+}
+
+func TestMetadataPostRequestWithTooManyKeysInRequest(t *testing.T) {
+	api, curUser, ctx := setupAPITest(t, nil)
+	r := createTestRun(ctx, t, api, curUser)
+
+	rawMetadata := map[string]interface{}{}
+	for i := 0; i < runService.MaxKeyCount+1; i++ {
+		rawMetadata[fmt.Sprintf("test_key%d", i)] = fmt.Sprintf("test_value%d", i)
+	}
+	metadata := newProtoStruct(t, rawMetadata)
+
+	_, err := api.PostRunMetadata(ctx, &apiv1.PostRunMetadataRequest{
+		RunId:    r.Id,
+		Metadata: metadata,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "request exceeds run metadata key count limit")
+}
+
+func TestPostMetadataExceedMaxDepth(t *testing.T) {
+	api, curUser, ctx := setupAPITest(t, nil)
+	r := createTestRun(ctx, t, api, curUser)
+
+	rawMetadata := map[string]interface{}{
+		"test_key": "test_value",
+		"nested": map[string]interface{}{
+			"nested_key": "nested_value",
+		},
+	}
+	for i := 0; i < runService.MaxMetadataDepth; i++ {
+		rawMetadata = map[string]interface{}{"nested": rawMetadata}
+	}
+	metadata := newProtoStruct(t, rawMetadata)
+
+	_, err := api.PostRunMetadata(ctx, &apiv1.PostRunMetadataRequest{
+		RunId:    r.Id,
+		Metadata: metadata,
+	})
+	require.Error(t, err)
+	require.Contains(t,
+		err.Error(),
+		fmt.Sprintf("metadata exceeds maximum nesting depth of %d", runService.MaxMetadataDepth),
+	)
+}
+
+func TestPostMetadataExceedMaxArrayLength(t *testing.T) {
+	api, curUser, ctx := setupAPITest(t, nil)
+	r := createTestRun(ctx, t, api, curUser)
+
+	rawMetadata := map[string]interface{}{
+		"test_key": "test_value",
+		"nested":   []interface{}{},
+	}
+	for i := 0; i < runService.MaxMetadataArrayLength+1; i++ {
+		rawMetadata["nested"] = append(rawMetadata["nested"].([]interface{}), i)
+	}
+	metadata := newProtoStruct(t, rawMetadata)
+
+	_, err := api.PostRunMetadata(ctx, &apiv1.PostRunMetadataRequest{
+		RunId:    r.Id,
+		Metadata: metadata,
+	})
+	require.Error(t, err)
+	require.Contains(
+		t,
+		err.Error(),
+		fmt.Sprintf("metadata array exceeds maximum length of %d/%d elements",
+			runService.MaxMetadataArrayLength+1,
+			runService.MaxMetadataArrayLength,
+		),
+	)
+}
+
+func TestSearchRunsWithArbitraryMetadata(t *testing.T) {
+	api, curUser, ctx := setupAPITest(t, nil)
+	r := createTestRun(ctx, t, api, curUser)
+
+	rawMetadata := map[string]interface{}{
+		"test_key": "test_value",
+		"nested": map[string]interface{}{
+			"nested_key": "nested_value",
+		},
+	}
+	metadata := newProtoStruct(t, rawMetadata)
+	_, err := api.PostRunMetadata(ctx, &apiv1.PostRunMetadataRequest{
+		RunId:    r.Id,
+		Metadata: metadata,
+	})
+	require.NoError(t, err)
+
+	// Search for runs with metadata
+	searchReq := &apiv1.SearchRunsRequest{
+		Filter: ptrs.Ptr(
+			`
+			{"filterGroup": {
+				"children":[{
+					"columnName":"id",
+					"kind":"field",
+					"location":"LOCATION_TYPE_RUN",
+					"operator":"=",
+					"type":"COLUMN_TYPE_NUMBER","value":` + strconv.Itoa(int(r.Id)) + `}],
+					"conjunction":"and","kind":"group"},"showArchived":false}
+			`,
+		),
+	}
+	searchResp, err := api.SearchRuns(ctx, searchReq)
+	require.NoError(t, err)
+	require.Len(t, searchResp.Runs, 1)
+	require.Equal(t, r.Id, searchResp.Runs[0].Id)
+	require.Equal(t, rawMetadata, searchResp.Runs[0].Metadata.AsMap())
+}
+
+func TestArchiveUnarchiveWithArchivedParent(t *testing.T) {
+	api, curUser, ctx := setupAPITest(t, nil)
+	_, projectID := createProjectAndWorkspace(ctx, t, api)
+
+	activeConfig := schemas.WithDefaults(schemas.Merge(minExpConfig, expconf.ExperimentConfig{
+		RawDescription: ptrs.Ptr("desc"),
+		RawName:        expconf.Name{RawString: ptrs.Ptr("name")},
+	}))
+
+	exp := &model.Experiment{
+		JobID:     model.JobID(uuid.New().String()),
+		State:     model.CompletedState,
+		OwnerID:   &curUser.ID,
+		ProjectID: projectID,
+		StartTime: time.Now(),
+		Config:    activeConfig.AsLegacy(),
+	}
+	require.NoError(t, api.m.db.AddExperiment(exp, []byte{10, 11, 12}, activeConfig))
+
+	task1 := &model.Task{TaskType: model.TaskTypeTrial, TaskID: model.NewTaskID()}
+	require.NoError(t, db.AddTask(ctx, task1))
+	require.NoError(t, db.AddTrial(ctx, &model.Trial{
+		State:        model.CompletedState,
+		ExperimentID: exp.ID,
+		StartTime:    time.Now(),
+	}, task1.TaskID))
+
+	task2 := &model.Task{TaskType: model.TaskTypeTrial, TaskID: model.NewTaskID()}
+	require.NoError(t, db.AddTask(ctx, task2))
+	require.NoError(t, db.AddTrial(ctx, &model.Trial{
+		State:        model.CompletedState,
+		ExperimentID: exp.ID,
+		StartTime:    time.Now(),
+	}, task2.TaskID))
+
+	sourceprojectID := int32(projectID)
+	req := &apiv1.SearchRunsRequest{
+		ProjectId: &sourceprojectID,
+		Sort:      ptrs.Ptr("id=asc"),
+	}
+
+	resp, err := api.SearchRuns(ctx, req)
+	require.NoError(t, err)
+	require.Len(t, resp.Runs, 2)
+
+	runID1, runID2 := resp.Runs[0].Id, resp.Runs[1].Id
+
+	// Set the parent experiment as archived
+	_, err = api.ArchiveExperiment(ctx, &apiv1.ArchiveExperimentRequest{Id: int32(exp.ID)})
+	require.NoError(t, err)
+
+	runIDs := []int32{runID1, runID2}
+	unarchRes, err := api.ArchiveRuns(ctx, &apiv1.ArchiveRunsRequest{
+		RunIds:    runIDs,
+		ProjectId: sourceprojectID,
+	})
+
+	errMsg := fmt.Sprintf("Run is part of archived Search (id: '%d').", exp.ID)
+	require.NoError(t, err)
+	require.Len(t, unarchRes.Results, 2)
+	require.Equal(t, errMsg, unarchRes.Results[0].Error)
+	require.Equal(t, errMsg, unarchRes.Results[1].Error)
+
+	_, err = api.UnarchiveRuns(ctx, &apiv1.UnarchiveRunsRequest{
+		RunIds:    runIDs,
+		ProjectId: sourceprojectID,
+	})
+	require.NoError(t, err)
+	require.Len(t, unarchRes.Results, 2)
+	require.Equal(t, errMsg, unarchRes.Results[0].Error)
+	require.Equal(t, errMsg, unarchRes.Results[1].Error)
 }

@@ -46,7 +46,7 @@ The size (in bytes) of ``/dev/shm`` for Determined task containers. Defaults to 
 ================
 
 The Docker network to use for the Determined task containers. If this is set to ``host``, `Docker
-host-mode networking <https://docs.docker.com/network/drivers/host/>`__ will be used instead.
+host-mode networking <https://docs.docker.com/engine/network/drivers/host/>`__ will be used instead.
 Defaults to ``bridge``.
 
 .. _master-config-reference-dtrain-network-interface:
@@ -89,12 +89,12 @@ configure different container images for NVIDIA GPU tasks using the ``cuda`` key
 Determined 0.17.6), CPU tasks using ``cpu`` key, and ROCm (AMD GPU) tasks using the ``rocm`` key.
 Default values:
 
--  ``determinedai/pytorch-ngc-dev:8b3bea3`` for NVIDIA GPUs and for CPUs.
+-  ``determinedai/pytorch-ngc-dev:0736b6d`` for NVIDIA GPUs and for CPUs.
 -  ``determinedai/environments:rocm-5.0-pytorch-1.10-tf-2.7-rocm-0.26.4`` for ROCm.
 
 For TensorFlow users, we provide an image that must be referenced in the experiment configuration:
 
--  ``determinedai/tensorflow-ngc-dev:8b3bea3`` for NVIDIA GPUs and for CPUs.
+-  ``determinedai/tensorflow-ngc-dev:0736b6d`` for NVIDIA GPUs and for CPUs.
 
 ``environment_variables``
 =========================
@@ -133,8 +133,8 @@ Defaults to ``false``.
 =================
 
 Defines the default `Docker registry credentials
-<https://docs.docker.com/engine/api/v1.30/#tag/System/operation/SystemAuth>`__ to use when pulling a
-custom base Docker image, if needed. If credentials are specified in the :ref:`experiment config
+<https://docs.docker.com/reference/api/engine/version/v1.30/>`__ to use when pulling a custom base
+Docker image, if needed. If credentials are specified in the :ref:`experiment config
 <exp-environment-image>` this default value is overridden. Credentials are specified as the
 following nested fields:
 
@@ -217,6 +217,27 @@ warning is returned. The default value is ``true``.
 
 Optional. Specify a human-readable name for this cluster.
 
+**********************
+ ``ui_customization``
+**********************
+
+Optional. Applies only to the Determined Enterprise Edition. This section contains options to
+customize the UI.
+
+``logo_paths``
+==============
+
+Specifies the paths to variations of the user-provided logo to be shown in the UI. Ensure these are
+accessible and reachable by the master service. The logo file should be a valid image format, with
+SVG recommended.
+
+Logo is defined in four variations, all need to be provided.
+
+-  ``dark_horizontal``: The logo to be shown in the dark theme in the horizontal layout.
+-  ``dark_vertical``: The logo to be shown in the dark theme in the vertical layout.
+-  ``light_horizontal``: The logo to be shown in the light theme in the horizontal layout.
+-  ``light_vertical``: The logo to be shown in the light theme in the vertical layout.
+
 *************************
  ``tensorboard_timeout``
 *************************
@@ -247,12 +268,24 @@ The resource manager used to acquire resources. Defaults to ``agent``.
 For Kubernetes installations, if you define additional resource managers, the resource manager
 specified under the primary resource_manager key here is considered the default.
 
-``name``
-========
+.. _master-config-rm-cluster-name:
 
-Optional. Specifies the resource manager's name. Defaults to ``default`` if not specified. For
-Kubernetes installations with additional resource managers, ensure unique names for all resource
+``cluster_name``
+================
+
+Optional for single resource manager configurations. Required for multiple resource manager
+(Multi-RM) configurations. Specifies the resource manager's associated cluster name. This references
+the cluster on which a Determined deployment is running. Defaults to ``default`` if not specified.
+For Kubernetes installations with additional resource managers, ensure unique names for all resource
 managers in the cluster.
+
+**NOTE:** ``resource_manager.cluster_name`` is separate from the ``cluster_name`` field of the
+master config that provides a readable name for the Determined deployment.
+
+``name``
+--------
+
+(deprecated) Specifies the resource manager's name. ``cluster_name`` should be specified instead.
 
 ``metadata``
 ============
@@ -284,12 +317,10 @@ behavior specified here. For more on scheduling behavior in Determined, see :ref
 ^^^^^^^^
 
    The scheduling policy to use when allocating resources between different tasks (experiments,
-   notebooks, etc.). Defaults to ``fair_share``.
+   notebooks, etc.). Defaults to ``priority``.
 
-   -  ``fair_share``: Tasks receive a proportional amount of the available resources depending on
-      the resource they require and their weight.
-
-   -  ``round_robin``: Tasks are scheduled in the order in which they arrive at the cluster.
+   -  ``fair_share``: (deprecated) Tasks receive a proportional amount of the available resources
+      depending on the resource they require and their weight.
 
    -  ``priority``: Tasks are scheduled based on their priority, which can range from the values 1
       to 99 inclusive. Lower priority numbers indicate higher-priority tasks. A lower-priority task
@@ -355,7 +386,15 @@ on using Determined with Kubernetes, see the :ref:`documentation <determined-on-
 ``namespace``
 -------------
 
-The namespace where Determined will deploy Pods and ConfigMaps.
+This field is no longer supported, use ``default_namespace`` instead.
+
+.. _master-config-default-namespace:
+
+``default_namespace``
+---------------------
+
+Optional. Specifies the default namespace where Determined will deploy namespaced resources if the
+workspace is not bound to a specific namespace.
 
 .. _master-config-reference-max-slots-per-pod:
 
@@ -376,13 +415,20 @@ resource pool ``max_slots_per_pod``.
 ``slot_type``
 -------------
 
-Resource type used for compute tasks. Defaults to ``cuda``.
+Resource type used for compute tasks. Valid options are ``gpu``, ``cuda``, ``cpu``, or ``rocm``.
+Defaults to ``cuda``.
 
 ``slot_type: cuda``
 ^^^^^^^^^^^^^^^^^^^
 
    One NVIDIA GPU will be requested per compute slot. Prior to Determined 0.17.6, this option was
    called ``gpu``.
+
+``slot_type: rocm``
+^^^^^^^^^^^^^^^^^^^
+
+   One AMD GPU will be requested per compute slot. The ``rocm`` slot type is an experimental
+   feature.
 
 ``slot_type: cpu``
 ^^^^^^^^^^^^^^^^^^
@@ -780,13 +826,8 @@ Notebooks, etc.). Defaults to ``fair_share``.
 ``fair_share``
 ^^^^^^^^^^^^^^
 
-   Tasks receive a proportional amount of the available resources depending on the resource they
-   require and their weight.
-
-``round_robin``
-^^^^^^^^^^^^^^^
-
-   Tasks are scheduled in the order in which they arrive at the cluster.
+   (deprecated) Tasks receive a proportional amount of the available resources depending on the
+   resource they require and their weight.
 
 ``priority``
 ^^^^^^^^^^^^
@@ -877,7 +918,7 @@ to ``determinedai/determined-agent:<master version>``.
 ------------------------
 
 The Docker network to use for the Determined agent and task containers. If this is set to ``host``,
-`Docker host-mode networking <https://docs.docker.com/network/drivers/host/>`__ will be used
+`Docker host-mode networking <https://docs.docker.com/engine/network/drivers/host/>`__ will be used
 instead. The default value is ``determined``.
 
 ``agent_docker_runtime``
@@ -1212,7 +1253,8 @@ workloads that require proxying on remote clusters is under development.
 To define a single resource manager or designate the default resource manager, do not define it
 under ``additional_resource_manager``; instead, use the primary ``resource_manager`` key.
 
-Resource manager names must be unique among all defined resource managers.
+Resource managers' cluster names (``resource_manager.cluster_name``) must be unique among all
+defined resource managers.
 
 Any additional resource managers must have at least one resource pool assigned to them. These
 resource pool names must be defined and must be distinct among all resource pools across all
@@ -1269,7 +1311,7 @@ inside Google Compute Engine (GCE), the simplest approach is to ensure that the 
 Determined are running in a service account that has the "Storage Object Admin" role on the GCS
 bucket being used for checkpoints. As an alternative (or when running outside of GCE), you can add
 the appropriate `service account credentials
-<https://cloud.google.com/docs/authentication/provide-credentials-adc#attached-sa>`__ to your
+<https://cloud.google.com/docs/authentication/set-up-adc-attached-service-account>`__ to your
 container (e.g., via a bind-mount), and then set the ``GOOGLE_APPLICATION_CREDENTIALS`` environment
 variable to the container path where the credentials are located. See :ref:`environment-variables`
 for more information on how to set environment variables in trial environments.
@@ -1371,8 +1413,8 @@ and read from the ``host_path``.
 ---------------
 
 (Advanced users only) Optional `propagation behavior
-<https://docs.docker.com/storage/bind-mounts/#configure-bind-propagation>`__ for replicas of the
-bind-mount. Defaults to ``rprivate``.
+<https://docs.docker.com/engine/storage/bind-mounts/#configure-bind-propagation>`__ for replicas of
+the bind-mount. Defaults to ``rprivate``.
 
 When an experiment finishes, the system will optionally delete some checkpoints to reclaim space.
 The ``save_experiment_best``, ``save_trial_best`` and ``save_trial_latest`` parameters specify which
@@ -1486,6 +1528,11 @@ Specifies configuration settings for SSH.
 
 Number of bits to use when generating RSA keys for SSH for tasks. Maximum size is 16384.
 
+``key_type``
+============
+
+Specifies the crypto system for SSH. Currently accepts ``RSA``, ``ECDSA`` or ``ED25519``.
+
 ``authz``
 =========
 
@@ -1530,6 +1577,18 @@ Integer identifier of a role to be assigned. Defaults to ``2``, which is the rol
 
 Initial password for the built-in ``determined`` and ``admin`` users. Applies on first launch when a
 cluster's database is bootstrapped, otherwise it is ignored.
+
+``token``
+=========
+
+Applies only to Determined Enterprise Edition. Defines default and maximum lifespan settings for
+access tokens. These settings allow administrators to control how long access tokens can remain
+valid, enhancing security while supporting automation.
+
+-  ``default_lifespan_days``: Specifies the default lifespan (in days) for new access tokens.
+   Defaults to 30 days.
+-  ``max_lifespan_days``: Specifies the maximum allowed lifespan (in days) for access tokens.
+   Setting this to ``-1`` allows for an infinite token lifespan. Defaults to ``-1``.
 
 **************
  ``webhooks``
@@ -1635,6 +1694,13 @@ Security-related configuration settings.
 
 Specifies configuration settings for the retention of trial logs.
 
+.. note::
+
+   When applying a retention policy to a long-running cluster for the first time, there may be
+   temporary performance impacts while the database cleans up relevant task logs. For this reason,
+   you should consider configuring the retention policy to trigger outside of peak working hours.
+   Retention policy logs can be found at the trace level.
+
 ``log_retention_days``
 ======================
 
@@ -1718,6 +1784,8 @@ The username for HTTP basic authentication (only allowed with ``type: basic``).
 
 The password for HTTP basic authentication (only allowed with ``type: basic``).
 
+.. _master-config-oidc:
+
 **********
  ``oidc``
 **********
@@ -1742,6 +1810,12 @@ used for :ref:`remote user <remote-users>` management.
           auto_provision_users: true
           groups_attribute_name: "XYZ"
           display_name_attribute_name: "XYZ"
+          agent_uid_attribute_name: "string"
+          agent_gid_attribute_name: "string"
+          agent_user_name_attribute_name: "string"
+          agent_group_name_attribute_name: "string"
+          always_redirect: true
+          exclude_groups_scope: false
 
 ``enabled``
 ===========
@@ -1811,6 +1885,47 @@ The name of the attribute passed in through the claim that specifies group membe
 The name of the attribute passed in through the claim from the OIDC provider used to set the user's
 display name in Determined.
 
+``agent_uid_attribute_name``
+============================
+
+The name of the attribute passed in through the claim from the OIDC provider used to set a unique
+numeric ID for user.
+
+``agent_gid_attribute_name``
+============================
+
+The name of the attribute passed in through the claim from the OIDC provider used to set a unique
+numeric ID for group.
+
+``agent_user_name_attribute_name``
+==================================
+
+The name of the attribute passed in through the claim from the OIDC provider used to set a unique
+name for user.
+
+``agent_group_name_attribute_name``
+===================================
+
+The name of the attribute passed in through the claim from the OIDC provider used to set a unique
+name for group.
+
+``always_redirect``
+===================
+
+Specifies if this OIDC provider should be used for authentication, bypassing the standard Determined
+sign-in page. This redirection persists unless the user explicitly signs out within the WebUI. If an
+SSO user attempts to use an expired session token, they are directly redirected to the SSO provider
+and returned to the requested page after authentication.
+
+``exclude_groups_scope``
+========================
+
+Specifies if the groups scope should be excluded for this OIDC provider. For most OIDC providers
+such as Okta, this should be false (or blank) if you'd like to provision group memberships. But for
+some providers such as Azure, that do not support groups scope, this should be set to true.
+
+.. _master-config-saml:
+
 **********
  ``saml``
 **********
@@ -1832,6 +1947,11 @@ For example:
           auto_provision_users: true
           groups_attribute_name: "groups"
           display_name_attribute_name: "disp_name"
+          agent_uid_attribute_name: "user_id_name"
+          agent_gid_attribute_name: "group_id_name"
+          agent_user_name_attribute_name: "agent_user_name"
+          agent_group_name_attribute_name: "agent_group_name"
+          always_redirect: true
 
 ``enabled``
 ===========
@@ -1880,6 +2000,38 @@ The claim name that specifies group memberships in SAML.
 ===============================
 
 The claim name from the SAML provider used to set the user's display name in Determined.
+
+``agent_uid_attribute_name``
+============================
+
+The name of the attribute passed in through the claim from the SAML provider used to set a unique
+numeric ID for user.
+
+``agent_gid_attribute_name``
+============================
+
+The name of the attribute passed in through the claim from the SAML provider used to set a unique
+numeric ID for group.
+
+``agent_user_name_attribute_name``
+==================================
+
+The name of the attribute passed in through the claim from the SAML provider used to set a unique
+name for user.
+
+``agent_group_name_attribute_name``
+===================================
+
+The name of the attribute passed in through the claim from the SAML provider used to set a unique
+name for group.
+
+``always_redirect``
+===================
+
+Specifies if this SAML provider should be used for authentication, bypassing the standard Determined
+sign-in page. This redirection persists unless the user explicitly signs out within the WebUI. If a
+SSO user attempts to use an expired session token, they are directly redirected to the SAML provider
+and returned to the requested page after authentication.
 
 ********************
  ``reserved_ports``

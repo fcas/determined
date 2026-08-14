@@ -9,8 +9,6 @@ resources:
   slots_per_trial: 2
 searcher:
   name: single
-  max_length:
-    batches: 100
   metric: eval_loss
 hyperparameters:
   training_arguments:
@@ -23,7 +21,7 @@ entrypoint: >-
   --dataset_config_name wikitext-2-raw-v1
   --do_train
   --do_eval
-  --num_train_epochs 5
+  --max_steps 100
   --logging_strategy steps
   --logging_steps 10
   --output_dir /tmp/test-clm
@@ -35,5 +33,5 @@ entrypoint: >-
   --save_steps 20
   --per_device_train_batch_size 8
   --per_device_eval_batch_size 8
-  --trust_remote_code false
+  --trust_remote_code true
 max_restarts: 0

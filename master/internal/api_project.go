@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 	"sort"
-
-	"github.com/uptrace/bun"
+	"strconv"
+	"strings"
 
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"github.com/uptrace/bun"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -28,21 +29,262 @@ import (
 	"github.com/determined-ai/determined/proto/pkg/workspacev1"
 )
 
+var defaultRunsTableColumns = []*projectv1.ProjectColumn{
+	{
+		Column:      "id",
+		DisplayName: "Global Run ID",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_NUMBER,
+	},
+	{
+		Column:      "experimentDescription",
+		DisplayName: "Search Description",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_TEXT,
+	},
+	{
+		Column:      "tags",
+		DisplayName: "Tags",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_TEXT,
+	},
+	{
+		Column:      "forkedFrom",
+		DisplayName: "Forked",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_NUMBER,
+	},
+	{
+		Column:      "startTime",
+		DisplayName: "Start Time",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_DATE,
+	},
+	{
+		Column:      "endTime",
+		DisplayName: "End Time",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_DATE,
+	},
+	{
+		Column:      "duration",
+		DisplayName: "Duration",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_NUMBER,
+	},
+	{
+		Column:      "state",
+		DisplayName: "State",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_TEXT,
+	},
+	{
+		Column:      "searcherType",
+		DisplayName: "Searcher",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_TEXT,
+	},
+	{
+		Column:      "resourcePool",
+		DisplayName: "Resource Pool",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_TEXT,
+	},
+	{
+		Column:      "checkpointSize",
+		DisplayName: "Checkpoint Size",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_NUMBER,
+	},
+	{
+		Column:      "checkpointCount",
+		DisplayName: "Checkpoints",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_NUMBER,
+	},
+	{
+		Column:      "user",
+		DisplayName: "User",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_TEXT,
+	},
+	{
+		Column:      "searcherMetric",
+		DisplayName: "Searcher Metric",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_TEXT,
+	},
+	{
+		Column:      "searcherMetricsVal",
+		DisplayName: "Searcher Metric Value",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_NUMBER,
+	},
+	{
+		Column:      "externalExperimentId",
+		DisplayName: "External Experiment ID",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_TEXT,
+	},
+	{
+		Column:      "projectId",
+		DisplayName: "Project ID",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_NUMBER,
+	},
+	{
+		Column:      "externalRunId",
+		DisplayName: "External Run ID",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_TEXT,
+	},
+	{
+		Column:      "experimentProgress",
+		DisplayName: "Search Progress",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_NUMBER,
+	},
+	{
+		Column:      "experimentId",
+		DisplayName: "Search ID",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_NUMBER,
+	},
+	{
+		Column:      "experimentName",
+		DisplayName: "Search Name",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_TEXT,
+	},
+	{
+		Column:      "isExpMultitrial",
+		DisplayName: "Part of Search",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_UNSPECIFIED,
+	},
+	{
+		Column:      "parentArchived",
+		DisplayName: "Parent Archived",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_UNSPECIFIED,
+	},
+	{
+		Column:      "localId",
+		DisplayName: "Run ID",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_TEXT,
+	},
+	{
+		Column:      "archived",
+		DisplayName: "Archived",
+		Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
+		Type:        projectv1.ColumnType_COLUMN_TYPE_UNSPECIFIED, // no boolean type
+	},
+}
+
+func getRunSummaryMetrics(ctx context.Context, whereClause string, group []int) ([]*projectv1.ProjectColumn, error) {
+	var columns []*projectv1.ProjectColumn
+	summaryMetrics := []struct {
+		MetricName string
+		JSONPath   string
+		MetricType string
+		Count      int32
+	}{}
+
+	subQuery := db.BunSelectMetricGroupNames().ColumnExpr(
+		`summary_metrics->jsonb_object_keys(summary_metrics)->
+	jsonb_object_keys(summary_metrics->jsonb_object_keys(summary_metrics))->>'type'
+	AS metric_type`).
+		Where(whereClause, bun.In(group)).Distinct()
+	trialsQuery := db.Bun().NewSelect().TableExpr("(?) AS stats", subQuery).
+		ColumnExpr("*").ColumnExpr(
+		"ROW_NUMBER() OVER(PARTITION BY json_path, metric_name order by metric_type) AS count").
+		Order("json_path").Order("metric_name")
+	err := trialsQuery.Scan(ctx, &summaryMetrics)
+	if err != nil {
+		return nil, fmt.Errorf("retreiving project summary metrics: %w", err)
+	}
+
+	for idx, stats := range summaryMetrics {
+		// If there are multiple metrics with the same group and name, report one unspecified column.
+		if stats.Count > 1 {
+			continue
+		}
+
+		columnType := parseMetricsType(stats.MetricType)
+		if len(summaryMetrics) > idx+1 && summaryMetrics[idx+1].Count > 1 {
+			columnType = projectv1.ColumnType_COLUMN_TYPE_UNSPECIFIED
+		}
+
+		columnPrefix := stats.JSONPath
+		columnLocation := projectv1.LocationType_LOCATION_TYPE_CUSTOM_METRIC
+		if stats.JSONPath == metricGroupTraining {
+			columnPrefix = metricIDTraining
+			columnLocation = projectv1.LocationType_LOCATION_TYPE_TRAINING
+		}
+		if stats.JSONPath == metricGroupValidation {
+			columnPrefix = metricIDValidation
+			columnLocation = projectv1.LocationType_LOCATION_TYPE_VALIDATIONS
+		}
+		// don't surface aggregates that don't make sense for non-numbers
+		if columnType == projectv1.ColumnType_COLUMN_TYPE_NUMBER {
+			aggregates := []string{"last", "max", "mean", "min"}
+			for _, aggregate := range aggregates {
+				columns = append(columns, &projectv1.ProjectColumn{
+					Column:   fmt.Sprintf("%s.%s.%s", columnPrefix, stats.MetricName, aggregate),
+					Location: columnLocation,
+					Type:     columnType,
+				})
+			}
+		} else {
+			columns = append(columns, &projectv1.ProjectColumn{
+				Column:   fmt.Sprintf("%s.%s.last", columnPrefix, stats.MetricName),
+				Location: columnLocation,
+				Type:     columnType,
+			})
+		}
+	}
+	return columns, nil
+}
+
+func (a *apiServer) GetProjectByKey(
+	ctx context.Context,
+	req *apiv1.GetProjectByKeyRequest,
+) (*apiv1.GetProjectByKeyResponse, error) {
+	curUser, _, err := grpcutil.GetUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	p, err := project.GetProjectByKey(ctx, req.Key)
+	if errors.Is(err, db.ErrNotFound) {
+		return nil, api.NotFoundErrs("project", req.Key, true)
+	} else if err != nil {
+		return nil, err
+	}
+
+	protoProject := p.Proto()
+	if err := project.AuthZProvider.Get().CanGetProject(ctx, *curUser, protoProject); err != nil {
+		return nil, err
+	}
+	return &apiv1.GetProjectByKeyResponse{Project: protoProject}, nil
+}
+
 func (a *apiServer) GetProjectByID(
 	ctx context.Context, id int32, curUser model.User,
 ) (*projectv1.Project, error) {
-	notFoundErr := api.NotFoundErrs("project", fmt.Sprint(id), true)
-	p := &projectv1.Project{}
-	if err := a.m.db.QueryProto("get_project", p, id); errors.Is(err, db.ErrNotFound) {
+	notFoundErr := api.NotFoundErrs("project", strconv.Itoa(int(id)), true)
+	p, err := project.GetProjectByID(ctx, int(id))
+	if errors.Is(err, db.ErrNotFound) {
 		return nil, notFoundErr
 	} else if err != nil {
 		return nil, errors.Wrapf(err, "error fetching project (%d) from database", id)
 	}
-
-	if err := project.AuthZProvider.Get().CanGetProject(ctx, curUser, p); err != nil {
+	protoProject := p.Proto()
+	if err := project.AuthZProvider.Get().CanGetProject(ctx, curUser, protoProject); err != nil {
 		return nil, authz.SubIfUnauthorized(err, notFoundErr)
 	}
-	return p, nil
+	return protoProject, nil
 }
 
 func (a *apiServer) getProjectColumnsByID(
@@ -169,16 +411,10 @@ func (a *apiServer) getProjectColumnsByID(
 			Type:        projectv1.ColumnType_COLUMN_TYPE_TEXT,
 		},
 		{
-			Column:      "externalRunId",
-			DisplayName: "External Run ID",
-			Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
-			Type:        projectv1.ColumnType_COLUMN_TYPE_TEXT,
-		},
-		{
-			Column:      "experimentName",
-			DisplayName: "Experiment Name",
-			Location:    projectv1.LocationType_LOCATION_TYPE_RUN,
-			Type:        projectv1.ColumnType_COLUMN_TYPE_TEXT,
+			Column:      "archived",
+			DisplayName: "Archived",
+			Location:    projectv1.LocationType_LOCATION_TYPE_EXPERIMENT,
+			Type:        projectv1.ColumnType_COLUMN_TYPE_UNSPECIFIED, // no boolean type
 		},
 	}
 
@@ -220,67 +456,12 @@ func (a *apiServer) getProjectColumnsByID(
 			trialIDs = append(trialIDs, *hparam.BestTrialID)
 		}
 	}
-	summaryMetrics := []struct {
-		MetricName string
-		JSONPath   string
-		MetricType string
-		Count      int32
-	}{}
-
 	if len(trialIDs) > 0 {
-		subQuery := db.BunSelectMetricGroupNames().ColumnExpr(
-			`summary_metrics->jsonb_object_keys(summary_metrics)->
-		jsonb_object_keys(summary_metrics->jsonb_object_keys(summary_metrics))->>'type'
-		AS metric_type`).
-			Where("id IN (?)", bun.In(trialIDs)).Distinct()
-		trialsQuery := db.Bun().NewSelect().TableExpr("(?) AS stats", subQuery).
-			ColumnExpr("*").ColumnExpr(
-			"ROW_NUMBER() OVER(PARTITION BY json_path, metric_name order by metric_type) AS count").
-			Order("json_path").Order("metric_name")
-		err = trialsQuery.Scan(ctx, &summaryMetrics)
+		summaryMetricColumns, err := getRunSummaryMetrics(ctx, "id IN (?)", trialIDs)
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	for idx, stats := range summaryMetrics {
-		// If there are multiple metrics with the same group and name, report one unspecified column.
-		if stats.Count > 1 {
-			continue
-		}
-
-		columnType := parseMetricsType(stats.MetricType)
-		if len(summaryMetrics) > idx+1 && summaryMetrics[idx+1].Count > 1 {
-			columnType = projectv1.ColumnType_COLUMN_TYPE_UNSPECIFIED
-		}
-
-		columnPrefix := stats.JSONPath
-		columnLocation := projectv1.LocationType_LOCATION_TYPE_CUSTOM_METRIC
-		if stats.JSONPath == metricGroupTraining {
-			columnPrefix = metricIDTraining
-			columnLocation = projectv1.LocationType_LOCATION_TYPE_TRAINING
-		}
-		if stats.JSONPath == metricGroupValidation {
-			columnPrefix = metricIDValidation
-			columnLocation = projectv1.LocationType_LOCATION_TYPE_VALIDATIONS
-		}
-		// don't surface aggregates that don't make sense for non-numbers
-		if columnType == projectv1.ColumnType_COLUMN_TYPE_NUMBER {
-			aggregates := []string{"last", "max", "mean", "min"}
-			for _, aggregate := range aggregates {
-				columns = append(columns, &projectv1.ProjectColumn{
-					Column:   fmt.Sprintf("%s.%s.%s", columnPrefix, stats.MetricName, aggregate),
-					Location: columnLocation,
-					Type:     columnType,
-				})
-			}
-		} else {
-			columns = append(columns, &projectv1.ProjectColumn{
-				Column:   fmt.Sprintf("%s.%s.last", columnPrefix, stats.MetricName),
-				Location: columnLocation,
-				Type:     columnType,
-			})
-		}
+		columns = append(columns, summaryMetricColumns...)
 	}
 	hparamSet := make(map[string]struct{})
 	for _, hparam := range hyperparameters {
@@ -330,6 +511,97 @@ func (a *apiServer) getProjectColumnsByID(
 	}, nil
 }
 
+func (a *apiServer) getProjectRunColumnsByID(
+	ctx context.Context, id int32, curUser model.User,
+) (*apiv1.GetProjectColumnsResponse, error) {
+	p, err := a.GetProjectByID(ctx, id, curUser)
+	if err != nil {
+		return nil, err
+	}
+
+	columns := defaultRunsTableColumns
+
+	hyperparameters := []struct {
+		WorkspaceID int
+		Hparam      string
+		Type        string
+	}{}
+
+	// Get all runs in project.
+	runsQuery := db.Bun().NewSelect().
+		ColumnExpr("?::int as workspace_id", p.WorkspaceId).
+		Column("hparam").
+		Column("type").
+		TableExpr("project_hparams").
+		Where("project_id = ?", id)
+
+	runsQuery, err = exputil.AuthZProvider.Get().FilterExperimentsQuery(
+		ctx,
+		curUser,
+		p,
+		runsQuery,
+		[]rbacv1.PermissionType{rbacv1.PermissionType_PERMISSION_TYPE_VIEW_EXPERIMENT_METADATA},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	err = runsQuery.Scan(ctx, &hyperparameters)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get summary metrics only if project is not empty.
+	summaryMetricColumns, err := getRunSummaryMetrics(ctx, "project_id IN (?)", []int{int(id)})
+	if err != nil {
+		return nil, err
+	}
+	columns = append(columns, summaryMetricColumns...)
+	for _, hparam := range hyperparameters {
+		columns = append(columns, &projectv1.ProjectColumn{
+			Column:   fmt.Sprintf("hp.%s", hparam.Hparam),
+			Location: projectv1.LocationType_LOCATION_TYPE_RUN_HYPERPARAMETERS,
+			Type:     parseMetricsType(hparam.Type),
+		})
+	}
+
+	metadata := []struct {
+		Metadata string
+		Type     string
+	}{}
+	// Get run metadata colums
+	err = db.Bun().NewSelect().Distinct().
+		ColumnExpr("CONCAT('metadata.', flat_key) as metadata").
+		ColumnExpr(`
+		CASE
+			WHEN is_array_element=true THEN 'array'
+			WHEN string_value IS NOT NULL THEN 'string'
+			WHEN integer_value IS NOT NULL THEN 'number'
+			WHEN float_value IS NOT NULL THEN 'number'
+			WHEN timestamp_value IS NOT NULL THEN 'date'
+			WHEN boolean_value IS NOT NULL THEN 'boolean'
+			ELSE 'string'
+		END as type`).
+		TableExpr("runs_metadata_index").
+		Where("project_id = ?", id).
+		Scan(ctx, &metadata)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, data := range metadata {
+		columns = append(columns, &projectv1.ProjectColumn{
+			Column:   data.Metadata,
+			Location: projectv1.LocationType_LOCATION_TYPE_RUN_METADATA,
+			Type:     parseMetricsType(data.Type),
+		})
+	}
+
+	return &apiv1.GetProjectColumnsResponse{
+		Columns: columns,
+	}, nil
+}
+
 func parseMetricsType(metricType string) projectv1.ColumnType {
 	switch metricType {
 	case db.MetricTypeString:
@@ -340,6 +612,8 @@ func parseMetricsType(metricType string) projectv1.ColumnType {
 		return projectv1.ColumnType_COLUMN_TYPE_DATE
 	case db.MetricTypeBool:
 		return projectv1.ColumnType_COLUMN_TYPE_TEXT
+	case db.MetricTypeArray:
+		return projectv1.ColumnType_COLUMN_TYPE_ARRAY
 	default:
 		// unsure of how to treat arrays/objects/nulls
 		return projectv1.ColumnType_COLUMN_TYPE_UNSPECIFIED
@@ -402,6 +676,10 @@ func (a *apiServer) GetProjectColumns(
 		return nil, err
 	}
 
+	if req.TableType != nil && *req.TableType == apiv1.TableType_TABLE_TYPE_RUN {
+		return a.getProjectRunColumnsByID(ctx, req.Id, *curUser)
+	}
+
 	return a.getProjectColumnsByID(ctx, req.Id, *curUser)
 }
 
@@ -418,7 +696,7 @@ func (a *apiServer) GetProjectNumericMetricsRange(
 		return nil, err
 	}
 	metricsValues, searcherMetricsValue, err := a.getProjectNumericMetricsRange(
-		ctx, *curUser, p)
+		ctx, p)
 	if err != nil {
 		return nil, err
 	}
@@ -444,7 +722,7 @@ func (a *apiServer) GetProjectNumericMetricsRange(
 }
 
 func (a *apiServer) getProjectNumericMetricsRange(
-	ctx context.Context, curUser model.User, project *projectv1.Project,
+	ctx context.Context, project *projectv1.Project,
 ) (map[string]([]float64), []float64, error) {
 	query := db.Bun().NewSelect().Table("trials").Table("experiments").
 		ColumnExpr(`searcher_metric_value_signed = searcher_metric_value AS smaller_is_better`).
@@ -535,11 +813,25 @@ func (a *apiServer) PostProject(
 		return nil, status.Error(codes.PermissionDenied, err.Error())
 	}
 
-	p := &projectv1.Project{}
-	err = a.m.db.QueryProto("insert_project", p, req.Name, req.Description,
-		req.WorkspaceId, curUser.ID)
+	if req.Key != nil {
+		// allow user to provide a key, but ensure it is uppercase.
+		*req.Key = strings.ToUpper(*req.Key)
+		if err = project.ValidateProjectKey(*req.Key); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
 
-	return &apiv1.PostProjectResponse{Project: p},
+	p := &model.Project{
+		Name:        req.Name,
+		Description: req.Description,
+		WorkspaceID: int(req.WorkspaceId),
+		UserID:      int(curUser.ID),
+		Username:    curUser.Username,
+	}
+
+	err = project.InsertProject(ctx, p, req.Key)
+	err = apiutils.MapAndFilterErrors(err, nil, nil)
+	return &apiv1.PostProjectResponse{Project: p.Proto()},
 		errors.Wrapf(err, "error creating project %s in database", req.Name)
 }
 
@@ -582,53 +874,34 @@ func (a *apiServer) PutProjectNotes(
 func (a *apiServer) PatchProject(
 	ctx context.Context, req *apiv1.PatchProjectRequest,
 ) (*apiv1.PatchProjectResponse, error) {
-	currProject, currUser, err := a.getProjectAndCheckCanDoActions(ctx, req.Id)
+	curUser, _, err := grpcutil.GetUser(ctx)
 	if err != nil {
+		return nil, errors.New("failed to get user while updating project")
+	}
+
+	if req.Project == nil {
+		return nil, errors.New("project in request is nil while updating project")
+	}
+	if req.Project.Key != nil {
+		err = project.ValidateProjectKey(req.Project.Key.Value)
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	updatedProject, err := project.UpdateProject(
+		ctx,
+		req.Id,
+		*curUser,
+		req.Project,
+	)
+	if err != nil && errors.Is(err, db.ErrNotFound) {
+		return nil, api.NotFoundErrs("project", strconv.Itoa(int(req.Id)), true)
+	} else if err != nil {
+		log.WithError(err).Errorf("failed to update project %d", req.Id)
 		return nil, err
 	}
-	if currProject.Archived {
-		return nil, errors.Errorf("project (%d) is archived and cannot have attributes updated",
-			currProject.Id)
-	}
-	if currProject.Immutable {
-		return nil, errors.Errorf("project (%v) is immutable and cannot have attributes updated",
-			currProject.Id)
-	}
-
-	madeChanges := false
-	if req.Project.Name != nil && req.Project.Name.Value != currProject.Name {
-		if err = project.AuthZProvider.Get().CanSetProjectName(ctx, currUser, currProject); err != nil {
-			return nil, status.Error(codes.PermissionDenied, err.Error())
-		}
-
-		log.Infof("project (%d) name changing from \"%s\" to \"%s\"",
-			currProject.Id, currProject.Name, req.Project.Name.Value)
-		madeChanges = true
-		currProject.Name = req.Project.Name.Value
-	}
-
-	if req.Project.Description != nil && req.Project.Description.Value != currProject.Description {
-		if err = project.AuthZProvider.Get().
-			CanSetProjectDescription(ctx, currUser, currProject); err != nil {
-			return nil, status.Error(codes.PermissionDenied, err.Error())
-		}
-
-		log.Infof("project (%d) description changing from \"%s\" to \"%s\"",
-			currProject.Id, currProject.Description, req.Project.Description.Value)
-		madeChanges = true
-		currProject.Description = req.Project.Description.Value
-	}
-
-	if !madeChanges {
-		return &apiv1.PatchProjectResponse{Project: currProject}, nil
-	}
-
-	finalProject := &projectv1.Project{}
-	err = a.m.db.QueryProto("update_project",
-		finalProject, currProject.Id, currProject.Name, currProject.Description)
-
-	return &apiv1.PatchProjectResponse{Project: finalProject},
-		errors.Wrapf(err, "error updating project (%d) in database", currProject.Id)
+	return &apiv1.PatchProjectResponse{Project: updatedProject.Proto()}, nil
 }
 
 func (a *apiServer) deleteProject(ctx context.Context, projectID int32,
@@ -716,6 +989,19 @@ func (a *apiServer) MoveProject(
 	}
 	if err = project.AuthZProvider.Get().CanMoveProject(ctx, *curUser, p, from, to); err != nil {
 		return nil, status.Error(codes.PermissionDenied, err.Error())
+	}
+
+	// Check if name already in destination workspace
+	hits := []string{}
+	err = db.Bun().NewSelect().TableExpr("projects").ColumnExpr("1").
+		Where("workspace_id=?", req.DestinationWorkspaceId).
+		Where("name=?", p.Name).Scan(ctx, &hits)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(hits) > 0 {
+		return nil, fmt.Errorf("project with name '%s' already exists in target workspace", p.Name)
 	}
 
 	holder := &projectv1.Project{}
@@ -810,6 +1096,7 @@ func (a *apiServer) GetProjectsByUserActivity(
 		p.user_id,
 		'WORKSPACE_STATE_' || p.state AS state,
 		p.error_message,
+		(SELECT COUNT(*) FROM runs as r WHERE r.project_id=p.id) as num_runs,
 		COUNT(*) FILTER (WHERE e.project_id = p.id) AS num_experiments,
 		COUNT(*) FILTER (WHERE e.project_id = p.id AND e.state = 'ACTIVE') AS num_active_experiments,
 		MAX(e.start_time) FILTER (WHERE e.project_id = p.id) AS last_experiment_started_at
@@ -847,4 +1134,33 @@ func (a *apiServer) GetProjectsByUserActivity(
 	}
 
 	return &apiv1.GetProjectsByUserActivityResponse{Projects: viewableProjects}, nil
+}
+
+func (a *apiServer) GetMetadataValues(
+	ctx context.Context, req *apiv1.GetMetadataValuesRequest,
+) (*apiv1.GetMetadataValuesResponse, error) {
+	curUser, _, err := grpcutil.GetUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+	p, err := a.GetProjectByID(ctx, req.ProjectId, *curUser)
+	if err != nil { // Can view project?
+		return nil, err
+	}
+
+	// We only want string-type metadata.
+	values := []string{}
+	err = db.Bun().NewSelect().Distinct().
+		Table("runs_metadata_index").
+		Column("string_value").
+		Where("string_value IS NOT NULL").
+		Where("project_id=?", p.Id).
+		Where("flat_key=?", req.Key).Scan(ctx, &values)
+	if err != nil {
+		return nil, err
+	}
+	resp := apiv1.GetMetadataValuesResponse{
+		Values: values,
+	}
+	return &resp, nil
 }

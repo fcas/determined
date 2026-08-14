@@ -12,6 +12,7 @@ import shlex
 import subprocess
 import sys
 import time
+import warnings
 from typing import Dict, List, Mapping, Optional
 
 import deepspeed
@@ -286,7 +287,7 @@ def main(script: List[str]) -> int:
         # Mark sshd containers as daemon containers that the master should kill when all non-daemon
         # containers (deepspeed launcher, in this case) have exited.
         cert = certs.default_load(info.master_url)
-        sess = authentication.login_with_cache(info.master_url, cert=cert)
+        sess = authentication.login_from_task(info.master_url, cert=cert)
         sess.post(f"/api/v1/allocations/{info.allocation_id}/resources/{resources_id}/daemon")
 
         # Wrap it in a pid_server to ensure that we can't hang if a worker fails.
@@ -375,8 +376,8 @@ def parse_args(args: List[str]) -> List[str]:
     parser.add_argument(
         "--trial",
         help=(
-            "use a Trial class as the entrypoint to training.  When --trial is used, the SCRIPT "
-            "positional argument must be omitted."
+            "(deprecated) use a Trial class as the entrypoint to training.  When --trial is used, "
+            "the SCRIPT positional argument must be omitted."
         ),
     )
     # For training scripts.
@@ -396,6 +397,14 @@ def parse_args(args: List[str]) -> List[str]:
             parser.print_usage()
             print("error: extra arguments to --trial:", script, file=sys.stderr)
             sys.exit(1)
+        warnings.warn(
+            "Support for --trial argument to determined.launch.deepspeed has been deprecated "
+            "in Determined 0.38.0 and will be removed in a future version.  You can keep your "
+            "DeepSpeedTrial, but please replace your --trial argument with a script that uses the "
+            "new det.pytorch.deepspeed.Trainer() to train your DeepSpeedTrial.",
+            FutureWarning,
+            stacklevel=2,
+        )
         script = det.util.legacy_trial_entrypoint_to_script(parsed.trial)
     elif not script:
         # There needs to be at least one script argument.

@@ -1,13 +1,21 @@
-import { DropdownContent } from 'e2e/models/hew/Dropdown';
+import { DropdownMenu } from 'e2e/models/common/hew/Dropdown';
+
+import ExperimentEditModal from './ExperimentEditModal';
+import ExperimentMoveModal from './ExperimentMoveModal';
 
 /**
- * Returns the representation of the ActionDropdown menu defined by the User Admin page.
- * This constructor represents the InteractiveTable in src/components/ExperimentActionDropdown.tsx.
- * @param {object} obj
- * @param {CanBeParent} obj.parent - The parent used to locate this ExperimentActionDropdown
- * @param {string} obj.selector - Used as a selector uesd to locate this object
+ * Represents the ExperimentActionDropdown component in src/components/ExperimentActionDropdown.tsx
  */
-export class ExperimentActionDropdown extends DropdownContent {
-  // TODO where is this thing? <Button icon={<Icon name="overflow-vertical" size="small" title="Action menu" />} />
-  // TODO I'm assuming it's new tab, new window, copy value, etc
+
+export class ExperimentActionDropdown extends DropdownMenu {
+  readonly edit = this.menuItem('Edit');
+  readonly pause = this.menuItem('Pause');
+  readonly resume = this.menuItem('Resume');
+
+  readonly editModal = new ExperimentEditModal({
+    root: this.root,
+  });
+  readonly moveModal = new ExperimentMoveModal({
+    root: this.root,
+  });
 }

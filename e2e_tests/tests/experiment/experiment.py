@@ -62,59 +62,6 @@ def create_experiment(
     return int(m.group(1))
 
 
-def maybe_run_autotuning_experiment(
-    sess: api.Session,
-    config_file: str,
-    model_def_file: str,
-    create_args: Optional[List[str]] = None,
-    search_method_name: str = "_test",
-    max_trials: int = 4,
-) -> subprocess.CompletedProcess:
-    command = [
-        "python3",
-        "-m",
-        "determined.pytorch.dsat",
-        search_method_name,
-        config_file,
-        model_def_file,
-        "--max-trials",
-        str(max_trials),
-    ]
-
-    if create_args is not None:
-        command += create_args
-
-    env = os.environ.copy()
-    env["DET_DEBUG"] = "true"
-    env["DET_MASTER"] = conf.make_master_url()
-
-    return detproc.run(
-        sess,
-        command,
-        universal_newlines=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-
-
-def run_autotuning_experiment(
-    sess: api.Session,
-    config_file: str,
-    model_def_file: str,
-    create_args: Optional[List[str]] = None,
-    search_method_name: str = "_test",
-    max_trials: int = 4,
-) -> int:
-    p = maybe_run_autotuning_experiment(
-        sess, config_file, model_def_file, create_args, search_method_name, max_trials
-    )
-    assert p.returncode == 0, f"\nstdout:\n{p.stdout}\nstderr:\n{p.stderr}"
-    m = re.search(r"Created experiment (\d+)\n", str(p.stdout))
-    assert m is not None
-    return int(m.group(1))
-
-
 def archive_experiments(
     sess: api.Session, experiment_ids: List[int], project_id: int, name: Optional[str] = None
 ) -> None:
@@ -412,7 +359,7 @@ def wait_for_at_least_n_trials(
 def wait_for_experiment_workload_progress(
     sess: api.Session, experiment_id: int, max_ticks: int = conf.MAX_TRIAL_BUILD_SECS
 ) -> None:
-    for _ in range(conf.MAX_TRIAL_BUILD_SECS):
+    for _ in range(max_ticks):
         trials = experiment_trials(sess, experiment_id)
         if len(trials) > 0:
             only_trial = trials[0]
@@ -616,18 +563,6 @@ def assert_patterns_in_trial_logs(sess: api.Session, trial_id: int, patterns: Li
     )
 
 
-def assert_performed_initial_validation(sess: api.Session, exp_id: int) -> None:
-    trials = experiment_trials(sess, exp_id)
-
-    assert len(trials) > 0
-    workloads = trials[0].workloads
-
-    assert len(workloads) > 0
-    zeroth_step = workloads_with_validation(workloads)[0]
-
-    assert zeroth_step.totalBatches == 0
-
-
 def last_workload_matches_last_checkpoint(
     workloads: Sequence[bindings.v1WorkloadContainer],
 ) -> None:
@@ -815,76 +750,6 @@ def run_basic_test(
         sess, experiment_id, expected_trials, expect_workloads, expect_checkpoints
     )
     return experiment_id
-
-
-def run_basic_autotuning_test(
-    sess: api.Session,
-    config_file: str,
-    model_def_file: str,
-    expected_trials: Optional[int],
-    create_args: Optional[List[str]] = None,
-    max_wait_secs: int = conf.DEFAULT_MAX_WAIT_SECS,
-    expect_workloads: bool = True,
-    expect_checkpoints: bool = True,
-    priority: int = -1,
-    expect_client_failed: bool = False,
-    search_method_name: str = "_test",
-    max_trials: int = 4,
-) -> int:
-    assert os.path.isdir(model_def_file)
-    orchestrator_exp_id = run_autotuning_experiment(
-        sess, config_file, model_def_file, create_args, search_method_name, max_trials
-    )
-    if priority != -1:
-        set_priority(sess, experiment_id=orchestrator_exp_id, priority=priority)
-
-    # Wait for the Autotuning Single Searcher ("Orchestrator") to finish
-    wait_for_experiment_state(
-        sess,
-        orchestrator_exp_id,
-        bindings.experimentv1State.COMPLETED,
-        max_wait_secs=max_wait_secs,
-    )
-    assert num_active_trials(sess, orchestrator_exp_id) == 0
-    verify_completed_experiment_metadata(
-        sess, orchestrator_exp_id, expected_trials, expect_workloads, expect_checkpoints
-    )
-    client_exp_id = fetch_autotuning_client_experiment(sess, orchestrator_exp_id)
-
-    # Wait for the Autotuning Custom Searcher Experiment ("Client Experiment") to finish
-    wait_for_experiment_state(
-        sess,
-        client_exp_id,
-        (
-            bindings.experimentv1State.COMPLETED
-            if not expect_client_failed
-            else bindings.experimentv1State.ERROR
-        ),
-        max_wait_secs=max_wait_secs,
-    )
-    assert num_active_trials(sess, orchestrator_exp_id) == 0
-    verify_completed_experiment_metadata(
-        sess, orchestrator_exp_id, expected_trials, expect_workloads, expect_checkpoints
-    )
-    return client_exp_id
-
-
-def fetch_autotuning_client_experiment(sess: api.Session, exp_id: int) -> int:
-    command = ["det", "experiment", "logs", str(exp_id)]
-    env = os.environ.copy()
-    env["DET_DEBUG"] = "true"
-    p = detproc.run(
-        sess,
-        command,
-        universal_newlines=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-    )
-    assert p.returncode == 0, f"\nstdout:\n{p.stdout} \nstderr:\n{p.stderr}"
-    m = re.search(r"Created experiment (\d+)\n", str(p.stdout))
-    assert m is not None
-    return int(m.group(1))
 
 
 def set_priority(sess: api.Session, experiment_id: int, priority: int) -> None:

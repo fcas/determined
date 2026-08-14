@@ -26,8 +26,11 @@ stages:
         cache: 
           cache_dir: /tmp/determined-cache
         security:
+          initial_user_password: $INITIAL_USER_PASSWORD
           authz:
             rbac_ui_enabled: true
+        telemetry:
+          enabled: false
 
   - agent:
       name: agent1

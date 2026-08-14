@@ -9,12 +9,12 @@ import { Modal, ModalCloseReason } from 'hew/Modal';
 import RadioGroup from 'hew/RadioGroup';
 import Row from 'hew/Row';
 import Select, { Option, RefSelectProps, SelectValue } from 'hew/Select';
-import { Label, TypographySize } from 'hew/Typography';
 import { Loadable } from 'hew/utils/loadable';
 import yaml from 'js-yaml';
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import Link from 'components/Link';
+import useFeature from 'hooks/useFeature';
 import { paths } from 'routes/utils';
 import { createExperiment } from 'services/api';
 import { V1LaunchWarning } from 'services/api-ts-sdk';
@@ -35,7 +35,7 @@ import { DetError, ErrorLevel, ErrorType, handleWarning, isDetError } from 'util
 import { roundToPrecision } from 'utils/number';
 import { useObservable } from 'utils/observable';
 import { routeToReactUrl } from 'utils/routes';
-import { validateLength } from 'utils/string';
+import { capitalize, validateLength } from 'utils/string';
 
 import css from './HyperparameterSearchModal.module.scss';
 
@@ -80,7 +80,18 @@ interface HyperparameterRowValues {
   min?: number;
   type: HyperparameterType;
   value?: number | string;
+  name: string;
 }
+
+const ExperimentEntityCopyMap = {
+  experiment: 'experiment',
+  trial: 'trial',
+};
+
+const RunEntityCopyMap = {
+  experiment: 'search',
+  trial: 'run',
+};
 
 const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JSX.Element => {
   const idPrefix = useId();
@@ -97,7 +108,11 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
   const [form] = Form.useForm();
   const [currentPage, setCurrentPage] = useState(0);
   const [validationError, setValidationError] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const formValues = Form.useWatch([], form);
+  const f_flat_runs = useFeature().isOn('flat_runs');
+
+  const entityCopy = f_flat_runs ? RunEntityCopyMap : ExperimentEntityCopyMap;
 
   const trialHyperparameters = useMemo(() => {
     if (!trial) return;
@@ -107,7 +122,7 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
     }) as unknown as Record<string, Primitive>;
   }, [trial]);
 
-  const hyperparameters = useMemo(() => {
+  const calculateInitialHyperparameters = useCallback(() => {
     return Object.entries(experiment.hyperparameters).map((hp) => {
       const hpObject = { hyperparameter: hp[1], name: hp[0] };
       if (trialHyperparameters?.[hp[0]]) {
@@ -117,7 +132,12 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
     });
   }, [experiment.hyperparameters, trialHyperparameters]);
 
+  const [currentHPs, setCurrentHPs] = useState<{ hyperparameter: Hyperparameter; name: string }[]>(
+    calculateInitialHyperparameters,
+  );
+
   const submitExperiment = useCallback(async () => {
+    if (isSubmitting) return;
     const fields: Record<string, Primitive | HyperparameterRowValues> = form.getFieldsValue(true);
 
     // Deep cloning parent experiment's config
@@ -128,8 +148,6 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
     baseConfig.searcher.name = fields.searcher;
     baseConfig.searcher.max_trials =
       fields.searcher === SEARCH_METHODS.Grid.id ? undefined : fields.max_trials;
-    baseConfig.searcher.max_length = {};
-    baseConfig.searcher.max_length[fields.length_units as string] = fields.max_length;
     baseConfig.searcher.max_concurrent_trials = fields.max_concurrent_trials ?? 16;
     baseConfig.resources.resource_pool = fields.pool;
     baseConfig.resources.slots_per_trial = fields.slots_per_trial;
@@ -150,10 +168,13 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
     }
 
     // Parsing hyperparameters
+    baseConfig.hyperparameters = {};
     Object.entries(fields)
       .filter((field) => typeof field[1] === 'object')
       .forEach((hp) => {
+        // hpName is the name at the time of the form rendering, while the name field in hpInfo is the updated name.
         const hpName = hp[0];
+        if (!currentHPs?.some((h) => h.name === hpName)) return;
         const hpInfo = hp[1] as HyperparameterRowValues;
         if (hpInfo.type === HyperparameterType.Categorical) return;
         else if (hpInfo.type === HyperparameterType.Constant) {
@@ -169,13 +190,13 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
           } catch (e) {
             parsedVal = hpInfo.value;
           }
-          baseConfig.hyperparameters[hpName] = {
+          baseConfig.hyperparameters[hpInfo.name] = {
             type: hpInfo.type,
             val: parsedVal,
           };
         } else {
-          const prevBase: number | undefined = baseConfig.hyperparameters[hpName]?.base;
-          baseConfig.hyperparameters[hpName] = {
+          const prevBase: number | undefined = baseConfig.hyperparameters[hpInfo.name]?.base;
+          baseConfig.hyperparameters[hpInfo.name] = {
             base: hpInfo.type === HyperparameterType.Log ? prevBase ?? DEFAULT_LOG_BASE : undefined,
             count: fields.searcher === SEARCH_METHODS.Grid.id ? hpInfo.count : undefined,
             maxval:
@@ -193,10 +214,10 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
 
     // Unflatten hyperparameters to deal with nesting
     baseConfig.hyperparameters = unflattenObject(baseConfig.hyperparameters);
-
     const newConfig = yaml.dump(baseConfig);
 
     try {
+      setIsSubmitting(true);
       const { experiment: newExperiment, warnings } = await createExperiment(
         {
           activate: true,
@@ -224,7 +245,7 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
       const newPath = paths.experimentDetails(newExperiment.id);
       routeToReactUrl(paths.reload(newPath));
     } catch (e) {
-      let errorMessage = 'Unable to create experiment.';
+      let errorMessage = `Unable to create ${entityCopy.experiment}.`;
       if (isDetError(e)) {
         errorMessage = e.publicMessage || e.message;
       }
@@ -233,8 +254,18 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
 
       // We throw an error to prevent the modal from closing.
       throw new DetError(errorMessage, { publicMessage: errorMessage, silent: true });
+    } finally {
+      setIsSubmitting(false);
     }
-  }, [experiment.configRaw, experiment.id, experiment.projectId, form]);
+  }, [
+    entityCopy,
+    experiment.configRaw,
+    experiment.id,
+    experiment.projectId,
+    form,
+    currentHPs,
+    isSubmitting,
+  ]);
 
   const handleOk = useCallback(() => {
     if (currentPage === 0) {
@@ -260,16 +291,20 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
   );
 
   const maxSlots = useMemo(
-    () => (resourcePool ? maxPoolSlotCapacity(resourcePool) : 0),
+    /**
+     * On-premise deployments don't have dynamic agents and we don't know how many
+     * agents might connect.
+     *
+     * This is a work around for dynamic agents such as Kubernetes where `slotsAvailable`,
+     * `slotsPerAgents` and `maxAgents` are all zero. This value is used for form
+     * validation and it is too strict to allow anything to run experiments. Intentially
+     * generalized and not matching against Kubernetes, in case other schedulers return
+     * zeroes, and this would at least unblock experiments, and the backend would be able
+     * to return capacity issues.
+     */
+    () => (resourcePool ? maxPoolSlotCapacity(resourcePool) || Infinity : 0),
     [resourcePool],
   );
-
-  const [maxLengthUnit, maxLength] = useMemo(() => {
-    return (Object.entries(experiment?.config?.searcher.max_length ?? { batches: 1 })[0] ?? [
-      'batches',
-      1,
-    ]) as ['batches' | 'records' | 'epochs', number];
-  }, [experiment?.config?.searcher.max_length]);
 
   useEffect(() => {
     if (resourcePool || resourcePools.length === 0) return;
@@ -306,8 +341,6 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
         pool,
         slots_per_trial,
         max_trials,
-        max_length,
-        length_units,
         mode,
         stop_once,
         max_concurrent_trials,
@@ -316,7 +349,6 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
       const validName = validateLength(name ?? '');
       const validSlotsPerTrial =
         slots_per_trial != null && slots_per_trial >= 0 && slots_per_trial <= maxSlots;
-      const validMaxLength = max_length != null && max_length > 0;
       const validMaxConcurrentTrials = max_concurrent_trials != null && max_concurrent_trials >= 0;
       const validMaxTrials =
         searcher === SEARCH_METHODS.Grid.id || (max_trials != null && max_trials > 0);
@@ -325,11 +357,9 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
         !(
           validName &&
           validSlotsPerTrial &&
-          validMaxLength &&
           validMaxConcurrentTrials &&
           validMaxTrials &&
           pool != null &&
-          length_units != null &&
           (searcher !== SEARCH_METHODS.ASHA.id || (mode != null && isBoolean(stop_once)))
         ),
       );
@@ -351,13 +381,23 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
     [form],
   );
 
+  const getNextHPName = useCallback((names: string[]) => {
+    let counter = names.length;
+    while (names.includes(`hp_${counter}`)) counter++;
+    return `hp_${counter}`;
+  }, []);
+
   const hyperparameterPage = useMemo((): React.ReactNode => {
+    const emptyHP: Hyperparameter = { type: 'const' };
     // We always render the form regardless of mode to provide a reference to it.
     return (
       <div className={css.base}>
         {modalError && <Alert message={modalError} type="error" />}
         <div className={css.labelWithLink}>
-          <p>Select hyperparameters and define the search space.</p>
+          <p>
+            Select hyperparameters and define the search space. <br />
+            The experiment code needs to be able to handle hyperparameters for them to take effect.
+          </p>
           <Link
             external
             path={paths.docs('/training/hyperparameter/configure-hp-ranges.html')}
@@ -369,7 +409,7 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
           className={css.hyperparameterContainer}
           style={{
             gridTemplateColumns: `180px minmax(100px, 1.4fr)
-              repeat(${searcher === SEARCH_METHODS.Grid ? 4 : 3}, minmax(60px, 1fr))`,
+              repeat(${searcher === SEARCH_METHODS.Grid ? 4 : 3}, minmax(60px, 1fr)) 20px`,
           }}>
           <label id="hyperparameter">
             <h2>Hyperparameter</h2>
@@ -391,13 +431,32 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
               <h2>Grid Count</h2>
             </label>
           )}
-          {hyperparameters.map((hp) => (
-            <HyperparameterRow key={hp.name} searcher={searcher} {...hp} />
+          <label id="delete" />
+          {currentHPs?.map((hp, idx) => (
+            <HyperparameterRow
+              handleDelete={(name: string) =>
+                setCurrentHPs((prev) => prev?.filter((hp) => hp.name !== name))
+              }
+              key={idx}
+              searcher={searcher}
+              {...hp}
+            />
           ))}
+          <label id="add">
+            <Button
+              onClick={() =>
+                setCurrentHPs((prev) => [
+                  ...(prev ?? []),
+                  { hyperparameter: emptyHP, name: getNextHPName(prev.map((p) => p.name)) },
+                ])
+              }>
+              Add Hyperparameter
+            </Button>
+          </label>
         </div>
       </div>
     );
-  }, [hyperparameters, modalError, searcher]);
+  }, [currentHPs, modalError, searcher, getNextHPName]);
 
   const searcherPage = useMemo((): React.ReactNode => {
     // We always render the form regardless of mode to provide a reference to it.
@@ -429,7 +488,7 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
         </Form.Item>
         <Form.Item
           initialValue={experiment.name}
-          label="New experiment name"
+          label={`New ${entityCopy.experiment} name`}
           name="name"
           rules={[{ required: true }]}>
           <Input maxLength={80} />
@@ -453,28 +512,8 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
         <h2 className={css.sectionTitle}>Configure Trials</h2>
         <div className={css.inputRow}>
           <Form.Item
-            initialValue={maxLength}
-            label="Max length"
-            name="max_length"
-            rules={[{ min: 1, required: true, type: 'number' }]}>
-            <InputNumber min={1} precision={0} />
-          </Form.Item>
-          <Form.Item
-            initialValue={maxLengthUnit}
-            label="Units"
-            name="length_units"
-            rules={[{ required: true }]}>
-            <Select>
-              <Option value="records">records</Option>
-              <Option value="batches">batches</Option>
-              {(experiment.configRaw?.records_per_epoch ?? 0) > 0 && (
-                <Option value="epochs">epochs</Option>
-              )}
-            </Select>
-          </Form.Item>
-          <Form.Item
             initialValue={experiment.configRaw?.resources?.slots_per_trial || 1}
-            label="Slots per trial"
+            label={`Slots per ${entityCopy.trial}`}
             name="slots_per_trial"
             rules={[{ max: maxSlots, min: 0, required: true, type: 'number' }]}
             validateStatus={
@@ -524,7 +563,7 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
           <Form.Item
             hidden={searcher === SEARCH_METHODS.Grid}
             initialValue={experiment?.config?.searcher.max_trials ?? 1}
-            label="Max trials"
+            label={`Max ${entityCopy.trial}s`}
             name="max_trials"
             rules={[{ min: 1, required: true, type: 'number' }]}>
             <InputNumber min={1} precision={0} />
@@ -545,8 +584,8 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
       </div>
     );
   }, [
+    entityCopy,
     experiment?.config?.searcher.max_trials,
-    experiment.configRaw?.records_per_epoch,
     experiment.configRaw?.resources?.slots_per_trial,
     experiment.configRaw.searcher.max_concurrent_trials,
     experiment.configRaw.searcher?.mode,
@@ -555,8 +594,6 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
     formValues?.slots_per_trial,
     handleSelectPool,
     handleSelectSearcher,
-    maxLength,
-    maxLengthUnit,
     maxSlots,
     modalError,
     resourcePool?.name,
@@ -576,13 +613,19 @@ const HyperparameterSearchModal = ({ closeModal, experiment, trial }: Props): JS
         <div className={css.spacer} />
         <Row>
           <Button onClick={handleCancel}>Cancel</Button>
-          <Button disabled={validationError} type="primary" onClick={handleOk}>
-            {currentPage === 0 ? 'Select Hyperparameters' : 'Run Experiment'}
+          <Button
+            disabled={validationError || isSubmitting}
+            loading={isSubmitting}
+            type="primary"
+            onClick={handleOk}>
+            {currentPage === 0
+              ? 'Select Hyperparameters'
+              : `Run ${capitalize(entityCopy.experiment)}`}
           </Button>
         </Row>
       </>
     );
-  }, [currentPage, handleBack, handleCancel, handleOk, validationError]);
+  }, [currentPage, entityCopy, handleBack, handleCancel, handleOk, validationError, isSubmitting]);
 
   return (
     <Modal footer={footer} title="Hyperparameter Search">
@@ -597,12 +640,18 @@ interface RowProps {
   hyperparameter: Hyperparameter;
   name: string;
   searcher: SearchMethod;
+  handleDelete: (name: string) => void;
 }
 
-const HyperparameterRow: React.FC<RowProps> = ({ hyperparameter, name, searcher }: RowProps) => {
+const HyperparameterRow: React.FC<RowProps> = ({
+  hyperparameter,
+  name,
+  searcher,
+  handleDelete,
+}: RowProps) => {
   const type: HyperparameterType | undefined = Form.useWatch([name, 'type']);
   const typeRef = useRef<RefSelectProps>(null);
-  const [active, setActive] = useState(hyperparameter.type !== HyperparameterType.Constant);
+  const [active, setActive] = useState<boolean>(false);
   const min: number | undefined = Form.useWatch([name, 'min']);
   const max: number | undefined = Form.useWatch([name, 'max']);
   const [valError, setValError] = useState<string>();
@@ -610,6 +659,10 @@ const HyperparameterRow: React.FC<RowProps> = ({ hyperparameter, name, searcher 
   const [maxError, setMaxError] = useState<string>();
   const [rangeError, setRangeError] = useState<string>();
   const [countError, setCountError] = useState<string>();
+
+  useEffect(() => {
+    setActive(type !== HyperparameterType.Constant);
+  }, [type]);
 
   const handleTypeChange = useCallback((value: SelectValue) => {
     setActive(value !== HyperparameterType.Constant);
@@ -668,9 +721,9 @@ const HyperparameterRow: React.FC<RowProps> = ({ hyperparameter, name, searcher 
   return (
     <>
       <div className={css.hyperparameterName}>
-        <Label size={TypographySize.L} truncate={{ tooltip: true }}>
-          {name}
-        </Label>
+        <Form.Item initialValue={name} name={[name, 'name']} rules={[{ required: true }]}>
+          <Input aria-labelledby="name" onChange={validateValue} />
+        </Form.Item>
       </div>
       <Form.Item initialValue={hyperparameter.type} name={[name, 'type']} noStyle>
         <Select aria-labelledby="type" ref={typeRef} width={'100%'} onChange={handleTypeChange}>
@@ -777,6 +830,9 @@ const HyperparameterRow: React.FC<RowProps> = ({ hyperparameter, name, searcher 
           </Form.Item>
         </>
       )}
+      <div className={css.delete} onClick={() => handleDelete(name)}>
+        <Icon name="close" title="delete" />
+      </div>
       {type === HyperparameterType.Categorical && (
         <p className={css.warning}>Categorical hyperparameters are not currently supported.</p>
       )}

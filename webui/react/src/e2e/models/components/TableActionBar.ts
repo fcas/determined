@@ -1,16 +1,13 @@
-import { BaseComponent, NamedComponent } from 'e2e/models/BaseComponent';
+import { BaseComponent, NamedComponent } from 'playwright-page-model-base/BaseComponent';
+
+import { DropdownMenu } from 'e2e/models/common/hew/Dropdown';
 import { ColumnPickerMenu } from 'e2e/models/components/ColumnPickerMenu';
 import { TableFilter } from 'e2e/models/components/FilterForm/TableFilter';
 import { MultiSortMenu } from 'e2e/models/components/MultiSortMenu';
 import { OptionsMenu } from 'e2e/models/components/OptionsMenu';
-import { DropdownMenu } from 'e2e/models/hew/Dropdown';
 
 /**
- * Returns a representation of the TableActionBar component.
- * This constructor represents the contents in src/components/TableActionBar.tsx.
- * @param {object} obj
- * @param {CanBeParent} obj.parent - The parent used to locate this TableActionBar
- * @param {string} [obj.selector] - Used instead of `defaultSelector`
+ * Represents the TableActionBar component in src/components/TableActionBar.tsx
  */
 export class TableActionBar extends NamedComponent {
   defaultSelector = '[data-test-component="tableActionBar"]';
@@ -19,18 +16,21 @@ export class TableActionBar extends NamedComponent {
   columnPickerMenu = new ColumnPickerMenu({ parent: this, root: this.root });
   optionsMenu = new OptionsMenu({ parent: this, root: this.root });
   actions = new ActionsDropdown({
-    childNode: new BaseComponent({
+    clickThisComponentToOpen: new BaseComponent({
       parent: this,
       selector: '[data-test="actionsDropdown"]',
     }),
     root: this.root,
   });
-  expNum = new BaseComponent({ parent: this, selector: '[data-test="expNum"]' });
+  count = new BaseComponent({ parent: this, selector: '[data-test="count"]' });
   heatmapToggle = new BaseComponent({ parent: this, selector: '[data-test="heatmapToggle"]' });
   compare = new BaseComponent({ parent: this, selector: '[data-test="compare"]' });
   // TODO a bunch of modals
 }
 
+/**
+ * Represents the ActionsDropdown in the TableActionBar component
+ */
 class ActionsDropdown extends DropdownMenu {
   readonly openTensorBoard = this.menuItem('View in TensorBoard');
   readonly move = this.menuItem('Move');

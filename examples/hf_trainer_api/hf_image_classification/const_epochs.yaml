@@ -10,8 +10,6 @@ resources:
 records_per_epoch: 1000
 searcher:
   name: single
-  max_length:
-    epochs: 5
   metric: eval_loss
 hyperparameters:
   training_arguments:
@@ -34,5 +32,5 @@ entrypoint: >-
   --save_total_limit 3
   --seed 1337
   --save_strategy epoch
-  --trust_remote_code false
+  --trust_remote_code true
 max_restarts: 0

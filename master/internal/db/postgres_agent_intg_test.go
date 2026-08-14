@@ -37,8 +37,8 @@ func agentStatsForRP(t *testing.T, rp string) []*agentStatsRow {
 
 func TestRecordAgentStats(t *testing.T) {
 	require.NoError(t, etc.SetRootPath(RootFromDB))
-	db, close := MustResolveTestPostgres(t)
-	defer close()
+	db, closeDB := MustResolveTestPostgres(t)
+	defer closeDB()
 	MustMigrateTestPostgres(t, db, MigrationsFromDB)
 
 	lowStartTimeBound := time.Now()
@@ -112,7 +112,7 @@ func TestEndAllAgentStats(t *testing.T) {
 	setTimesTo(a0, a0Start, nil)
 
 	// Cluster heartbeat between these.
-	// TODO(!!!) make cluster heartbeat a timestamptz.
+	// TODO(nickb): make cluster heartbeat a timestamptz.
 	_, err := db.GetOrCreateClusterID("")
 	require.NoError(t, err)
 	heartBeatTime := time.Date(2021, 10, 10, 0, 0, 0, 0, time.Local).Truncate(time.Millisecond)

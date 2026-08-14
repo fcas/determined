@@ -19,6 +19,10 @@
    <https://github.com/determined-ai/determined>`_ (e.g.,
    ``b13461ed06f2fad339e179af8028d4575db71a81``). Users are encouraged to use a released version.
 
+   -  The version specified in the ``detVersion`` field of your ``values.yaml`` overrides the
+      version specified in ``appVersion``. For more information, see ``detVersion`` in the
+      :ref:`values.yaml config reference <values-yaml-settings>`.
+
 .. note::
 
    If using a non-release branch of the Determined repository, ``appVersion`` is going to be set to
@@ -26,9 +30,22 @@
    ``ImagePullBackOff`` error. Users should remove ``.dev0`` to get the latest released version, or
    they can specify a specific commit hash instead.
 
+.. _values-yaml-settings:
+
 **************************
  ``values.yaml`` Settings
 **************************
+
+-  ``detVersion``: The Determined version to install. This can be a release version (e.g.,
+   ``0.13.0``) or a commit hash from the `upstream Determined repo
+   <https://github.com/determined-ai/determined>`_. Release versions are encouraged.
+
+   -  **NOTE:** This version overrides the version specified in ``appVersion`` of your
+      ``Chart.yaml`` *and* any version specified in your ``helm install`` or ``helm upgrade``
+      command.
+
+      -  For example, if you install Determined with ``helm install <release_name> ... --version
+         <X.Y.Z>`` but set ``detVersion: A.B.C``, the Determined version ``A.B.C`` is installed.
 
 -  ``masterPort``: The port at which the Determined master listens for connections on. (*Required*)
 
@@ -77,6 +94,25 @@
       PersistentVolumes is disabled, users must manually create a PersistentVolume that will match
       the PersistentVolumeClaim.
 
+   -  ``claimSuffix``: Optional configuration that defines the persistent volume claim name for the
+      Determined database. If not undefined, a new PVC is created, with the name
+      ``determined-db-pvc-$releaseName``. If specified, the provided value will be used as the
+      suffix to ``determined-db-pvc-``.
+
+   -  ``snapshotSuffix``: Optional configuration for naming the volume snapshot, which serves as a
+      backup of the Determined database's persistentVolume. If defined, Helm will create a snapshot
+      of the database during the next upgrade, creating a volumeSnapshot named
+      ``determined-db-snapsnot-$snapshotSuffix``. This **must** **not** match the name of an
+      existing persistent volume claim, such as ``determined-db-pvc-$releaseName``, because the
+      ``snapshotSuffix`` will be used to create a new persistent volume claim when restoring.
+
+   -  ``restoreSnapshotSuffix``: Optional configuration of the volumeSnapshot to restore from during
+      an upgrade. If this is set during an upgrade, a new persistentVolume will be created and
+      swapped into Determined's database by creating a new persistent volume claim named
+      ``determined-db-pvc-$restoreSnapshotSuffix``, restoring data from
+      ``determined-db-snapsnot-$restoreSnapshotSuffix``. This **must not** match the name of an
+      existing persistent volume claim (PVC), such as ``$releaseName``.
+
 -  ``checkpointStorage``: Specifies where model checkpoints will be stored. This can be overridden
    on a per-experiment basis in the :ref:`experiment-config-reference`. A checkpoint contains the
    architecture and weights of the model being trained. Determined currently supports several kinds
@@ -86,11 +122,11 @@
    -  ``type: gcs``: Checkpoints are stored on Google Cloud Storage (GCS). Authentication is done
       using GCP's "`Application Default Credentials
       <https://googleapis.dev/python/google-api-core/latest/auth.html>`__" approach. When using
-      Determined inside Google Kubernetes Engine (GCE), the simplest approach is to ensure that the
+      Determined inside Google Kubernetes Engine (GKE), the simplest approach is to ensure that the
       nodes used by Determined are running in a service account that has the "Storage Object Admin"
       role on the GCS bucket being used for checkpoints. As an alternative (or when running outside
       of GKE), you can add the appropriate `service account credentials
-      <https://cloud.google.com/docs/authentication/provide-credentials-adc#attached-sa>`__ to your
+      <https://cloud.google.com/docs/authentication/set-up-adc-attached-service-account>`__ to your
       container (e.g., via a bind-mount), and then set the ``GOOGLE_APPLICATION_CREDENTIALS``
       environment variable to the container path where the credentials are located. See
       :ref:`environment-variables` for more information on how to set environment variables in trial
@@ -155,6 +191,12 @@
    distributed experiments will launch with 4 GPUs per pod (with two pods on 8-GPU nodes).
    (*Required*)
 
+-  ``slotType``: Specifies the type of the slot that Determined will deploy. Valid options are
+   ``cpu`` for CPU training, ``gpu`` or ``cuda`` for Nvidia GPUs, and ``rocm`` for AMD GPUs.
+   Defaults to ``gpu``.
+
+   The ``rocm`` slot type is an experimental feature.
+
 -  ``masterCpuRequest``: The CPU requirements for the Determined master.
 
 -  ``masterMemRequest``: The memory requirements for the Determined master.
@@ -192,18 +234,21 @@
    -  ``gpuPodSpec``: Sets the default pod spec for all GPU tasks. See :ref:`custom-pod-specs` for
       details.
 
+   -  ``checkpointGcPodSpec``: Sets the custom pod spec for Checkpoint GC defaults. See
+      :ref:`custom-pod-specs` for details.
+
    -  ``cpuImage``: Sets the default Docker image for all non-GPU tasks. If a Docker image is
       specified in the :ref:`experiment config <exp-environment-image>` this default is overriden.
-      Defaults to: ``determinedai/pytorch-ngc-dev:8b3bea3``.
+      Defaults to: ``determinedai/pytorch-ngc-dev:0736b6d``.
 
    -  ``startupHook``: An optional inline script that will be executed as part of task set up.
 
    -  ``gpuImage``: Sets the default Docker image for all GPU tasks. If a Docker image is specified
       in the :ref:`experiment config <exp-environment-image>` this default is overriden. Defaults
-      to: ``determinedai/pytorch-ngc-dev:8b3bea3``.
+      to: ``determinedai/pytorch-ngc-dev:0736b6d``.
 
    -  ``logPolicies``: Sets log policies for trials. For details, visit :ref:`log_policies
-      <experiment-config-min-validation-period>`.
+      <config-log-policies>`.
 
       .. code:: yaml
 
@@ -216,6 +261,10 @@
 
 -  ``imagePullSecretName``: Specifies the image pull secret for pulling the Determined master image.
    Required when using the enterprise edition.
+
+-  ``masterService``: Specifies the configuration applied to the service for the Determined master.
+
+   -  ``annotations``: Enables adding custom annotations to the Determined master service.
 
 -  ``telemetry``: Specifies whether we collect anonymous information about the usage of Determined.
 
@@ -231,7 +280,7 @@
    any HTTP traffic. The default timeout is 300 (5 minutes).
 
 -  ``initialUserPassword``: Specifies a string containing the default password for the admin and
-   determined user accounts.
+   determined user accounts. (*Required*)
 
 -  ``defaultPassword``: (*Deprecated*) Specifies a string containing the default password for the
    admin and determined user accounts. Use ``initialUserPassword`` instead.
@@ -248,9 +297,8 @@
 
 -  ``defaultScheduler``: Configures the default scheduler that Determined will use. Currently
    supports the ``coscheduler`` option, which enables the `lightweight coscheduling plugin
-   <https://github.com/kubernetes-sigs/scheduler-plugins/tree/release-1.18/pkg/coscheduling>`__, and
-   the ``preemption`` option, which enables a priority-based preemption scheduler. Unless specified
-   as ``coscheduler``, Determined will use the default Kubernetes scheduler.
+   <https://github.com/kubernetes-sigs/scheduler-plugins/tree/release-1.18/pkg/coscheduling>`__.
+   Unless specified as ``coscheduler``, Determined will use the default Kubernetes scheduler.
 
 -  ``resourcePools``: This section contains the names of the resource pools and their linked
    namespaces. Maps to the ``resource_pools`` section from the :ref:`master configuration
@@ -286,5 +334,18 @@
 
    -  ``schedule``: Specifies the schedule for cleaning up logs. Can be provided as a cron
       expression or a duration string.
+
+-  ``resourceManager``: Specifies some configuration options for the (default) Determined resource
+   manager. A default configuration is provided in the ``values.yaml`` file.
+
+   -  ``defaultNamespace``: The namespace to which a workspace's workloads get sent by default if
+      the workload does not have an explicit :ref:`workspace-namespace binding <k8s-resource-caps>`.
+      Maps to :ref:`resource_manager.default_namespace <master-config-default-namespace>` in the
+      master configuration. If left unspecified, ``resource_manager.default_namespace`` defaults to
+      the Kubernetes ``default`` namespace.
+
+   -  ``clusterName``: The name associated with the (default) resource manager/cluster. (*Required
+      when using multiple resource managers*). Maps to :ref:`resource_manager.cluster_name
+      <master-config-rm-cluster-name>` in the master configuration.
 
 .. include:: ../../_shared/note-dtrain-learn-more.txt

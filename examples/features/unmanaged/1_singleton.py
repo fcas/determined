@@ -8,20 +8,16 @@ from determined.experimental import core_v2
 def main():
     core_v2.init(
         # For managed experiments, will be overridden by the yaml config.
-        # Future: merge this and yaml configs field-by-field at runtime.
-        defaults=core_v2.DefaultConfig(
+        config=core_v2.Config(
             name="unmanaged-1-singleton",
             # labels=["some", "set", "of", "labels"],
             # description="some description",
+            # workspace="...",
+            # project="...",
         ),
-        # `UnmanagedConfig` values will not get merged, and will only be used in the unmanaged mode.
-        # unmanaged=core_v2.UnmanagedConfig(
-        #   workspace="...",
-        #   project="...",
-        # )
     )
-
-    for i in range(100):
+    max_length = 100
+    for i in range(max_length):
         print(f"training loss: {random.random()}")
 
         core_v2.train.report_training_metrics(steps_completed=i, metrics={"loss": random.random()})
@@ -32,6 +28,7 @@ def main():
             core_v2.train.report_validation_metrics(
                 steps_completed=i, metrics={"loss": random.random()}
             )
+            core_v2.train.report_progress(i / float(max_length))
 
     core_v2.close()
 

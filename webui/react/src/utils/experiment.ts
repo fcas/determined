@@ -1,3 +1,4 @@
+import { FilterFormSetWithoutId, Operator } from 'components/FilterForm/components/type';
 import {
   cancellableRunStates,
   deletableRunStates,
@@ -9,6 +10,7 @@ import {
 import {
   AnyTask,
   BulkExperimentItem,
+  ContinuableNonSingleSearcherName,
   ExperimentAction,
   ExperimentBase,
   ExperimentPermissionsArgs,
@@ -20,6 +22,7 @@ import {
   ProjectExperiment,
   RawJson,
   RunState,
+  SelectionType,
   TrialDetails,
   TrialHyperparameters,
   WorkspacePermissionsArgs,
@@ -83,8 +86,6 @@ const stepRemovalTranslations = [
   { oldName: 'min_validation_period' },
   { newName: 'searcher.budget', oldName: 'searcher.step_budget' },
   { newName: 'searcher.length_per_round', oldName: 'searcher.steps_per_round' },
-  { newName: 'searcher.max_length', oldName: 'searcher.max_steps' },
-  { newName: 'searcher.max_length', oldName: 'searcher.target_trial_steps' },
 ];
 
 const getLengthFromStepCount = (config: RawJson, stepCount: number): [string, number] => {
@@ -136,11 +137,18 @@ const resumableSearcherTypes: ExperimentSearcherName[] = [
 export const canExperimentContinueTrial = (
   experiment: ProjectExperiment,
   trial?: TrialDetails,
-): boolean =>
-  !experiment.archived &&
-  !experiment.parentArchived &&
-  (!!trial || experiment?.numTrials === 1) &&
-  terminalRunStates.has(experiment.state);
+): boolean => {
+  if (experiment.archived || experiment.parentArchived) return false;
+  if ((!!trial || experiment?.numTrials === 1) && terminalRunStates.has(experiment.state))
+    return true;
+  // multi trial experiment can continue if it's terminated but not completed, and the searcher type is grid or random.
+  if (
+    ContinuableNonSingleSearcherName.has(experiment.config?.searcher.name || 'custom') &&
+    erroredRunStates.has(experiment.state)
+  )
+    return true;
+  return false;
+};
 
 const experimentCheckers: Record<ExperimentAction, ExperimentChecker> = {
   /**
@@ -316,18 +324,6 @@ export const getExperimentName = (config: RawJson): string => {
   return config.name || '';
 };
 
-// For unitless searchers, this will return undefined.
-export const getMaxLengthType = (config: RawJson): string | undefined => {
-  return (Object.keys(config.searcher?.max_length || {}) || [])[0];
-};
-
-export const getMaxLengthValue = (config: RawJson): number => {
-  const value = (Object.keys(config.searcher?.max_length || {}) || [])[0];
-  return value
-    ? parseInt(config.searcher?.max_length[value])
-    : parseInt(config.searcher?.max_length);
-};
-
 export const trialContinueConfig = (
   experimentConfig: RawJson,
   trialHparams: TrialHyperparameters,
@@ -341,12 +337,69 @@ export const trialContinueConfig = (
     hyperparameters: trialHParamsToExperimentHParams(trialHparams),
     project: projectName,
     searcher: {
-      max_length: experimentConfig.searcher.max_length,
       metric: experimentConfig.searcher.metric,
       name: 'single',
       smaller_is_better: experimentConfig.searcher.smaller_is_better,
       source_trial_id: trialId,
+      ...(experimentConfig.searcher.max_length !== undefined && {
+        max_length: experimentConfig.searcher.max_length,
+      }),
     },
     workspace: workspaceName,
   };
+};
+
+const idToFilter = (operator: Operator, id: number) =>
+  ({
+    columnName: 'id',
+    kind: 'field',
+    location: 'LOCATION_TYPE_EXPERIMENT',
+    operator,
+    type: 'COLUMN_TYPE_NUMBER',
+    value: id,
+  }) as const;
+
+export const getIdsFilter = (
+  filterFormSet: FilterFormSetWithoutId,
+  selection: SelectionType,
+): FilterFormSetWithoutId | undefined => {
+  const filterGroup: FilterFormSetWithoutId['filterGroup'] =
+    selection.type === 'ALL_EXCEPT'
+      ? {
+          children: [
+            filterFormSet.filterGroup,
+            {
+              children: selection.exclusions.map(idToFilter.bind(this, '!=')),
+              conjunction: 'and',
+              kind: 'group',
+            },
+          ],
+          conjunction: 'and',
+          kind: 'group',
+        }
+      : {
+          children: selection.selections.map(idToFilter.bind(this, '=')),
+          conjunction: 'or',
+          kind: 'group',
+        };
+
+  const filter: FilterFormSetWithoutId = {
+    ...filterFormSet,
+    filterGroup: {
+      children: [
+        filterGroup,
+        {
+          columnName: 'searcherType',
+          kind: 'field',
+          location: 'LOCATION_TYPE_EXPERIMENT',
+          operator: '!=',
+          type: 'COLUMN_TYPE_TEXT',
+          value: 'single',
+        } as const,
+      ],
+      conjunction: 'and',
+      kind: 'group',
+    },
+  };
+  return filter;
 };

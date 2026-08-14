@@ -45,13 +45,13 @@ stages:
 
         resource_manager:
           type: kubernetes
-          namespace: default
+          default_namespace: default
           max_slots_per_pod: 1
           slot_type: "cpu"
           slot_resource_requests:
             cpu: 1
           kubeconfig_path: ~/.kube/config
-          determined_master_ip: $DOCKER_LOCALHOST
+          determined_master_host: $DOCKER_LOCALHOST
           determined_master_port: 8080
 
 # Example custom stage running the coscheduler in a docker container.  In real

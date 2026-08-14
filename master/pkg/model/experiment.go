@@ -460,6 +460,7 @@ type Trial struct {
 	RunnerState           string         `db:"runner_state"`
 	LastActivity          *time.Time     `db:"last_activity"`
 	LogRetentionDays      *int16         `db:"log_retention_days"`
+	Metadata              map[string]any `db:"metadata" bun:"metadata"`
 }
 
 // ToRunAndTrialV2 converts a trial to a run.
@@ -480,6 +481,7 @@ func (t *Trial) ToRunAndTrialV2(experimentsProjectID int) (*Run, *TrialV2) {
 		RunnerState:           t.RunnerState,
 		LastActivity:          t.LastActivity,
 		LogRetentionDays:      t.LogRetentionDays,
+		Metadata:              t.Metadata,
 	}
 	v2 := &TrialV2{
 		RunID:     t.ID,
@@ -518,6 +520,8 @@ type Run struct {
 	RunnerState           string         `db:"runner_state"`
 	LastActivity          *time.Time     `db:"last_activity"`
 	LogRetentionDays      *int16         `db:"log_retention_days"`
+	Metadata              map[string]any `db:"metadata" bun:"metadata,scanonly"`
+	LocalID               int            `db:"local_id"`
 }
 
 // RunTaskID represents a row from the `run_id_task_id` table.
@@ -526,6 +530,26 @@ type RunTaskID struct {
 
 	RunID  int
 	TaskID TaskID
+}
+
+// RunHparam represents a row from the `run_hparams` table.
+type RunHparam struct {
+	bun.BaseModel `bun:"table:run_hparams"`
+
+	RunID     int      `bun:"run_id"`
+	HParam    string   `bun:"hparam"`
+	NumberVal *float64 `bun:"number_val"`
+	TextVal   *string  `bun:"text_val"`
+	BoolVal   *bool    `bun:"bool_val"`
+}
+
+// ProjectHparam represents a row from the `project_hparams` table.
+type ProjectHparam struct {
+	bun.BaseModel `bun:"table:project_hparams"`
+
+	ProjectID int    `db:"project_id" bun:"project_id"`
+	HParam    string `bun:"hparam"`
+	Type      string `bun:"type"`
 }
 
 // NewTrial creates a new trial in the specified state.  Note that the trial ID

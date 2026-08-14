@@ -41,6 +41,7 @@ total_agg AS (
         end_time >= const.target_date
         AND end_time < (const.target_date + interval '1 day')
         AND event_type = 'QUEUED'
+        AND task_stats.start_time != '0001-01-01 00:00:00+00:00'::TIMESTAMPTZ
 ),
 
 all_aggs AS (
@@ -56,7 +57,7 @@ all_aggs AS (
 INSERT INTO
 resource_aggregates (
     SELECT
-        const.target_date AS date,
+        timezone('Etc/UTC', const.target_date) AS date,
         all_aggs.*
     FROM
         all_aggs, const

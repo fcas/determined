@@ -26,6 +26,7 @@ const (
 // DispatcherResourceManagerConfig is the object that stores the values of
 // the "resource_manager" section of "tools/devcluster.yaml".
 type DispatcherResourceManagerConfig struct {
+	ClusterName                string       `json:"cluster_name"`
 	MasterHost                 string       `json:"master_host"`
 	MasterPort                 int          `json:"master_port"`
 	LauncherHost               string       `json:"host"`
@@ -54,6 +55,7 @@ type DispatcherResourceManagerConfig struct {
 	DefaultComputeResourcePool *string `json:"default_compute_resource_pool"`
 	JobProjectSource           *string `json:"job_project_source"`
 
+	// Deprecated: use ClusterName.
 	Name     string            `json:"name"`
 	Metadata map[string]string `json:"metadata"`
 
@@ -80,7 +82,6 @@ func (c DispatcherResourceManagerConfig) Validate() []error {
 	if c.SlotType != nil {
 		switch *c.SlotType {
 		case device.CPU, device.CUDA, device.ROCM:
-			break
 		default:
 			return []error{fmt.Errorf(
 				"invalid slot_type '%s'.  Specify one of cuda, rocm, or cpu", *c.SlotType)}

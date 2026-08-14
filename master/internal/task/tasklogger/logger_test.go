@@ -96,7 +96,6 @@ func TestTaskLoggerConcurrent(t *testing.T) {
 
 	var in []*model.TaskLog
 	for i := 0; i < 10000; i++ {
-		i := i
 		in = append(in, &model.TaskLog{ID: &i})
 	}
 
@@ -134,7 +133,7 @@ func TestTaskLoggerConcurrent(t *testing.T) {
 			return false
 		},
 	)
-	require.Equal(t, len(written), len(in))
+	require.Len(t, written, len(in))
 	require.ElementsMatch(t, written, in)
 }
 

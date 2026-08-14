@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/determined-ai/determined/master/internal/config"
 	"github.com/determined-ai/determined/master/internal/sproto"
 	"github.com/determined-ai/determined/master/pkg/device"
 	"github.com/determined-ai/determined/master/pkg/model"
@@ -15,6 +16,9 @@ import (
 	"github.com/determined-ai/determined/master/pkg/tasks"
 
 	k8sV1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	alphaGatewayTyped "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 func TestGetDetContainerSecurityContext(t *testing.T) {
@@ -59,6 +63,100 @@ func TestGetDetContainerSecurityContext(t *testing.T) {
 	require.Nil(t, secContext.RunAsUser)
 	require.Nil(t, secContext.RunAsGroup)
 	require.Equal(t, expectedCaps, secContext.Capabilities.Add)
+}
+
+func TestConfigureProxyResources(t *testing.T) {
+	j := &job{
+		namespace: "podnamespace",
+		jobName:   "sharedName",
+	}
+	taskSpec := &tasks.TaskSpec{
+		AllocationID: "allocID",
+	}
+	require.Nil(t, j.configureProxyResources(taskSpec))
+
+	j.req = &sproto.AllocateRequest{
+		ProxyPorts: []*sproto.ProxyPortConfig{
+			{
+				ServiceID: "test_unused",
+				Port:      12345,
+				ProxyTCP:  false, // We still want a TCP proxy.
+			},
+		},
+	}
+	j.internalTaskGWConfig = &config.InternalTaskGatewayConfig{
+		GatewayName:      "gatewayname",
+		GatewayNamespace: "gatewaynamespace",
+	}
+
+	svc := &k8sV1.Service{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:      j.jobName + "-0",
+			Namespace: "podnamespace",
+			Labels:    map[string]string{determinedLabel: "allocID"},
+			Annotations: map[string]string{
+				jobNameAnnotation: j.jobName,
+			},
+		},
+		Spec: k8sV1.ServiceSpec{
+			Ports: []k8sV1.ServicePort{
+				{
+					Protocol: k8sV1.ProtocolTCP,
+					Port:     12345,
+				},
+			},
+			Selector: map[string]string{determinedLabel: "allocID"},
+			Type:     k8sV1.ServiceTypeClusterIP,
+		},
+	}
+
+	tcp := &alphaGatewayTyped.TCPRoute{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:      j.jobName + "-0",
+			Namespace: "podnamespace",
+			Labels:    map[string]string{determinedLabel: "allocID"},
+			Annotations: map[string]string{
+				jobNameAnnotation: j.jobName,
+			},
+		},
+		Spec: alphaGatewayTyped.TCPRouteSpec{
+			CommonRouteSpec: alphaGatewayTyped.CommonRouteSpec{
+				ParentRefs: []alphaGatewayTyped.ParentReference{
+					{
+						Namespace: ptrs.Ptr(alphaGatewayTyped.Namespace("gatewaynamespace")),
+						Name:      alphaGatewayTyped.ObjectName("gatewayname"),
+						Port:      ptrs.Ptr(alphaGatewayTyped.PortNumber(12345)),
+						SectionName: ptrs.Ptr(alphaGatewayTyped.SectionName(
+							generateListenerName(12345),
+						)),
+					},
+				},
+			},
+			Rules: []alphaGatewayTyped.TCPRouteRule{
+				{
+					BackendRefs: []alphaGatewayTyped.BackendRef{
+						{
+							BackendObjectReference: alphaGatewayTyped.BackendObjectReference{
+								Name: alphaGatewayTyped.ObjectName(j.jobName + "-0"),
+								Kind: ptrs.Ptr(alphaGatewayTyped.Kind("Service")),
+								Port: ptrs.Ptr(alphaGatewayTyped.PortNumber(12345)),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	listener := createListenerForPod(12345)
+
+	require.Equal(t, []gatewayProxyResource{
+		{
+			serviceSpec:     svc,
+			tcpRouteSpec:    tcp,
+			gatewayListener: listener,
+		},
+	}, (j.configureProxyResources(taskSpec))([]int{12345}))
 }
 
 func TestAddNodeDisabledAffinityToPodSpec(t *testing.T) {
@@ -134,23 +232,23 @@ func TestAddNodeDisabledAffinityToPodSpec(t *testing.T) {
 		MatchExpressions, nodeSelectorTerm)
 
 	// Test idempotency.
-	copy := p.DeepCopy()
+	copyPod := p.DeepCopy()
 	addNodeDisabledAffinityToPodSpec(p, "cluster-id")
 	addNodeDisabledAffinityToPodSpec(p, "cluster-id")
-	require.Equal(t, copy, p)
+	require.Equal(t, copyPod, p)
 }
 
 func TestAddDisallowedNodesToPodSpec(t *testing.T) {
 	p := &k8sV1.Pod{}
 	addNodeDisabledAffinityToPodSpec(p, "cluster-id")
 
-	copy := p.DeepCopy()
+	copyPod := p.DeepCopy()
 
 	// No block list adds anything.
 	addDisallowedNodesToPodSpec(&sproto.AllocateRequest{
 		BlockedNodes: nil,
 	}, p)
-	require.Equal(t, copy, p)
+	require.Equal(t, copyPod, p)
 
 	addDisallowedNodesToPodSpec(&sproto.AllocateRequest{
 		BlockedNodes: []string{"a1", "a2"},
@@ -176,6 +274,38 @@ func TestAddDisallowedNodesToPodSpec(t *testing.T) {
 	}
 }
 
+func TestDetProxyThroughGatewayEnv(t *testing.T) {
+	env := expconf.EnvironmentConfig{
+		RawEnvironmentVariables: &expconf.EnvironmentVariablesMap{
+			RawCPU: []string{},
+		},
+	}
+
+	t.Run("with gateway", func(t *testing.T) {
+		j := job{
+			internalTaskGWConfig: &config.InternalTaskGatewayConfig{},
+		}
+
+		actual, err := j.configureEnvVars(make(map[string]string), env, device.CPU)
+		require.NoError(t, err)
+		require.Contains(t, actual, k8sV1.EnvVar{Name: "DET_PROXY_THROUGH_GATEWAY", Value: "true"})
+	})
+
+	t.Run("without gateway", func(t *testing.T) {
+		j := job{
+			internalTaskGWConfig: nil,
+		}
+
+		actual, err := j.configureEnvVars(make(map[string]string), env, device.CPU)
+		require.NoError(t, err)
+		var keys []string
+		for _, a := range actual {
+			keys = append(keys, a.Name)
+		}
+		require.NotContains(t, keys, "DET_PROXY_THROUGH_GATEWAY")
+	})
+}
+
 func TestLaterEnvironmentVariablesGetSet(t *testing.T) {
 	dontBe := k8sV1.EnvVar{Name: "var", Value: "dontbe"}
 	shouldBe := k8sV1.EnvVar{Name: "var", Value: "shouldbe"}
@@ -188,7 +318,7 @@ func TestLaterEnvironmentVariablesGetSet(t *testing.T) {
 		},
 	}
 
-	p := pod{}
+	p := job{}
 	actual, err := p.configureEnvVars(make(map[string]string), env, device.CPU)
 	require.NoError(t, err)
 	require.NotContains(t, actual, dontBe, "earlier variable set")
@@ -213,7 +343,7 @@ func TestAllPrintableCharactersInEnv(t *testing.T) {
 		},
 	}
 
-	p := pod{}
+	p := job{}
 	actual, err := p.configureEnvVars(make(map[string]string), env, device.CPU)
 	require.NoError(t, err)
 	require.Contains(t, actual, k8sV1.EnvVar{Name: "test", Value: expectedValue})
@@ -250,10 +380,113 @@ func TestValidatePodLabelValues(t *testing.T) {
 	}
 }
 
+func TestDetMasterEnvVar(t *testing.T) {
+	cases := []struct {
+		name            string
+		masterTLSConfig model.TLSClientConfig
+		masterScheme    string
+		expected        string
+	}{
+		{
+			"tls off",
+			model.TLSClientConfig{Enabled: false},
+			"", "http://example.com:1234",
+		},
+		{
+			"tls on",
+			model.TLSClientConfig{Enabled: true},
+			"", "https://example.com:1234",
+		},
+		{
+			"tls off scheme https",
+			model.TLSClientConfig{Enabled: false},
+			"https", "https://example.com:1234",
+		},
+		{
+			"tls on scheme https",
+			model.TLSClientConfig{Enabled: true},
+			"https", "https://example.com:1234",
+		},
+		{
+			"tls on scheme http",
+			model.TLSClientConfig{Enabled: true},
+			"http", "http://example.com:1234",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			env := expconf.EnvironmentConfig{
+				RawEnvironmentVariables: &expconf.EnvironmentVariablesMap{
+					RawCPU: []string{},
+				},
+			}
+
+			j := &job{
+				masterHost:      "example.com",
+				masterPort:      1234,
+				masterScheme:    c.masterScheme,
+				masterTLSConfig: c.masterTLSConfig,
+			}
+
+			envVars, err := j.configureEnvVars(make(map[string]string), env, device.CPU)
+			require.NoError(t, err)
+			require.Contains(t, envVars, k8sV1.EnvVar{Name: "DET_MASTER", Value: c.expected})
+		})
+	}
+}
+
+func TestConfigureResourcesRequirements(t *testing.T) {
+	cases := []struct {
+		deviceType   device.Type
+		resourceName k8sV1.ResourceName
+		quantity     resource.Quantity
+	}{
+		{
+			deviceType:   device.CPU,
+			resourceName: "cpu",
+			quantity:     *resource.NewMilliQuantity(3000, resource.DecimalSI),
+		},
+		{
+			deviceType:   device.CUDA,
+			resourceName: resourceTypeNvidia,
+			quantity:     *resource.NewQuantity(3, resource.DecimalSI),
+		},
+		{
+			deviceType:   device.ROCM,
+			resourceName: resourceTypeAMD,
+			quantity:     *resource.NewQuantity(3, resource.DecimalSI),
+		},
+	}
+	for _, c := range cases {
+		t.Run(string(c.deviceType), func(t *testing.T) {
+			j := &job{
+				slotType:             c.deviceType,
+				slotsPerPod:          3,
+				slotResourceRequests: config.PodSlotResourceRequests{CPU: 1.0},
+			}
+
+			expected := k8sV1.ResourceRequirements{
+				Limits: map[k8sV1.ResourceName]resource.Quantity{
+					c.resourceName: c.quantity,
+				},
+				Requests: map[k8sV1.ResourceName]resource.Quantity{
+					c.resourceName: c.quantity,
+				},
+			}
+			require.Equal(t, expected, j.configureResourcesRequirements())
+		})
+	}
+}
+
 func TestDeterminedLabels(t *testing.T) {
 	// Fill out task spec.
 	taskSpec := tasks.TaskSpec{
-		Owner:       createUser(),
+		Owner: &model.User{
+			ID:       1,
+			Username: "determined",
+			Active:   true,
+			Admin:    false,
+		},
 		Workspace:   "test-workspace",
 		TaskType:    model.TaskTypeCommand,
 		TaskID:      model.NewTaskID().String(),
@@ -264,12 +497,9 @@ func TestDeterminedLabels(t *testing.T) {
 		},
 	}
 
-	p := pod{
+	p := job{
 		req: &sproto.AllocateRequest{
 			ResourcePool: "test-rp",
-		},
-		submissionInfo: &podSubmissionInfo{
-			taskSpec: taskSpec,
 		},
 	}
 
@@ -282,13 +512,16 @@ func TestDeterminedLabels(t *testing.T) {
 		taskTypeLabel:     string(taskSpec.TaskType),
 		taskIDLabel:       taskSpec.TaskID,
 		containerIDLabel:  taskSpec.ContainerID,
+		allocationIDLabel: taskSpec.AllocationID,
 	}
 	for k, v := range taskSpec.ExtraPodLabels {
 		expectedLabels[labelPrefix+k] = v
 	}
 
-	spec := p.configurePodSpec(make([]k8sV1.Volume, 1), k8sV1.Container{},
-		k8sV1.Container{}, make([]k8sV1.Container, 1), &k8sV1.Pod{}, "scheduler")
+	spec := p.configureJobSpec(
+		&taskSpec, make([]k8sV1.Volume, 1), k8sV1.Container{},
+		k8sV1.Container{}, make([]k8sV1.Container, 1), &k8sV1.Pod{}, "scheduler",
+	)
 
 	// Confirm pod spec has required labels.
 	require.NotNil(t, spec)

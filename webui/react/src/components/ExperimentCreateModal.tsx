@@ -9,6 +9,7 @@ import yaml from 'js-yaml';
 import _ from 'lodash';
 import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
 
+import useFeature from 'hooks/useFeature';
 import { paths } from 'routes/utils';
 import { createExperiment } from 'services/api';
 import { V1LaunchWarning } from 'services/api-ts-sdk';
@@ -24,25 +25,43 @@ import handleError, {
 import {
   FULL_CONFIG_BUTTON_TEXT,
   getExperimentName,
-  getMaxLengthType,
-  getMaxLengthValue,
   SIMPLE_CONFIG_BUTTON_TEXT,
   trialContinueConfig,
   upgradeConfig,
 } from 'utils/experiment';
 import { routeToReactUrl } from 'utils/routes';
+import { capitalize } from 'utils/string';
 
 const FORM_ID = 'create-experiment-form';
 
 export const CreateExperimentType = {
-  ContinueTrial: 'Continue Trial',
-  Fork: 'Fork',
+  ContinueTrial: 'CONTINUE',
+  Fork: 'FORK',
 } as const;
+
+const ExperimentActionCopyMap = {
+  [CreateExperimentType.ContinueTrial]: 'Continue Trial',
+  [CreateExperimentType.Fork]: 'Fork',
+};
+
+const ExperimentEntityCopyMap = {
+  experiment: 'experiment',
+  trial: 'trial',
+};
+
+const RunActionCopyMap = {
+  [CreateExperimentType.ContinueTrial]: 'Continue Run',
+  [CreateExperimentType.Fork]: 'Fork',
+};
+
+const RunEntityCopyMap = {
+  experiment: 'search',
+  trial: 'run',
+};
 
 export type CreateExperimentType = ValueOf<typeof CreateExperimentType>;
 
 const EXPERIMENT_NAME = 'name';
-const MAX_LENGTH = 'maxLength';
 
 interface Props {
   onClose?: () => void;
@@ -83,12 +102,20 @@ const ExperimentCreateModalComponent = ({
   const [registryCredentials, setRegistryCredentials] = useState<RawJson>();
   const [modalState, setModalState] = useState<ModalState>(DEFAULT_MODAL_STATE);
   const [disabled, setDisabled] = useState<boolean>(true);
+  const f_flat_runs = useFeature().isOn('flat_runs');
+
+  const [actionCopy, entityCopy] = useMemo(() => {
+    const [actionCopyMap, entityCopyMap] = f_flat_runs
+      ? [RunActionCopyMap, RunEntityCopyMap]
+      : [ExperimentActionCopyMap, ExperimentEntityCopyMap];
+    return [actionCopyMap[modalState.type], entityCopyMap];
+  }, [f_flat_runs, modalState.type]);
 
   const isFork = type === CreateExperimentType.Fork;
 
-  const titleLabel = isFork ? `Fork Experiment ${experiment.id}` : `Continue Trial ${trial?.id}`;
-
-  const requiredFields = useMemo(() => [EXPERIMENT_NAME, MAX_LENGTH], []);
+  const titleLabel = isFork
+    ? `Fork ${capitalize(entityCopy.experiment)} ${experiment.id}`
+    : `Continue ${capitalize(entityCopy.trial)} ${trial?.id}`;
 
   const handleModalClose = () => {
     setModalState(DEFAULT_MODAL_STATE);
@@ -104,14 +131,6 @@ const ExperimentCreateModalComponent = ({
       if (!prev.isAdvancedMode) {
         prev.config.name = values[EXPERIMENT_NAME];
       }
-      if (values[MAX_LENGTH]) {
-        const maxLengthType = getMaxLengthType(prev.config);
-        if (maxLengthType) {
-          prev.config.searcher.max_length[maxLengthType] = parseInt(values[MAX_LENGTH]);
-        } else {
-          prev.config.searcher.max_length = parseInt(values[MAX_LENGTH]);
-        }
-      }
       prev.configString = yaml.dump(prev.config);
       return prev;
     });
@@ -119,7 +138,7 @@ const ExperimentCreateModalComponent = ({
     const hasError = hasErrors(form);
     const values = form.getFieldsValue();
     const missingRequiredFields = Object.entries(values).some(([key, value]) => {
-      return requiredFields.includes(key) && !value;
+      return EXPERIMENT_NAME === key && !value;
     });
     setDisabled(hasError || missingRequiredFields);
   };
@@ -159,15 +178,7 @@ const ExperimentCreateModalComponent = ({
     if (modalState.isAdvancedMode && form) {
       try {
         const newConfig = (yaml.load(modalState.configString) || {}) as RawJson;
-        const isFork = modalState.type === CreateExperimentType.Fork;
-
-        form.setFields([
-          { name: 'name', value: getExperimentName(newConfig) },
-          {
-            name: 'maxLength',
-            value: !isFork ? getMaxLengthValue(newConfig) : undefined,
-          },
-        ]);
+        form.setFields([{ name: 'name', value: getExperimentName(newConfig) }]);
       } catch (e) {
         handleError(e, { publicMessage: 'failed to load previous yaml config' });
       }
@@ -180,19 +191,7 @@ const ExperimentCreateModalComponent = ({
   const getConfigFromForm = useCallback(
     (config: RawJson) => {
       if (!form) return yaml.dump(config);
-
-      const formValues = form.getFieldsValue();
       const newConfig = structuredClone(config);
-
-      if (formValues[MAX_LENGTH]) {
-        const maxLengthType = getMaxLengthType(newConfig);
-        if (maxLengthType === undefined) {
-          // Unitless searcher config.
-          newConfig.searcher.max_length = parseInt(formValues[MAX_LENGTH]);
-        } else {
-          newConfig.searcher.max_length = { [maxLengthType]: parseInt(formValues[MAX_LENGTH]) };
-        }
-      }
       return yaml.dump(newConfig);
     },
     [form],
@@ -226,7 +225,7 @@ const ExperimentCreateModalComponent = ({
         const newPath = paths.experimentDetails(newExperiment.id);
         routeToReactUrl(paths.reload(newPath));
       } catch (e) {
-        let errorMessage = `Unable to ${modalState.type.toLowerCase()} with the provided config.`;
+        let errorMessage = `Unable to ${actionCopy.toLowerCase()} with the provided config.`;
         if (isError(e) && e.name === 'YAMLException') {
           errorMessage = e.message;
         } else if (isDetError(e)) {
@@ -239,7 +238,7 @@ const ExperimentCreateModalComponent = ({
         throw new DetError(errorMessage, { publicMessage: errorMessage, silent: true });
       }
     },
-    [modalState],
+    [actionCopy, modalState],
   );
 
   const handleSubmit = async () => {
@@ -282,7 +281,7 @@ const ExperimentCreateModalComponent = ({
         experiment.projectName,
       );
       config.description =
-        `Continuation of trial ${trial.id}, experiment ${experiment.id}` +
+        `Continuation of ${entityCopy.trial} ${trial.id}, ${entityCopy.experiment} ${experiment.id}` +
         (config.description ? ` (${config.description})` : '');
     } else if (isFork) {
       if (config.description) config.description = `Fork of ${config.description}`;
@@ -314,8 +313,8 @@ const ExperimentCreateModalComponent = ({
       };
       return _.isEqual(prev, newModalState) ? prev : newModalState;
     });
-    form.validateFields(requiredFields); // initial disabled state set here, gets updated later in handleFieldsChange
-  }, [experiment, trial, type, isFork, form, requiredFields]);
+    form.validateFields([EXPERIMENT_NAME]); // initial disabled state set here, gets updated later in handleFieldsChange
+  }, [entityCopy, experiment, trial, type, isFork, form]);
 
   if (!experiment || (!isFork && !trial)) return <></>;
 
@@ -358,29 +357,13 @@ const ExperimentCreateModalComponent = ({
           onFieldsChange={handleFieldsChange}>
           <Form.Item
             initialValue={experiment.name}
-            label="Experiment name"
+            label={`${entityCopy.experiment} name`}
             name={EXPERIMENT_NAME}
-            rules={[{ message: 'Please provide a new experiment name.', required: true }]}>
+            rules={[
+              { message: `Please provide a new ${entityCopy.experiment} name.`, required: true },
+            ]}>
             <Input />
           </Form.Item>
-          {!isFork && (
-            <Form.Item
-              label={`Max ${getMaxLengthType(modalState.config) || 'length'}`}
-              name={MAX_LENGTH}
-              rules={[
-                {
-                  required: true,
-                  validator: (_rule, value) => {
-                    let errorMessage = '';
-                    if (!value) errorMessage = 'Please provide a max length.';
-                    if (value < 1) errorMessage = 'Max length must be at least 1.';
-                    return errorMessage ? Promise.reject(errorMessage) : Promise.resolve();
-                  },
-                },
-              ]}>
-              <Input type="number" />
-            </Form.Item>
-          )}
         </Form>
         <div>
           <Button onClick={toggleMode}>

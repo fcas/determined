@@ -1,53 +1,50 @@
-import { Switch } from 'e2e/models/ant/Switch';
-import { BaseComponent } from 'e2e/models/BaseComponent';
-import { Modal } from 'e2e/models/hew/Modal';
+import { BaseComponent } from 'playwright-page-model-base/BaseComponent';
+
+import { Modal } from 'e2e/models/common/hew/Modal';
+import { Toggle } from 'e2e/models/common/hew/Toggle';
 
 /**
- * Returns a representation of the Workspace create/edit modal component.
- * This constructor represents the contents in src/components/Page.tsx.
- * @param {object} obj
- * @param {implementsGetLocator} obj.parent - The parent used to locate this Page
- * @param {string} [obj.selector] - Used instead of `defaultSelector`
+ * Represents the WorkspaceCreateModal component in src/components/WorkspaceCreateModal.tsx
  */
 export class WorkspaceCreateModal extends Modal {
   readonly workspaceName = new BaseComponent({
-    parent: this.body,
+    parent: this,
     selector: 'input[id="workspaceName"]',
   });
 
-  readonly useAgentUser = new Switch({
-    parent: this.body,
+  readonly useAgentUser = new Toggle({
+    parent: this,
     selector: '[data-testid="useAgentUser"]',
   });
   readonly agentUid = new BaseComponent({
-    parent: this.body,
+    parent: this,
     selector: 'input[id="agentUid"]',
   });
   readonly agentUser = new BaseComponent({
-    parent: this.body,
+    parent: this,
     selector: 'input[id="agentUser"]',
   });
 
-  readonly useAgentGroup = new Switch({
-    parent: this.body,
+  readonly useAgentGroup = new Toggle({
+    parent: this,
     selector: '[data-testid="useAgentGroup"]',
   });
   readonly agentGid = new BaseComponent({
-    parent: this.body,
+    parent: this,
     selector: 'input[id="agentGid"]',
   });
   readonly agentGroup = new BaseComponent({
-    parent: this.body,
+    parent: this,
     selector: 'input[id="agentGroup"]',
   });
 
-  readonly useCheckpointStorage = new Switch({
-    parent: this.body,
+  readonly useCheckpointStorage = new Toggle({
+    parent: this,
     selector: '[data-testid="useCheckpointStorage"]',
   });
   // We need more work on this to handle input well most likely since the code editor is complex
   readonly checkpointCodeEditor = new BaseComponent({
-    parent: this.body,
+    parent: this,
     selector: 'div.cm-editor',
   });
 }

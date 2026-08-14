@@ -22,11 +22,14 @@ const JupyterLabButton: React.FC<Props> = ({ enabled, workspace }: Props) => {
   } = useSettings<ShortcutSettings>(shortCutSettingsConfig);
 
   return (
-    <>
+    <div data-testid="jupyter-lab-button">
       {enabled ? (
-        <Tooltip content={shortcutToString(jupyterLabShortcut)}>
-          <Button onClick={JupyterLabModal.open}>Launch JupyterLab</Button>
-        </Tooltip>
+        <>
+          <Tooltip content={shortcutToString(jupyterLabShortcut)}>
+            <Button onClick={JupyterLabModal.open}>Launch JupyterLab</Button>
+          </Tooltip>
+          <JupyterLabModal.Component workspace={workspace} />
+        </>
       ) : (
         <Tooltip content="You do not have permission to launch JupyterLab" placement="leftBottom">
           <div>
@@ -34,8 +37,7 @@ const JupyterLabButton: React.FC<Props> = ({ enabled, workspace }: Props) => {
           </div>
         </Tooltip>
       )}
-      <JupyterLabModal.Component workspace={workspace} />
-    </>
+    </div>
   );
 };
 

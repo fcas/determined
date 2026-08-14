@@ -196,7 +196,7 @@ func (a *apiServer) isNTSCPermittedToLaunch(
 	}
 
 	w := &workspacev1.Workspace{}
-	notFoundErr := api.NotFoundErrs("workspace", fmt.Sprint(workspaceID), true)
+	notFoundErr := api.NotFoundErrs("workspace", strconv.Itoa(int(workspaceID)), true)
 	if err := a.m.db.QueryProto(
 		"get_workspace", w, workspaceID, user.ID,
 	); errors.Is(err, db.ErrNotFound) {
@@ -296,11 +296,11 @@ func (a *apiServer) LaunchNotebook(
 		"DET_TASK_TYPE":      string(model.TaskTypeNotebook),
 	}
 
-	OIDCPachydermEnvVars, err := a.getOIDCPachydermEnvVars(session)
+	oidcPachydermEnvVars, err := a.getOIDCPachydermEnvVars(session)
 	if err != nil {
 		return nil, err
 	}
-	maps.Copy(launchReq.Spec.Base.ExtraEnvVars, OIDCPachydermEnvVars)
+	maps.Copy(launchReq.Spec.Base.ExtraEnvVars, oidcPachydermEnvVars)
 
 	launchReq.Spec.Base.ExtraProxyPorts = append(launchReq.Spec.Base.ExtraProxyPorts,
 		expconf.ProxyPort{
@@ -358,10 +358,9 @@ func (a *apiServer) LaunchNotebook(
 	}
 
 	// Launch a Notebook.
-	genericCmd, err := command.DefaultCmdService.LaunchGenericCommand(
-		model.TaskTypeNotebook,
-		model.JobTypeNotebook,
-		launchReq)
+	genericCmd, err := command.DefaultCmdService.LaunchNotebookCommand(
+		launchReq,
+		user)
 	if err != nil {
 		return nil, err
 	}

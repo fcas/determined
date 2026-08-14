@@ -88,7 +88,7 @@ type trial struct {
 	// restarts is a failure count, it increments when the trial fails and we retry it.
 	restarts int
 	// runID is a count of how many times the task container(s) have stopped and restarted, which
-	// could be due to a failure or due to normal pausing and continuing. When RunID increments,
+	// could be due to a failure or due to normal pausing and continuing. When TrialID increments,
 	// it effectively invalidates many outstanding messages associated with the previous run.
 	runID int
 
@@ -230,15 +230,21 @@ func (t *trial) PatchSearcherState(req experiment.TrialSearcherState) error {
 
 	t.searcher = req
 	switch {
-	case !t.searcher.Complete:
-		return t.maybeAllocateTask()
-	case t.searcher.Complete && t.searcher.Closed:
+	case t.searcher.EarlyStoppedBySearcher:
+		return t.patchState(
+			model.StateWithReason{
+				State:               model.StoppingCompletedState,
+				InformationalReason: "searcher decided to early stop trial",
+			},
+		)
+	case t.searcher.EarlyExitedByUserCode:
 		return t.patchState(model.StateWithReason{
-			State:               model.StoppingCompletedState,
-			InformationalReason: "hp search is finished",
+			State:               model.StoppingCanceledState,
+			InformationalReason: "trial received early exit signal",
 		})
+	default:
+		return t.maybeAllocateTask()
 	}
-	return nil
 }
 
 func (t *trial) PatchRP(rp string) {
@@ -366,25 +372,33 @@ func (t *trial) maybeAllocateTask() error {
 	// Only allocate for active trials, or trials that have been restored and are stopping.
 	// We need to allocate for stopping because we need to reattach the allocation.
 	shouldAllocateState := t.state == model.ActiveState || (t.restored && model.StoppingStates[t.state])
-	if t.allocationID != nil || t.searcher.Complete || !shouldAllocateState {
+	searcherStop := t.searcher.EarlyExitedByUserCode || t.searcher.EarlyStoppedBySearcher
+	if t.allocationID != nil || searcherStop || !shouldAllocateState {
 		t.syslog.WithFields(logrus.Fields{
-			"allocation-id":    t.allocationID,
-			"sercher-complete": t.searcher.Complete,
-			"trial-state":      t.state,
-			"restored":         t.restored,
+			"allocation-id":          t.allocationID,
+			"trial-early-exited":     t.searcher.EarlyExitedByUserCode,
+			"searcher-early-stopped": t.searcher.EarlyStoppedBySearcher,
+			"trial-state":            t.state,
+			"restored":               t.restored,
 		}).Trace("decided not to allocate trial")
 		return nil
 	}
 
 	name := fmt.Sprintf("Trial %d (Experiment %d)", t.id, t.experimentID)
 	t.syslog.Info("decided to allocate trial")
-
 	blockedNodes, err := logpattern.GetBlockedNodes(context.TODO(), t.taskID)
 	if err != nil {
 		return err
 	}
 
 	isSingleNode := t.config.Resources().IsSingleNode() != nil && *t.config.Resources().IsSingleNode()
+
+	// This should be set to defaults from TaskContainerDefaults, but catch case where we're
+	// restarting a trial previous to this field being set.
+	preemptionTimeout := model.DefaultPreemptionTimeout
+	if t.config.PreemptionTimeout() != nil {
+		preemptionTimeout = *t.config.PreemptionTimeout()
+	}
 
 	restoredAllocation, err := t.maybeRestoreAllocation()
 	if err != nil {
@@ -408,9 +422,11 @@ func (t *trial) maybeAllocateTask() error {
 			FittingRequirements: sproto.FittingRequirements{
 				SingleAgent: isSingleNode,
 			},
-
-			Preemptible: true,
-			Restore:     true,
+			Preemption: sproto.PreemptionConfig{
+				Preemptible:     true,
+				TimeoutDuration: time.Duration(preemptionTimeout) * time.Second,
+			},
+			Restore: true,
 			ProxyPorts: sproto.NewProxyPortConfig(
 				tasks.TrialSpecProxyPorts(t.taskSpec, t.config), t.taskID),
 
@@ -426,6 +442,7 @@ func (t *trial) maybeAllocateTask() error {
 		if err != nil {
 			return err
 		}
+
 		t.allocationID = &ar.AllocationID
 		return nil
 	}
@@ -454,8 +471,11 @@ func (t *trial) maybeAllocateTask() error {
 			SingleAgent: isSingleNode,
 		},
 
-		Preemptible: true,
-		ProxyPorts:  sproto.NewProxyPortConfig(tasks.TrialSpecProxyPorts(t.taskSpec, t.config), t.taskID),
+		Preemption: sproto.PreemptionConfig{
+			Preemptible:     true,
+			TimeoutDuration: time.Duration(preemptionTimeout) * time.Second,
+		},
+		ProxyPorts: sproto.NewProxyPortConfig(tasks.TrialSpecProxyPorts(t.taskSpec, t.config), t.taskID),
 
 		BlockedNodes: blockedNodes,
 	}
@@ -465,6 +485,20 @@ func (t *trial) maybeAllocateTask() error {
 		Debugf("starting new trial allocation")
 
 	prom.AssociateJobExperiment(t.jobID, strconv.Itoa(t.experimentID), t.config.Labels())
+
+	// persist the allocation workspace/experiment record, in the event of moves or deletions
+	err = task.InsertTrialAllocationWorkspaceRecord(
+		context.Background(),
+		t.experimentID,
+		ar.AllocationID,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"failure while attempting to persist workspace information for trial (%d) allocation: %w",
+			t.id,
+			err,
+		)
+	}
 	err = task.DefaultService.StartAllocation(
 		t.logCtx, ar, t.db, t.rm, specifier,
 		t.AllocationExitedCallback,
@@ -472,6 +506,7 @@ func (t *trial) maybeAllocateTask() error {
 	if err != nil {
 		return err
 	}
+
 	t.allocationID = &ar.AllocationID
 	return nil
 }
@@ -553,7 +588,7 @@ func (t *trial) handleAllocationExit(exit *task.AllocationExited) error {
 			State:               model.StoppingToTerminalStates[t.state],
 			InformationalReason: "trial stopped",
 		})
-	case t.searcher.Complete && t.searcher.Closed:
+	case t.searcher.EarlyStoppedBySearcher:
 		if exit.Err != nil {
 			return t.transition(model.StateWithReason{
 				State: model.ErrorState,

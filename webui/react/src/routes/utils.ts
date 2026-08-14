@@ -1,4 +1,5 @@
 import { pathToRegexp } from 'path-to-regexp';
+import { KeyboardEvent } from 'react';
 
 import { globalStorage } from 'globalStorage';
 import { ClusterApi, Configuration } from 'services/api-ts-sdk';
@@ -9,6 +10,7 @@ import {
   AnyMouseEventHandler,
   isAbsolutePath,
   isFullPath,
+  isMouseEvent,
   isNewTabClickEvent,
   openBlank,
   reactHostAddress,
@@ -79,6 +81,16 @@ export const paths = {
   clusters: (): string => {
     return '/clusters';
   },
+  configPolicies: (): string => {
+    return '/policies';
+  },
+  customerAsset: (
+    name: 'logo',
+    orientation: 'vertical' | 'horizontal',
+    mode: 'dark' | 'light',
+  ): string => {
+    return `/customer-assets/${name}?orientation=${orientation}&mode=${mode}`;
+  },
   dashboard: (): string => {
     return '/dashboard';
   },
@@ -143,6 +155,9 @@ export const paths = {
   resourcePool: (name: string): string => {
     return `/resourcepool/${name}`;
   },
+  searchDetails: (searchId: number | string): string => {
+    return `/searches/${searchId}`;
+  },
   submitProductFeedback: (branding: BrandingType): string => {
     return branding === BrandingType.Determined
       ? 'https://airtable.com/shr87rnMuHhiDTpLo'
@@ -197,7 +212,7 @@ export const routeAll = (path: string): void => {
   }
 };
 export const handlePath = (
-  event: AnyMouseEvent,
+  event: AnyMouseEvent | KeyboardEvent,
   options: {
     external?: boolean;
     onClick?: AnyMouseEventHandler;
@@ -209,10 +224,10 @@ export const handlePath = (
 
   const href = options.path ? linkPath(options.path, options.external) : undefined;
 
-  if (options.onClick) {
+  if (options.onClick && isMouseEvent(event)) {
     options.onClick(event);
   } else if (href) {
-    if (isNewTabClickEvent(event) || options.popout) {
+    if ((isMouseEvent(event) && isNewTabClickEvent(event)) || options.popout) {
       /**
        * `location=0` forces a new window instead of a tab to open.
        * https://stackoverflow.com/questions/726761/javascript-open-in-a-new-window-not-tab
@@ -239,6 +254,6 @@ export const findReactRoute = (url: string): RouteConfig | undefined => {
     .filter((route) => route.path !== '*')
     .find((route) => {
       const routeRegex = pathToRegexp(route.path);
-      return routeRegex.test(pathname);
+      return routeRegex.regexp.test(pathname);
     });
 };

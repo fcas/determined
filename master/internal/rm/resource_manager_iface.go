@@ -1,6 +1,8 @@
 package rm
 
 import (
+	"google.golang.org/protobuf/proto"
+
 	"github.com/determined-ai/determined/master/internal/sproto"
 	"github.com/determined-ai/determined/master/pkg/command"
 	"github.com/determined-ai/determined/master/pkg/model"
@@ -22,8 +24,8 @@ type ResourceManager interface {
 	SetGroupMaxSlots(sproto.SetGroupMaxSlots)
 	SetGroupWeight(sproto.SetGroupWeight) error
 	SetGroupPriority(sproto.SetGroupPriority) error
-	ExternalPreemptionPending(sproto.PendingPreemption) error
 	IsReattachableOnlyAfterStarted() bool
+	SmallerValueIsHigherPriority() (bool, error)
 
 	// Resource pool stuff.
 	GetResourcePools() (*apiv1.GetResourcePoolsResponse, error)
@@ -38,7 +40,6 @@ type ResourceManager interface {
 	// Job queue
 	GetJobQ(ResourcePoolName) (map[model.JobID]*sproto.RMJobInfo, error)
 	GetJobQueueStatsRequest(*apiv1.GetJobQueueStatsRequest) (*apiv1.GetJobQueueStatsResponse, error)
-	MoveJob(sproto.MoveJob) error
 	RecoverJobPosition(sproto.RecoverJobPosition)
 	GetExternalJobs(ResourcePoolName) ([]*jobv1.Job, error)
 
@@ -52,6 +53,15 @@ type ResourceManager interface {
 	EnableSlot(*apiv1.EnableSlotRequest) (*apiv1.EnableSlotResponse, error)
 	DisableSlot(*apiv1.DisableSlotRequest) (*apiv1.DisableSlotResponse, error)
 	HealthCheck() []model.ResourceManagerHealth
+
+	// Kubernetes Namespaces and Quotas.
+	DefaultNamespace(string) (*string, error)
+	VerifyNamespaceExists(string, string) error
+	CreateNamespace(string, string, bool) error
+	DeleteNamespace(string) error
+	RemoveEmptyNamespace(string, string) error
+	GetNamespaceResourceQuota(string, string) (*float64, error)
+	SetResourceQuota(int, string, string) error
 }
 
 // ResourcePoolName holds the name of the resource pool, and describes the input/output
@@ -61,4 +71,25 @@ type ResourcePoolName string
 // String converts a ResourcePoolName to String.
 func (r ResourcePoolName) String() string {
 	return string(r)
+}
+
+// CopyGetAgentsResponse returns a deep copy of GetAgentsResponse struct.
+func CopyGetAgentsResponse(resp *apiv1.GetAgentsResponse) (*apiv1.GetAgentsResponse, error) {
+	respBytes, err := proto.Marshal(resp)
+	if err != nil {
+		return nil, err
+	}
+	var respCopy apiv1.GetAgentsResponse
+	err = proto.Unmarshal(respBytes, &respCopy)
+	if err != nil {
+		return nil, err
+	}
+	return &respCopy, nil
+}
+
+// ClusterName is the name of the cluster within which we want to send a request.
+type ClusterName string
+
+func (c ClusterName) String() string {
+	return string(c)
 }

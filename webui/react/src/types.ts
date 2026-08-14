@@ -154,6 +154,7 @@ export const DetailedUser = t.intersection([
   User,
   t.partial({
     agentUserGroup: AgentUserGroup,
+    isPasswordWeak: t.boolean,
     remote: t.boolean,
   }),
   t.type({
@@ -340,6 +341,7 @@ export type CheckpointStorageType = ValueOf<typeof CheckpointStorageType>;
 export const CheckpointStorage = t.intersection([
   t.partial({
     bucket: t.string,
+    containerPath: t.string,
     hostPath: t.string,
     storagePath: t.string,
     type: valueof(CheckpointStorageType),
@@ -366,6 +368,28 @@ export type HyperparameterType = t.TypeOf<typeof HyperparametersType>;
 export type Hyperparameters = {
   [keys: string]: Hyperparameters | HyperparameterBase;
 };
+
+const PachydermIntegrationData = t.type({
+  dataset: t.type({
+    branch: t.string,
+    commit: t.string,
+    project: t.string,
+    repo: t.string,
+    token: t.string,
+  }),
+  pachd: t.type({
+    host: t.string,
+    port: t.number,
+  }),
+  proxy: t.type({
+    host: t.string,
+    port: t.number,
+    scheme: t.string,
+  }),
+});
+export const Integration = t.partial({ pachyderm: PachydermIntegrationData });
+export type IntegrationType = t.TypeOf<typeof Integration>;
+export type PachydermIntegrationDataType = t.TypeOf<typeof PachydermIntegrationData>;
 const Hyperparameters: t.RecursiveType<t.Type<Hyperparameters>> = t.recursion(
   'Hyperparameters',
   () => t.record(t.string, t.union([Hyperparameters, HyperparameterBase])),
@@ -425,6 +449,11 @@ export const ExperimentSearcherName = {
 
 export type ExperimentSearcherName = ValueOf<typeof ExperimentSearcherName>;
 
+export const ContinuableNonSingleSearcherName = new Set<ExperimentSearcherName>([
+  ExperimentSearcherName.Random,
+  ExperimentSearcherName.Grid,
+]);
+
 const Searcher = t.intersection([
   t.partial({
     max_length: t.record(
@@ -445,6 +474,7 @@ export const ExperimentConfig = t.intersection([
   t.partial({
     checkpointStorage: CheckpointStorage,
     description: t.string,
+    integrations: Integration,
     labels: t.array(t.string),
     profiling: t.type({
       enabled: t.boolean,
@@ -678,10 +708,17 @@ export interface TrialItem extends StartEndTimes {
   totalCheckpointSize: number;
   searcherMetricsVal?: number;
   logRetentionDays?: number;
+  taskId?: string;
+  metadata?: JsonObject;
+  logPolicyMatched?: string;
 }
 
 export interface TrialDetails extends TrialItem {
   runnerState?: string;
+}
+
+export interface TrialRemainingLogRetentionDays {
+  remainingLogRetentionDays?: number;
 }
 
 export interface TrialWorkloads extends WithPagination {
@@ -736,6 +773,7 @@ export const BulkExperimentItem = t.intersection([
   t.partial({
     checkpoints: t.number,
     checkpointSize: t.number,
+    config: ExperimentConfig,
     description: t.string,
     duration: t.number,
     endTime: t.string,
@@ -904,6 +942,15 @@ export interface CommandTask extends Task {
   workspaceId: number;
 }
 
+export const TaskAction = {
+  Connect: 'Connect',
+  CopyTaskID: 'Copy Task ID',
+  Kill: 'Kill',
+  ViewLogs: 'View Logs',
+} as const;
+
+export type TaskAction = ValueOf<typeof TaskAction>;
+
 export type RecentEvent = {
   lastEvent: {
     date: string;
@@ -1001,6 +1048,9 @@ export interface Template {
   name: string;
   workspaceId: number;
 }
+export interface KubernetesResourceManagers {
+  names: string[];
+}
 
 export interface ResourcePool extends Omit<Api.V1ResourcePool, 'slotType'> {
   slotType: ResourceType;
@@ -1050,6 +1100,14 @@ export interface Workspace {
   defaultAuxPool?: string;
 }
 
+export interface WorkspaceNamespaceBindings {
+  namespaceBindings: Record<string, Api.V1WorkspaceNamespaceBinding>;
+}
+
+export interface WorkspaceResourceQuotas {
+  resourceQuotas: Record<string, number>;
+}
+
 export interface WorkspacePagination extends WithPagination {
   workspaces: Workspace[];
 }
@@ -1089,6 +1147,7 @@ export const Project = t.intersection([
     lastExperimentStartedAt: t.string,
     numActiveExperiments: t.number,
     numExperiments: t.number,
+    numRuns: t.number,
     workspaceName: t.string,
   }),
 ]);
@@ -1141,6 +1200,10 @@ export interface ExperimentPermissionsArgs {
   experiment: ProjectExperiment;
 }
 
+export interface FlatRunPermissionsArgs {
+  flatRun: FlatRun;
+}
+
 export interface PermissionWorkspace {
   id: number;
   userId?: number;
@@ -1161,6 +1224,9 @@ export interface Webhook {
   triggers: V1Trigger[];
   url: string;
   webhookType: string;
+  name: string;
+  workspaceId: number;
+  mode: string;
 }
 
 export type UserOrGroup = User | V1Group;
@@ -1184,7 +1250,7 @@ export interface HpTrialData {
   data: Record<string, Primitive[]>;
   metricRange?: Range<number>;
   metricValues: number[];
-  trialIds: number[];
+  recordIds: number[];
 }
 
 /**
@@ -1219,7 +1285,7 @@ export interface FlatRun {
   checkpointSize: number;
   checkpointCount: number;
   searcherMetricValue?: number;
-  externalRunId?: number;
+  externalRunId?: string;
   hyperparameters?: TrialHyperparameters;
   summaryMetrics?: SummaryMetrics;
   userId?: number;
@@ -1228,8 +1294,10 @@ export interface FlatRun {
   projectName: string;
   workspaceId: number;
   workspaceName: string;
+  archived: boolean;
   parentArchived: boolean;
   experiment?: FlatRunExperiment;
+  logPolicyMatched?: string;
 }
 
 export interface FlatRunExperiment {
@@ -1248,3 +1316,28 @@ export interface FlatRunExperiment {
 export interface SearchFlatRunPagination extends WithPagination {
   runs: FlatRun[];
 }
+
+export const FlatRunAction = {
+  Archive: 'Archive',
+  Delete: 'Delete',
+  Kill: 'Kill',
+  Move: 'Move',
+  Pause: 'Pause',
+  Resume: 'Resume',
+  Unarchive: 'Unarchive',
+} as const;
+
+export type FlatRunAction = ValueOf<typeof FlatRunAction>;
+
+export const SelectAllType = t.type({
+  exclusions: t.array(t.number),
+  type: t.literal('ALL_EXCEPT'),
+});
+
+export const RegularSelectionType = t.type({
+  selections: t.array(t.number),
+  type: t.literal('ONLY_IN'),
+});
+
+export const SelectionType = t.union([RegularSelectionType, SelectAllType]);
+export type SelectionType = t.TypeOf<typeof SelectionType>;

@@ -3,35 +3,35 @@ Mappings:
   RegionMap:
     ap-northeast-1:
       Master: ami-00910ef9457f0df47
-      Agent: ami-0d17768c113bc7053
+      Agent: ami-0e199a4564d2bb8c5
     # TODO(DET-4258) Uncomment these when we fully support all P3 regions.
     # ap-northeast-2:
     #   Master: ami-035e3e44dc41db6a2
-    #   Agent: ami-06542874b4ab6003d
+    #   Agent: ami-09043281c2988de23
     # ap-southeast-1:
     #   Master: ami-0fd1ee6c8b656f020
-    #   Agent: ami-03d1fba6f5c61a233
+    #   Agent: ami-026791eca219c5cc0
     # ap-southeast-2:
     #   Master: ami-0b62ecd3babd1c548
-    #   Agent: ami-0a662e555f59bc56f
+    #   Agent: ami-09fcadc6e05761b30
     eu-central-1:
       Master: ami-0abbe417ed83c0b29
-      Agent: ami-0a510a21bcbb901a1
+      Agent: ami-0a6a509944baa9c38
     eu-west-1:
       Master: ami-0e3f7dd2dc743e48a
-      Agent: ami-0287a5461ed8dbf38
+      Agent: ami-0870dc8c1081c2ed0
     # eu-west-2:
     #   Master: ami-0d78429fb6af30994
-    #   Agent: ami-08b973d39f7eee569
+    #   Agent: ami-02248e5d563fb4017
     us-east-1:
       Master: ami-0172070f66a8ebe63
-      Agent: ami-0f49364aa77da45f2
+      Agent: ami-07329961c2a161c61
     us-east-2:
       Master: ami-0bafa3699418551cd
-      Agent: ami-01168798b1af4c386
+      Agent: ami-0dca1adfc8c152c7a
     us-west-2:
       Master: ami-0ceeab680f529cc36
-      Agent: ami-03081ca9dd5286010
+      Agent: ami-015aabd7d10854b76
 
 Parameters:
   VpcCIDR:
@@ -56,7 +56,7 @@ Parameters:
   MasterInstanceType:
     Type: String
     Description: Instance Type of Master
-    Default: m5.large
+    Default: m6i.large
 
   AuxAgentInstanceType:
     Type: String
@@ -97,11 +97,11 @@ Parameters:
     Type: String
     Description: Docker password to pull images that need authentication
     Default: ""
+    NoEcho: true
 
   Version:
     Type: String
     Description: Determined version or commit for master image
-    Default: 0.32.1-dev0
 
   DBPassword:
     Type: String

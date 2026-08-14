@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 import determined as det
 from determined import core, tensorboard
 from determined.common import api, util
-from determined.common.api import errors
+from determined.common.api import bindings, errors
 
 logger = logging.getLogger("determined.core")
 
@@ -67,6 +67,31 @@ class TrainContext:
         steps_completed = val.get("totalBatches")
         logger.debug(f"_get_last_validation() -> {steps_completed}")
         return steps_completed
+
+    def set_metadata(self, metadata: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Set the metadata on the current run to the Determined master, overwrite
+        existing metadata on the current run. Returns the metadata that was set.
+
+        The metadata is a dictionary of key-value pairs that can be used for analysis,
+        post-processing, or debugging.
+        """
+        logger.debug(f"set_metadata({metadata})")
+
+        body = bindings.v1PostRunMetadataRequest(metadata=metadata, runId=self._trial_id)
+        r = bindings.post_PostRunMetadata(
+            session=self._session,
+            body=body,
+            runId=self._trial_id,
+        )
+        return r.metadata
+
+    def get_metadata(self) -> Optional[Dict[str, Any]]:
+        """
+        Get the metadata of the current run from the Determined master.
+        """
+        r = bindings.get_GetRunMetadata(session=self._session, runId=self._trial_id)
+        return r.metadata
 
     def _report_trial_metrics(
         self,
@@ -235,6 +260,27 @@ class TrainContext:
         if r.status_code == 400:
             logger.warn("early exit has already been reported for this trial, ignoring new value")
 
+    def report_progress(self, progress: float) -> None:
+        """
+        Report training progress to the master.
+
+        This is optional for training, but will be used by the WebUI to render completion status.
+
+        Progress must be reported as a float between 0 and 1.0, where 1.0 is 100% completion. It
+        should represent the current iteration step as a fraction of maximum training steps
+        (i.e.: `report_progress(step_num / max_steps)`).
+
+        Arguments:
+            progress (float): completion progress in the range [0, 1.0].
+        """
+        logger.debug(f"report_progress with progress={progress}")
+        if progress < 0 or progress > 1:
+            raise ValueError(f"Progress should be between 0 and 1, not {progress}")
+        self._session.post(
+            f"/api/v1/trials/{self._trial_id}/progress",
+            data=det.util.json_encode({"progress": progress, "is_raw": True}),
+        )
+
     def get_experiment_best_validation(self) -> Optional[float]:
         """
         Get the best reported validation metric reported so far, across the whole experiment.
@@ -286,6 +332,9 @@ class DummyTrainContext(TrainContext):
 
     def report_early_exit(self, reason: EarlyExitReason) -> None:
         logger.info(f"report_early_exit({reason})")
+
+    def report_progress(self, progress: float) -> None:
+        logger.info(f"report_progress with progress={progress}")
 
     def get_experiment_best_validation(self) -> Optional[float]:
         return None

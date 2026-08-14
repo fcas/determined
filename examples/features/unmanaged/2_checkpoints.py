@@ -7,12 +7,10 @@ from determined.experimental import core_v2
 
 def main():
     core_v2.init(
-        defaults=core_v2.DefaultConfig(
+        config=core_v2.Config(
             name="unmanaged-2-checkpoints",
             # We allow configuring the local checkpoint storage directory.
             # checkpoint_storage="/tmp/determined-cp",
-        ),
-        unmanaged=core_v2.UnmanagedConfig(
             external_experiment_id="test-unmanaged-2-checkpoints",
             external_trial_id="test-unmanaged-2-checkpoints",
             # e.g., requeued jobs on slurm:
@@ -23,6 +21,7 @@ def main():
 
     latest_checkpoint = core_v2.info.latest_checkpoint
     initial_i = 0
+    max_length = 100
     if latest_checkpoint is not None:
         with core_v2.checkpoint.restore_path(latest_checkpoint) as path:
             with (path / "state").open() as fin:
@@ -34,11 +33,12 @@ def main():
 
     print("determined experiment id: ", core_v2.info._trial_info.experiment_id)
     print("initial step:", initial_i)
-    for i in range(initial_i, initial_i + 100):
+    for i in range(initial_i, initial_i + max_length):
         core_v2.train.report_training_metrics(steps_completed=i, metrics={"loss": random.random()})
         if (i + 1) % 10 == 0:
             loss = random.random()
             core_v2.train.report_validation_metrics(steps_completed=i, metrics={"loss": loss})
+            core_v2.train.report_progress((i - initial_i) / float(max_length))
 
             with core_v2.checkpoint.store_path({"steps_completed": i}) as (path, uuid):
                 with (path / "state").open("w") as fout:

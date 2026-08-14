@@ -86,7 +86,7 @@ CD into the directory and run this command:
 
 Open the Determined WebUI by navigating to the master URL. One way to do this is to navigate to
 ``http://localhost:8080/``, accept the default username of ``determined``, and click **Sign In**.
-After signing in, you'll need to create a :ref:`strong password <strong-password>`.
+After signing in, create a :ref:`strong password <strong-password>`.
 
 .. include:: ../../../_shared/note-local-dtrain-job.txt
 
@@ -181,19 +181,24 @@ Run the following command to run the experiment:
 
    det e create metrics.yaml .
 
-Open the Determined WebUI again and go to the **Overview** tab.
+Open the Determined WebUI again, select your experiment, and go to the experiment's **Overview**
+tab. The WebUI now displays metrics.
 
-The WebUI now displays metrics. In this step, you learned how to add a few new lines of code in
-order to report training and validation metrics to the Determined master. Next, we’ll modify our
-script to report checkpoints.
+.. image:: /assets/images/api-core-ug-metrics.png
+   :alt: Determined AI WebUI Dashboard showing experiment metrics
+
+|
+
+In this step, you learned how to add a few new lines of code in order to report training and
+validation metrics to the Determined master. Next, we’ll modify our script to report checkpoints.
 
 ***********************
  Step 3: Checkpointing
 ***********************
 
-Checkpointing periodically during training and reporting the checkpoints to the master gives us the
-ability to stop and restart training. In this section, we’ll modify our script for the purpose of
-checkpointing.
+Checkpointing periodically during training and reporting the :ref:`checkpoints <checkpoints>` to the
+master gives us the ability to stop and restart training. In this section, we’ll modify our script
+for the purpose of checkpointing.
 
 In this step, we’ll run our experiment using the ``model_def_checkpoints.py`` script and its
 accompanying ``checkpoints.yaml`` experiment configuration file.
@@ -290,7 +295,7 @@ Run the following command to run the experiment:
 
    det e create checkpoints.yaml . -f
 
-In the Determined WebUI, nagivate to the **Checkpoints** tab.
+In the Determined WebUI, nagivate to the experiment's **Checkpoints** tab.
 
 Checkpoints are saved and deleted according to the default
 :ref:`experiment-config-checkpoint-policy`. You can modify the checkpoint policy in the experiment
@@ -300,43 +305,25 @@ configuration file.
  Step 4: Hyperparameter Search
 *******************************
 
-With the Core API you can run advanced hyperparameter searches with arbitrary training code. The
-hyperparameter search logic is in the master, which coordinates many different Trials. Each trial
-runs a train-validate-report loop:
-
-.. table::
-
-   +----------+--------------------------------------------------------------------------+
-   | Train    | Train until a point chosen by the hyperparameter search algorithm and    |
-   |          | obtained via the Core API.  The length of training is absolute, so you   |
-   |          | have to keep track of how much you have already trained to know how much |
-   |          | more to train.                                                           |
-   +----------+--------------------------------------------------------------------------+
-   | Validate | Validate your model to obtain the metric you configured in the           |
-   |          | ``searcher.metric`` field of your experiment config.                     |
-   +----------+--------------------------------------------------------------------------+
-   | Report   | Use the Core API to report results to the master.                        |
-   +----------+--------------------------------------------------------------------------+
+With the Core API you can run advanced hyperparameter searches with any training loop. The
+hyperparameter search logic is in the master, which can create trials and can decide to preempt them
+if they are underpeforming.
 
 To perform a hyperparameter search, we'll update our script to define the hyperparameter search
 settings we want to use for our experiment. More specifically, we'll need to define the following
 settings in our experiment configuration file:
 
--  ``name:`` ``adaptive_asha`` (name of our searcher. For all options, visit :ref:`search-methods`.
--  ``metric``: ``test_loss``
--  ``smaller_is_better``: ``True`` (This is equivalent to minimization vs. maximization of
-   objective.)
--  ``max_trials``: 500 (This is the maximum number of trials the searcher should run.)
--  ``max_length``: 20 epochs (The max length of a trial. For more information, visit Adaptive ASHA
-   in the :ref:`Experiment Configuration Reference <experiment-configuration>`.
+-  ``name: adaptive_asha`` (name of our searcher. For all options, visit :ref:`search-methods`).
+-  ``metric: test_loss``
+-  ``smaller_is_better: true`` (This is equivalent to minimization vs. maximization of objective.)
+-  ``max_trials: 50`` (This is the maximum number of trials the searcher should run.)
+-  ``time_metric: epochs`` (This is the name of the "time" metric which we report in validation
+   metrics).
+-  ``max_time: 20`` (The max number of epochs a trial will report. For more information, visit
+   Adaptive ASHA in the :ref:`Experiment Configuration Reference <experiment-configuration>`.
 
 In addition, we also need to define the hyperparameters themselves. Adaptive ASHA will pick values
 between the ``minval`` and ``maxval`` for each hyperparameter for each trial.
-
-.. note::
-
-   To see early stopping in action, try setting ``max_trials`` to over 500 and playing around with
-   the hyperparameter search values.
 
 In this step, we’ll run our experiment using the ``model_def_adaptive.py`` script and its
 accompanying ``adaptive.yaml`` experiment configuration file.
@@ -368,6 +355,15 @@ hardcoded values:
    :end-before: # Docs snippet end: per trial basis
    :dedent:
 
+Lastly, to comply with the requirements of the ASHA search, we must report an ``epochs`` metric with
+our validation metrics, since we set ``time_metric: epochs`` in our searcher:
+
+.. literalinclude:: ../../../../examples/tutorials/core_api_pytorch_mnist/model_def_adaptive.py
+   :language: python
+   :start-after: # Docs snippet start: report epochs
+   :end-before: # Docs snippet end: report epochs
+   :dedent:
+
 Step 4.1: Run the Experiment
 ============================
 
@@ -377,10 +373,15 @@ Run the following command to run the experiment:
 
    det e create adaptive.yaml .
 
-In the Determined WebUI, navigate to the **Hyperparameters** tab.
+In the Determined WebUI, navigate to the experiment's **Hyperparameters** tab.
 
 You should see a graph in the WebUI that displays the various trials initiated by the Adaptive ASHA
 hyperparameter search algorithm.
+
+.. image:: /assets/images/api-core-ug-hp.png
+   :alt: Determined AI WebUI Dashboard showing experiment hyperparameters
+
+|
 
 ******************************
  Step 5: Distributed Training
@@ -503,7 +504,7 @@ Run the following command to run the experiment:
 
    det e create distributed.yaml .
 
-In the Determined WebUI, go to the **Cluster** pane.
+In the Determined WebUI, go to the **Cluster** pane in the left navigation.
 
 You should be able to see multiple slots active corresponding to the value you set for
 ``slots_per_trial`` you set in ``distributed.yaml``, as well as logs appearing from multiple ranks.

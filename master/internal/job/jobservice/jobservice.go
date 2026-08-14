@@ -205,20 +205,6 @@ func (s *Service) applyUpdate(update *jobv1.QueueControl) error {
 			s.syslog.Error("resource pool must be set")
 		}
 		return j.SetResourcePool(action.ResourcePool)
-	case *jobv1.QueueControl_AheadOf:
-		return s.rm.MoveJob(sproto.MoveJob{
-			ID:           jobID,
-			Anchor:       model.JobID(action.AheadOf),
-			Ahead:        true,
-			ResourcePool: j.ResourcePool(),
-		})
-	case *jobv1.QueueControl_BehindOf:
-		return s.rm.MoveJob(sproto.MoveJob{
-			ID:           jobID,
-			Anchor:       model.JobID(action.BehindOf),
-			Ahead:        false,
-			ResourcePool: j.ResourcePool(),
-		})
 	default:
 		return fmt.Errorf("unexpected action: %v", action)
 	}
@@ -230,18 +216,18 @@ func (s *Service) UpdateJobQueue(updates []*jobv1.QueueControl) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	errors := make([]string, 0)
+	errs := make([]string, 0)
 
 	for _, update := range updates {
 		if err := s.applyUpdate(update); err != nil {
-			errors = append(errors, err.Error())
+			errs = append(errs, err.Error())
 		}
 	}
 
-	if len(errors) == 1 {
-		return fmt.Errorf(errors[0])
-	} else if len(errors) > 1 {
-		return fmt.Errorf("encountered the following errors: %s", strings.Join(errors, ", "))
+	if len(errs) == 1 {
+		return fmt.Errorf(errs[0])
+	} else if len(errs) > 1 {
+		return fmt.Errorf("encountered the following errors: %s", strings.Join(errs, ", "))
 	}
 
 	return nil

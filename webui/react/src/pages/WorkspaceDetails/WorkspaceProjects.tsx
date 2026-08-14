@@ -69,6 +69,7 @@ const WorkspaceProjects: React.FC<Props> = ({ workspace, id, pageRef }) => {
   const config = useMemo(() => configForWorkspace(id), [id]);
   const { settings, updateSettings } = useSettings<WorkspaceDetailsSettings>(config);
   const streamingUpdatesOn = useFeature().isOn('streaming_updates');
+  const f_flat_runs = useFeature().isOn('flat_runs');
 
   const loadableProjects: Loadable<List<Project>> = useObservable(
     projectStore.getProjectsByWorkspace(id),
@@ -101,11 +102,19 @@ const WorkspaceProjects: React.FC<Props> = ({ workspace, id, pageRef }) => {
     () =>
       loadableProjects
         .map((p): [Project[], boolean] => [
-          sortProjects(p.toJSON().filter((p) => (settings.archived ? p : !p.archived))),
+          sortProjects(
+            p.toJSON().filter((p) => {
+              if (settings.user === undefined) return settings.archived ? p : !p.archived;
+
+              if (settings.archived) return settings.user?.includes(p.userId.toString());
+
+              return !p.archived && settings.user?.includes(p.userId.toString());
+            }),
+          ),
           false,
         ])
         .getOrElse([[], true]),
-    [loadableProjects, settings.archived, sortProjects],
+    [loadableProjects, settings.archived, settings.user, sortProjects],
   );
 
   const handleProjectCreateClick = useCallback(() => {
@@ -245,7 +254,7 @@ const WorkspaceProjects: React.FC<Props> = ({ workspace, id, pageRef }) => {
         dataIndex: 'name',
         defaultWidth: DEFAULT_COLUMN_WIDTHS['name'],
         key: V1GetWorkspaceProjectsRequestSortBy.NAME,
-        onCell: onRightClickableCell,
+        onCell: () => ({ ...onRightClickableCell(), 'data-testid': 'name' }),
         render: projectNameRenderer,
         title: 'Name',
       },
@@ -253,27 +262,30 @@ const WorkspaceProjects: React.FC<Props> = ({ workspace, id, pageRef }) => {
         dataIndex: 'description',
         defaultWidth: DEFAULT_COLUMN_WIDTHS['description'],
         key: V1GetWorkspaceProjectsRequestSortBy.DESCRIPTION,
-        onCell: onRightClickableCell,
+        onCell: () => ({ ...onRightClickableCell(), 'data-testid': 'description' }),
         render: descriptionRenderer,
         title: 'Description',
       },
       {
         dataIndex: 'numExperiments',
         defaultWidth: DEFAULT_COLUMN_WIDTHS['numExperiments'],
+        onCell: () => ({ 'data-testid': 'numExperiments' }),
         title: 'Experiments',
       },
       {
         dataIndex: 'lastUpdated',
         defaultWidth: DEFAULT_COLUMN_WIDTHS['lastUpdated'],
+        onCell: () => ({ 'data-testid': 'lastUpdated' }),
         render: (_: number, record: Project): React.ReactNode =>
           record.lastExperimentStartedAt
             ? relativeTimeRenderer(new Date(record.lastExperimentStartedAt))
             : null,
-        title: 'Last Experiment Started',
+        title: `Last ${f_flat_runs ? 'Run' : 'Experiment'} Started`,
       },
       {
         dataIndex: 'userId',
         defaultWidth: DEFAULT_COLUMN_WIDTHS['userId'],
+        onCell: () => ({ 'data-testid': 'userId' }),
         render: (_, r) => userRenderer(users.find((u) => u.id === r.userId)),
         title: 'User',
       },
@@ -281,6 +293,7 @@ const WorkspaceProjects: React.FC<Props> = ({ workspace, id, pageRef }) => {
         dataIndex: 'archived',
         defaultWidth: DEFAULT_COLUMN_WIDTHS['archived'],
         key: 'archived',
+        onCell: () => ({ 'data-testid': 'archived' }),
         render: checkmarkRenderer,
         title: 'Archived',
       },
@@ -288,6 +301,7 @@ const WorkspaceProjects: React.FC<Props> = ({ workspace, id, pageRef }) => {
         dataIndex: 'state',
         defaultWidth: DEFAULT_COLUMN_WIDTHS['state'],
         key: 'state',
+        onCell: () => ({ 'data-testid': 'state' }),
         render: stateRenderer,
         title: 'State',
       },
@@ -297,12 +311,12 @@ const WorkspaceProjects: React.FC<Props> = ({ workspace, id, pageRef }) => {
         defaultWidth: DEFAULT_COLUMN_WIDTHS['action'],
         fixed: 'right',
         key: 'action',
-        onCell: onRightClickableCell,
+        onCell: () => ({ ...onRightClickableCell(), 'data-testid': 'actionMenu' }),
         render: actionRenderer,
         title: '',
       },
     ] as ColumnDef<Project>[];
-  }, [saveProjectDescription, workspace?.archived, users, onEdit, onRemove]);
+  }, [f_flat_runs, workspace?.archived, onRemove, onEdit, saveProjectDescription, users]);
 
   const switchShowArchived = useCallback(
     (showArchived: boolean) => {
@@ -428,7 +442,11 @@ const WorkspaceProjects: React.FC<Props> = ({ workspace, id, pageRef }) => {
       <Section>
         <Row wrap>
           <Column>
-            <Select value={settings.whose} width={160} onSelect={handleViewSelect}>
+            <Select
+              data-testid="whose"
+              value={settings.whose}
+              width={160}
+              onSelect={handleViewSelect}>
               <Option value={WhoseProjects.All}>All Projects</Option>
               <Option value={WhoseProjects.Mine}>My Projects</Option>
               <Option value={WhoseProjects.Others}>Others&apos; Projects</Option>
@@ -443,7 +461,11 @@ const WorkspaceProjects: React.FC<Props> = ({ workspace, id, pageRef }) => {
                   onChange={switchShowArchived}
                 />
               )}
-              <Select value={settings.sortKey} width={170} onSelect={handleSortSelect}>
+              <Select
+                data-testid="sort"
+                value={settings.sortKey}
+                width={170}
+                onSelect={handleSortSelect}>
                 <Option value={V1GetWorkspaceProjectsRequestSortBy.NAME}>Alphabetical</Option>
                 <Option value={V1GetWorkspaceProjectsRequestSortBy.LASTEXPERIMENTSTARTTIME}>
                   Last Updated
@@ -457,7 +479,9 @@ const WorkspaceProjects: React.FC<Props> = ({ workspace, id, pageRef }) => {
                 {!workspace.immutable &&
                   !workspace.archived &&
                   canCreateProject({ workspace: workspace }) && (
-                    <Button onClick={handleProjectCreateClick}>New Project</Button>
+                    <Button data-testid="newProject" onClick={handleProjectCreateClick}>
+                      New Project
+                    </Button>
                   )}
               </div>
             </Row>

@@ -390,7 +390,7 @@ export interface ResourceManagerHealth {
      * @type {string}
      * @memberof ResourceManagerHealth
      */
-    name?: string;
+    cluster_name?: string;
     /**
      * 
      * @type {HealthStatus}
@@ -927,6 +927,18 @@ export interface Trialv1Trial {
      * @memberof Trialv1Trial
      */
     logRetentionDays?: number;
+    /**
+     * metadata associated with the trial (based off the metadata stored in the run).
+     * @type {any}
+     * @memberof Trialv1Trial
+     */
+    metadata?: any;
+    /**
+     * Log Policy Matched.
+     * @type {string}
+     * @memberof Trialv1Trial
+     */
+    logPolicyMatched?: string;
 }
 /**
  * 
@@ -970,6 +982,12 @@ export interface V1AcceleratorData {
      * @memberof V1AcceleratorData
      */
     acceleratorUuids?: Array<string>;
+    /**
+     * The name of the resource pool.
+     * @type {string}
+     * @memberof V1AcceleratorData
+     */
+    resourcePool?: string;
 }
 /**
  * Acknowledge the receipt of some stop signal.
@@ -1120,12 +1138,6 @@ export interface V1Agent {
      * @memberof V1Agent
      */
     containers?: { [key: string]: V1Container; };
-    /**
-     * This field has been deprecated and will be empty.
-     * @type {string}
-     * @memberof V1Agent
-     */
-    label?: string;
     /**
      * The addresses of the agent.
      * @type {Array<string>}
@@ -1685,6 +1697,26 @@ export interface V1BindRPToWorkspaceRequest {
 export interface V1BindRPToWorkspaceResponse {
 }
 /**
+ * Request for binding the given workpaces to new auto-created namespaces.
+ * @export
+ * @interface V1BulkAutoCreateWorkspaceNamespaceBindingsRequest
+ */
+export interface V1BulkAutoCreateWorkspaceNamespaceBindingsRequest {
+    /**
+     * The list of workspace ids.
+     * @type {Array<number>}
+     * @memberof V1BulkAutoCreateWorkspaceNamespaceBindingsRequest
+     */
+    workspaceIds?: Array<number>;
+}
+/**
+ * Response to BulkAutoCreateWorkspaceNamespaceBindingsRequest.
+ * @export
+ * @interface V1BulkAutoCreateWorkspaceNamespaceBindingsResponse
+ */
+export interface V1BulkAutoCreateWorkspaceNamespaceBindingsResponse {
+}
+/**
  * Filters to apply actions to multiple experiments.
  * @export
  * @interface V1BulkExperimentFilters
@@ -1977,20 +2009,38 @@ export interface V1CleanupLogsResponse {
     removedCount: string;
 }
 /**
- * Close a trial with given ID.
+ * Active notice from the server admin.
  * @export
- * @interface V1CloseTrialOperation
+ * @interface V1ClusterMessage
  */
-export interface V1CloseTrialOperation {
+export interface V1ClusterMessage {
     /**
-     * The ID of the trial to close.
+     * Text content of message.
      * @type {string}
-     * @memberof V1CloseTrialOperation
+     * @memberof V1ClusterMessage
      */
-    requestId?: string;
+    message: string;
+    /**
+     * Time to begin showing message.
+     * @type {Date | DateString}
+     * @memberof V1ClusterMessage
+     */
+    startTime: Date | DateString;
+    /**
+     * Time to stop showing message.
+     * @type {Date | DateString}
+     * @memberof V1ClusterMessage
+     */
+    endTime?: Date | DateString;
+    /**
+     * Time message was created.
+     * @type {Date | DateString}
+     * @memberof V1ClusterMessage
+     */
+    createdTime?: Date | DateString;
 }
 /**
- * ColumnType indicates the type of data under the column - COLUMN_TYPE_UNSPECIFIED: data type is unknown/mixed  - COLUMN_TYPE_TEXT: data type is textual  - COLUMN_TYPE_NUMBER: data type is numeric  - COLUMN_TYPE_DATE: data type is a date
+ * ColumnType indicates the type of data under the column - COLUMN_TYPE_UNSPECIFIED: data type is unknown/mixed  - COLUMN_TYPE_TEXT: data type is textual  - COLUMN_TYPE_NUMBER: data type is numeric  - COLUMN_TYPE_DATE: data type is a date  - COLUMN_TYPE_ARRAY: data type is an array
  * @export
  * @enum {string}
  */
@@ -1999,6 +2049,7 @@ export const V1ColumnType = {
     TEXT: 'COLUMN_TYPE_TEXT',
     NUMBER: 'COLUMN_TYPE_NUMBER',
     DATE: 'COLUMN_TYPE_DATE',
+    ARRAY: 'COLUMN_TYPE_ARRAY',
 } as const
 export type V1ColumnType = ValueOf<typeof V1ColumnType>
 /**
@@ -2111,32 +2162,6 @@ export interface V1CompareTrialsResponse {
      * @memberof V1CompareTrialsResponse
      */
     trials: Array<V1ComparableTrial>;
-}
-/**
- * 
- * @export
- * @interface V1CompleteTrialSearcherValidationResponse
- */
-export interface V1CompleteTrialSearcherValidationResponse {
-}
-/**
- * Used to complete a ValidateAfterOperation.
- * @export
- * @interface V1CompleteValidateAfterOperation
- */
-export interface V1CompleteValidateAfterOperation {
-    /**
-     * The ValidateAfterOperation being completed.
-     * @type {V1ValidateAfterOperation}
-     * @memberof V1CompleteValidateAfterOperation
-     */
-    op?: V1ValidateAfterOperation;
-    /**
-     * The value of searcher metric associated with this completed operation. The metric provided should be the metric used to guide HP search.
-     * @type {any}
-     * @memberof V1CompleteValidateAfterOperation
-     */
-    searcherMetric?: any;
 }
 /**
  * The config to be patched into Master Config.
@@ -2407,25 +2432,6 @@ export interface V1CreateGroupResponse {
     group: V1GroupDetails;
 }
 /**
- * Create a trial with given hyperparameters.
- * @export
- * @interface V1CreateTrialOperation
- */
-export interface V1CreateTrialOperation {
-    /**
-     * The ID of the trial to create.
-     * @type {string}
-     * @memberof V1CreateTrialOperation
-     */
-    requestId?: string;
-    /**
-     * A JSON object representing the hyperparameters.
-     * @type {string}
-     * @memberof V1CreateTrialOperation
-     */
-    hyperparams?: string;
-}
-/**
  * Create a trial.
  * @export
  * @interface V1CreateTrialRequest
@@ -2477,6 +2483,31 @@ export interface V1CurrentUserResponse {
     user: V1User;
 }
 /**
+ * Event data for custom trigger.
+ * @export
+ * @interface V1CustomWebhookEventData
+ */
+export interface V1CustomWebhookEventData {
+    /**
+     * The level at which the event data is logged.
+     * @type {V1LogLevel}
+     * @memberof V1CustomWebhookEventData
+     */
+    level?: V1LogLevel;
+    /**
+     * The title for the event data.
+     * @type {string}
+     * @memberof V1CustomWebhookEventData
+     */
+    title?: string;
+    /**
+     * The description for the event data.
+     * @type {string}
+     * @memberof V1CustomWebhookEventData
+     */
+    description?: string;
+}
+/**
  * One datapoint in a series of metrics from a trial in batch.
  * @export
  * @interface V1DataPoint
@@ -2526,6 +2557,13 @@ export interface V1DeleteCheckpointsRequest {
  * @interface V1DeleteCheckpointsResponse
  */
 export interface V1DeleteCheckpointsResponse {
+}
+/**
+ * Response to DeleteClusterMessageRequest.
+ * @export
+ * @interface V1DeleteClusterMessageResponse
+ */
+export interface V1DeleteClusterMessageResponse {
 }
 /**
  * Response to DeleteExperimentLabelRequest.
@@ -2584,6 +2622,13 @@ export interface V1DeleteExperimentsResponse {
      * @memberof V1DeleteExperimentsResponse
      */
     results: Array<V1ExperimentActionResult>;
+}
+/**
+ * Response to DeleteGlobalConfigPoliciesRequest.
+ * @export
+ * @interface V1DeleteGlobalConfigPoliciesResponse
+ */
+export interface V1DeleteGlobalConfigPoliciesResponse {
 }
 /**
  * DeleteGroupResponse is the body of the response for the call to delete a group.
@@ -2677,6 +2722,20 @@ export interface V1DeleteTensorboardFilesResponse {
  * @interface V1DeleteWebhookResponse
  */
 export interface V1DeleteWebhookResponse {
+}
+/**
+ * Response to DeleteWorkspaceConfigPoliciesRequest.
+ * @export
+ * @interface V1DeleteWorkspaceConfigPoliciesResponse
+ */
+export interface V1DeleteWorkspaceConfigPoliciesResponse {
+}
+/**
+ * Response to DeleteWorkspaceNamespaceBindingsRequest.
+ * @export
+ * @interface V1DeleteWorkspaceNamespaceBindingsResponse
+ */
+export interface V1DeleteWorkspaceNamespaceBindingsResponse {
 }
 /**
  * Response to DeleteWorkspaceRequest.
@@ -3176,44 +3235,6 @@ export interface V1ExperimentActionResult {
     id: number;
 }
 /**
- * ExperimentInactive is a searcher event triggered when an experiment is no longer active.
- * @export
- * @interface V1ExperimentInactive
- */
-export interface V1ExperimentInactive {
-    /**
-     * Current state of the experiment.
-     * @type {Experimentv1State}
-     * @memberof V1ExperimentInactive
-     */
-    experimentState: Experimentv1State;
-}
-/**
- * ExperimentSimulation holds the configuration and results of simulated run of a searcher.
- * @export
- * @interface V1ExperimentSimulation
- */
-export interface V1ExperimentSimulation {
-    /**
-     * The simulated experiment config.
-     * @type {any}
-     * @memberof V1ExperimentSimulation
-     */
-    config?: any;
-    /**
-     * The searcher simulation seed.
-     * @type {number}
-     * @memberof V1ExperimentSimulation
-     */
-    seed?: number;
-    /**
-     * The list of trials in the simulation.
-     * @type {Array<V1TrialSimulation>}
-     * @memberof V1ExperimentSimulation
-     */
-    trials?: Array<V1TrialSimulation>;
-}
-/**
  * Response to ExpMetricNamesRequest.
  * @export
  * @interface V1ExpMetricNamesResponse
@@ -3375,7 +3396,7 @@ export const V1FittingPolicy = {
 } as const
 export type V1FittingPolicy = ValueOf<typeof V1FittingPolicy>
 /**
- * Flat run respresentation.
+ * Flat run respresentation. Used for the rows of the Run Table.
  * @export
  * @interface V1FlatRun
  */
@@ -3430,10 +3451,10 @@ export interface V1FlatRun {
     searcherMetricValue?: number;
     /**
      * The id of external run
-     * @type {number}
+     * @type {string}
      * @memberof V1FlatRun
      */
-    externalRunId?: number;
+    externalRunId?: string;
     /**
      * Trial hyperparameters.
      * @type {any}
@@ -3494,6 +3515,30 @@ export interface V1FlatRun {
      * @memberof V1FlatRun
      */
     experiment?: V1FlatRunExperiment;
+    /**
+     * The arbitrary metadata of the run.
+     * @type {any}
+     * @memberof V1FlatRun
+     */
+    metadata?: any;
+    /**
+     * The archived status of this run. This is only looking at the archived status at the run level and not taking into account whether the experiment is archived or not.
+     * @type {boolean}
+     * @memberof V1FlatRun
+     */
+    archived: boolean;
+    /**
+     * Project level local id of run.
+     * @type {string}
+     * @memberof V1FlatRun
+     */
+    localId?: string;
+    /**
+     * Log policy matched.
+     * @type {string}
+     * @memberof V1FlatRun
+     */
+    logPolicyMatched?: string;
 }
 /**
  * 
@@ -3592,6 +3637,40 @@ export const V1GenericTaskState = {
     STOPPINGERROR: 'GENERIC_TASK_STATE_STOPPING_ERROR',
 } as const
 export type V1GenericTaskState = ValueOf<typeof V1GenericTaskState>
+/**
+ * Sort token info by the given field.   - SORT_BY_UNSPECIFIED: Returns token info in an unsorted list.  - SORT_BY_USER_ID: Returns token info sorted by user id.  - SORT_BY_EXPIRY: Returns token info sorted by expiry.  - SORT_BY_CREATED_AT: Returns token info sorted by created at.  - SORT_BY_TOKEN_TYPE: Returns token info sorted by token type.  - SORT_BY_REVOKED: Returns token info sorted by if it is revoked.  - SORT_BY_DESCRIPTION: Returns token info sorted by description of token.
+ * @export
+ * @enum {string}
+ */
+export const V1GetAccessTokensRequestSortBy = {
+    UNSPECIFIED: 'SORT_BY_UNSPECIFIED',
+    USERID: 'SORT_BY_USER_ID',
+    EXPIRY: 'SORT_BY_EXPIRY',
+    CREATEDAT: 'SORT_BY_CREATED_AT',
+    TOKENTYPE: 'SORT_BY_TOKEN_TYPE',
+    REVOKED: 'SORT_BY_REVOKED',
+    DESCRIPTION: 'SORT_BY_DESCRIPTION',
+} as const
+export type V1GetAccessTokensRequestSortBy = ValueOf<typeof V1GetAccessTokensRequestSortBy>
+/**
+ * Response to GetAccessTokensRequest.
+ * @export
+ * @interface V1GetAccessTokensResponse
+ */
+export interface V1GetAccessTokensResponse {
+    /**
+     * List of token information.
+     * @type {Array<V1TokenInfo>}
+     * @memberof V1GetAccessTokensResponse
+     */
+    tokenInfo: Array<V1TokenInfo>;
+    /**
+     * Pagination information of the full dataset.
+     * @type {V1Pagination}
+     * @memberof V1GetAccessTokensResponse
+     */
+    pagination?: V1Pagination;
+}
 /**
  * Response to GetActiveTasksCountRequest.
  * @export
@@ -3706,6 +3785,19 @@ export interface V1GetCheckpointResponse {
     checkpoint: V1Checkpoint;
 }
 /**
+ * GetClusterMessageResponse is the response that contains the current cluster message.
+ * @export
+ * @interface V1GetClusterMessageResponse
+ */
+export interface V1GetClusterMessageResponse {
+    /**
+     * cluster_message is the current cluster message.
+     * @type {V1ClusterMessage}
+     * @memberof V1GetClusterMessageResponse
+     */
+    clusterMessage?: V1ClusterMessage;
+}
+/**
  * Response to GetCommandRequest.
  * @export
  * @interface V1GetCommandResponse
@@ -3755,25 +3847,6 @@ export interface V1GetCommandsResponse {
      * @memberof V1GetCommandsResponse
      */
     pagination?: V1Pagination;
-}
-/**
- * 
- * @export
- * @interface V1GetCurrentTrialSearcherOperationResponse
- */
-export interface V1GetCurrentTrialSearcherOperationResponse {
-    /**
-     * The current searcher operation.
-     * @type {V1TrialOperation}
-     * @memberof V1GetCurrentTrialSearcherOperationResponse
-     */
-    op?: V1TrialOperation;
-    /**
-     * The status of the searcher operation.
-     * @type {boolean}
-     * @memberof V1GetCurrentTrialSearcherOperationResponse
-     */
-    completed?: boolean;
 }
 /**
  * Response to GetExperimentCheckpointsRequest.
@@ -3941,6 +4014,19 @@ export interface V1GetGenericTaskConfigResponse {
     config: string;
 }
 /**
+ * Response to GetGlobalConfigPoliciesRequest.
+ * @export
+ * @interface V1GetGlobalConfigPoliciesResponse
+ */
+export interface V1GetGlobalConfigPoliciesResponse {
+    /**
+     * The global current config policies saved. Contains both invariant configs and constraints in yaml or json format.
+     * @type {any}
+     * @memberof V1GetGlobalConfigPoliciesResponse
+     */
+    configPolicies?: any;
+}
+/**
  * GetGroupResponse is the body of the response for the call to get a group by id.
  * @export
  * @interface V1GetGroupResponse
@@ -4080,6 +4166,32 @@ export interface V1GetJobsV2Response {
     jobs: Array<V1RBACJob>;
 }
 /**
+ * Response to GetKubernetesResourceManagersRequest.
+ * @export
+ * @interface V1GetKubernetesResourceManagersResponse
+ */
+export interface V1GetKubernetesResourceManagersResponse {
+    /**
+     * List of clusters
+     * @type {Array<string>}
+     * @memberof V1GetKubernetesResourceManagersResponse
+     */
+    resourceManagers: Array<string>;
+}
+/**
+ * Response for listing namespaces bound to a workspace.
+ * @export
+ * @interface V1GetKubernetesResourceQuotasResponse
+ */
+export interface V1GetKubernetesResourceQuotasResponse {
+    /**
+     * List of workspace-namespace bindings for a given workspace.
+     * @type {{ [key: string]: number; }}
+     * @memberof V1GetKubernetesResourceQuotasResponse
+     */
+    resourceQuotas: { [key: string]: number; };
+}
+/**
  * Response to GetMasterRequest.
  * @export
  * @interface V1GetMasterConfigResponse
@@ -4182,6 +4294,18 @@ export interface V1GetMasterResponse {
      * @memberof V1GetMasterResponse
      */
     strictJobQueueControl: boolean;
+    /**
+     * Active server cluster-wide message if any.
+     * @type {V1ClusterMessage}
+     * @memberof V1GetMasterResponse
+     */
+    clusterMessage?: V1ClusterMessage;
+    /**
+     * Whether the cluster has a user-submitted custom logo.
+     * @type {boolean}
+     * @memberof V1GetMasterResponse
+     */
+    hasCustomLogo: boolean;
 }
 /**
  * Response to GetMeRequest.
@@ -4195,6 +4319,19 @@ export interface V1GetMeResponse {
      * @memberof V1GetMeResponse
      */
     user: V1User;
+}
+/**
+ * Response to GetMetadataValuesRequest.
+ * @export
+ * @interface V1GetMetadataValuesResponse
+ */
+export interface V1GetMetadataValuesResponse {
+    /**
+     * A list of metadata values
+     * @type {Array<string>}
+     * @memberof V1GetMetadataValuesResponse
+     */
+    values?: Array<string>;
 }
 /**
  * Response to GetMetricsRequest.
@@ -4447,6 +4584,19 @@ export interface V1GetPermissionsSummaryResponse {
     assignments: Array<V1RoleAssignmentSummary>;
 }
 /**
+ * Response to GetProjectByKeyRequest.
+ * @export
+ * @interface V1GetProjectByKeyResponse
+ */
+export interface V1GetProjectByKeyResponse {
+    /**
+     * The project requested.
+     * @type {V1Project}
+     * @memberof V1GetProjectByKeyResponse
+     */
+    project: V1Project;
+}
+/**
  * 
  * @export
  * @interface V1GetProjectColumnsResponse
@@ -4576,17 +4726,17 @@ export interface V1GetRolesByIDResponse {
     roles?: Array<V1RoleWithAssignments>;
 }
 /**
- * Response to GetSearcherEventsRequest.
+ * Response to get the metadata of a run.
  * @export
- * @interface V1GetSearcherEventsResponse
+ * @interface V1GetRunMetadataResponse
  */
-export interface V1GetSearcherEventsResponse {
+export interface V1GetRunMetadataResponse {
     /**
-     * The list of events in the queue.
-     * @type {Array<V1SearcherEvent>}
-     * @memberof V1GetSearcherEventsResponse
+     * The arbitrary metadata of the run.
+     * @type {any}
+     * @memberof V1GetRunMetadataResponse
      */
-    searcherEvents?: Array<V1SearcherEvent>;
+    metadata?: any;
 }
 /**
  * Response to GetShellRequest.
@@ -4927,6 +5077,19 @@ export interface V1GetTrialProfilerMetricsResponse {
     batch: V1TrialProfilerMetricsBatch;
 }
 /**
+ * Response to GetTrialRemainingLogRetentionDaysRequest.
+ * @export
+ * @interface V1GetTrialRemainingLogRetentionDaysResponse
+ */
+export interface V1GetTrialRemainingLogRetentionDaysResponse {
+    /**
+     * The remaining log retention days for the trial id.
+     * @type {number}
+     * @memberof V1GetTrialRemainingLogRetentionDaysResponse
+     */
+    remainingDays?: number;
+}
+/**
  * Response to GetTrialRequest.
  * @export
  * @interface V1GetTrialResponse
@@ -5060,6 +5223,19 @@ export interface V1GetWebhooksResponse {
     webhooks: Array<V1Webhook>;
 }
 /**
+ * Response to GetWorkspaceConfigPoliciesRequest.
+ * @export
+ * @interface V1GetWorkspaceConfigPoliciesResponse
+ */
+export interface V1GetWorkspaceConfigPoliciesResponse {
+    /**
+     * The current config policies saved for the workspace. Contains both invariant configs and constraints in yaml or json format.
+     * @type {any}
+     * @memberof V1GetWorkspaceConfigPoliciesResponse
+     */
+    configPolicies?: any;
+}
+/**
  * Sort associated projects by the given field.   - SORT_BY_UNSPECIFIED: Returns projects in an unsorted list.  - SORT_BY_CREATION_TIME: Returns projects sorted by time that they were created.  - SORT_BY_LAST_EXPERIMENT_START_TIME: Returns projects sorted by most recent start of an experiment.  - SORT_BY_NAME: Returns projects sorted by name.  - SORT_BY_DESCRIPTION: Returns projects sorted by description.  - SORT_BY_ID: Returns projects sorted by ID.
  * @export
  * @enum {string}
@@ -5134,6 +5310,19 @@ export interface V1GetWorkspacesResponse {
      * @memberof V1GetWorkspacesResponse
      */
     pagination: V1Pagination;
+}
+/**
+ * Response to GetUnboundWorkspacesRequest.
+ * @export
+ * @interface V1GetWorkspacesWithDefaultNamespaceBindingsResponse
+ */
+export interface V1GetWorkspacesWithDefaultNamespaceBindingsResponse {
+    /**
+     * The list of returned workspace ids.
+     * @type {Array<number>}
+     * @memberof V1GetWorkspacesWithDefaultNamespaceBindingsResponse
+     */
+    workspaceIds?: Array<number>;
 }
 /**
  * 
@@ -5242,19 +5431,6 @@ export interface V1IdleNotebookRequest {
  * @interface V1IdleNotebookResponse
  */
 export interface V1IdleNotebookResponse {
-}
-/**
- * InitialOperations is a searcher event signaling the creation of an experiment.
- * @export
- * @interface V1InitialOperations
- */
-export interface V1InitialOperations {
-    /**
-     * Cannot have an empty message type.
-     * @type {number}
-     * @memberof V1InitialOperations
-     */
-    placeholder?: number;
 }
 /**
  * Int32 filters.
@@ -5757,7 +5933,7 @@ export interface V1LaunchShellRequest {
      */
     files?: Array<V1File>;
     /**
-     * Additional data.
+     * Deprecated: Do not use.
      * @type {string}
      * @memberof V1LaunchShellRequest
      */
@@ -6009,6 +6185,19 @@ export interface V1ListRPsBoundToWorkspaceResponse {
     pagination?: V1Pagination;
 }
 /**
+ * Response for listing namespaces bound to a workspace.
+ * @export
+ * @interface V1ListWorkspaceNamespaceBindingsResponse
+ */
+export interface V1ListWorkspaceNamespaceBindingsResponse {
+    /**
+     * List of workspace-namespace bindings for a given workspace.
+     * @type {{ [key: string]: V1WorkspaceNamespaceBinding; }}
+     * @memberof V1ListWorkspaceNamespaceBindingsResponse
+     */
+    namespaceBindings: { [key: string]: V1WorkspaceNamespaceBinding; };
+}
+/**
  * Response to ListWorkspacesBoundToRPRequest.
  * @export
  * @interface V1ListWorkspacesBoundToRPResponse
@@ -6028,7 +6217,7 @@ export interface V1ListWorkspacesBoundToRPResponse {
     pagination?: V1Pagination;
 }
 /**
- * LocationType indicates where a column comes from - LOCATION_TYPE_UNSPECIFIED: Location unknown  - LOCATION_TYPE_EXPERIMENT: Column is located on the experiment  - LOCATION_TYPE_HYPERPARAMETERS: Column is located in the hyperparameter config of the experiment  - LOCATION_TYPE_VALIDATIONS: Column is located on the experiment's validation metrics  - LOCATION_TYPE_TRAINING: Column is located on the experiment's training steps  - LOCATION_TYPE_CUSTOM_METRIC: Column is located on the experiment's custom metric  - LOCATION_TYPE_RUN: Column is located on the run  - LOCATION_TYPE_RUN_HYPERPARAMETERS: Column is located in the hyperparameter of the run
+ * LocationType indicates where a column comes from - LOCATION_TYPE_UNSPECIFIED: Location unknown  - LOCATION_TYPE_EXPERIMENT: Column is located on the experiment  - LOCATION_TYPE_HYPERPARAMETERS: Column is located in the hyperparameter config of the experiment  - LOCATION_TYPE_VALIDATIONS: Column is located on the experiment's validation metrics  - LOCATION_TYPE_TRAINING: Column is located on the experiment's training steps  - LOCATION_TYPE_CUSTOM_METRIC: Column is located on the experiment's custom metric  - LOCATION_TYPE_RUN: Column is located on the run  - LOCATION_TYPE_RUN_HYPERPARAMETERS: Column is located in the hyperparameter of the run  - LOCATION_TYPE_RUN_METADATA: Column is located on the run's arbitrary metadata
  * @export
  * @enum {string}
  */
@@ -6041,6 +6230,7 @@ export const V1LocationType = {
     CUSTOMMETRIC: 'LOCATION_TYPE_CUSTOM_METRIC',
     RUN: 'LOCATION_TYPE_RUN',
     RUNHYPERPARAMETERS: 'LOCATION_TYPE_RUN_HYPERPARAMETERS',
+    RUNMETADATA: 'LOCATION_TYPE_RUN_METADATA',
 } as const
 export type V1LocationType = ValueOf<typeof V1LocationType>
 /**
@@ -6955,6 +7145,44 @@ export interface V1Pagination {
     total?: number;
 }
 /**
+ * Patch user's access token info.
+ * @export
+ * @interface V1PatchAccessTokenRequest
+ */
+export interface V1PatchAccessTokenRequest {
+    /**
+     * The id of the token.
+     * @type {number}
+     * @memberof V1PatchAccessTokenRequest
+     */
+    tokenId: number;
+    /**
+     * The requested updated token description.
+     * @type {string}
+     * @memberof V1PatchAccessTokenRequest
+     */
+    description?: string;
+    /**
+     * The requested updated token revoke status.
+     * @type {boolean}
+     * @memberof V1PatchAccessTokenRequest
+     */
+    setRevoked?: boolean;
+}
+/**
+ * Response to PatchAccessTokenRequest.
+ * @export
+ * @interface V1PatchAccessTokenResponse
+ */
+export interface V1PatchAccessTokenResponse {
+    /**
+     * The updated token information.
+     * @type {V1TokenInfo}
+     * @memberof V1PatchAccessTokenResponse
+     */
+    tokenInfo?: V1TokenInfo;
+}
+/**
  * Request to change checkpoint database information.
  * @export
  * @interface V1PatchCheckpoint
@@ -7217,6 +7445,12 @@ export interface V1PatchProject {
      * @memberof V1PatchProject
      */
     description?: string;
+    /**
+     * The new key for the project.
+     * @type {string}
+     * @memberof V1PatchProject
+     */
+    key?: string;
 }
 /**
  * Response to PatchProjectRequest.
@@ -7415,6 +7649,26 @@ export interface V1PatchUsersResponse {
     results: Array<V1UserActionResult>;
 }
 /**
+ * 
+ * @export
+ * @interface V1PatchWebhook
+ */
+export interface V1PatchWebhook {
+    /**
+     * The new url of the webhook.
+     * @type {string}
+     * @memberof V1PatchWebhook
+     */
+    url: string;
+}
+/**
+ * Response to PatchWebhookRequest.
+ * @export
+ * @interface V1PatchWebhookResponse
+ */
+export interface V1PatchWebhookResponse {
+}
+/**
  * PatchWorkspace is a partial update to a workspace with all optional fields.
  * @export
  * @interface V1PatchWorkspace
@@ -7462,6 +7716,12 @@ export interface V1PatchWorkspace {
      * @memberof V1PatchWorkspace
      */
     defaultAuxResourcePool?: string;
+    /**
+     * The map of clusters to workspace-namespace metadata (including the workspace-namespace binding and the resource quota placed on the namespace bound to the workspace for a given cluster).
+     * @type {{ [key: string]: V1WorkspaceNamespaceMeta; }}
+     * @memberof V1PatchWorkspace
+     */
+    clusterNamespaceMeta?: { [key: string]: V1WorkspaceNamespaceMeta; };
 }
 /**
  * Response to PatchWorkspaceRequest.
@@ -7475,6 +7735,12 @@ export interface V1PatchWorkspaceResponse {
      * @memberof V1PatchWorkspaceResponse
      */
     workspace: V1Workspace;
+    /**
+     * The workspace-namespace bindings and resource quotas created.
+     * @type {{ [key: string]: V1WorkspaceNamespaceBinding; }}
+     * @memberof V1PatchWorkspaceResponse
+     */
+    namespaceBindings?: { [key: string]: V1WorkspaceNamespaceBinding; };
 }
 /**
  * Response to PauseExperimentRequest.
@@ -7529,6 +7795,44 @@ export interface V1PauseExperimentsResponse {
 export interface V1PauseGenericTaskResponse {
 }
 /**
+ * Request to pause the experiment associated witha run.
+ * @export
+ * @interface V1PauseRunsRequest
+ */
+export interface V1PauseRunsRequest {
+    /**
+     * The ids of the runs being moved.
+     * @type {Array<number>}
+     * @memberof V1PauseRunsRequest
+     */
+    runIds: Array<number>;
+    /**
+     * The id of the project of the runs being paused.
+     * @type {number}
+     * @memberof V1PauseRunsRequest
+     */
+    projectId: number;
+    /**
+     * Filter expression
+     * @type {string}
+     * @memberof V1PauseRunsRequest
+     */
+    filter?: string;
+}
+/**
+ * Response to PauseRunsRequest.
+ * @export
+ * @interface V1PauseRunsResponse
+ */
+export interface V1PauseRunsResponse {
+    /**
+     * Details on success or error for each run.
+     * @type {Array<V1RunActionResult>}
+     * @memberof V1PauseRunsResponse
+     */
+    results: Array<V1RunActionResult>;
+}
+/**
  * 
  * @export
  * @interface V1Permission
@@ -7554,7 +7858,7 @@ export interface V1Permission {
     scopeTypeMask?: V1ScopeTypeMask;
 }
 /**
- * List of permissions types. Value of the enum has 9xxxx for global only permissions. Permissions on the same object share the thousands place value like 2001 and 2002.   - PERMISSION_TYPE_UNSPECIFIED: The permission type is unknown.  - PERMISSION_TYPE_ADMINISTRATE_USER: Can create and update other users. Allows updating other users passwords making this permission give all other permissions effectively.  - PERMISSION_TYPE_ADMINISTRATE_OAUTH: Ability to manage OAuth clients and settings.  - PERMISSION_TYPE_CREATE_EXPERIMENT: Ability to create experiments.  - PERMISSION_TYPE_VIEW_EXPERIMENT_ARTIFACTS: Ability to view experiment's model code, checkpoints, trials.  - PERMISSION_TYPE_VIEW_EXPERIMENT_METADATA: Ability to view experiment's metadata such as experiment config, progress.  - PERMISSION_TYPE_UPDATE_EXPERIMENT: Ability to update experiment and experiment's lifecycle.  - PERMISSION_TYPE_UPDATE_EXPERIMENT_METADATA: Ability to update experiment's metadata.  - PERMISSION_TYPE_DELETE_EXPERIMENT: Ability to delete experiment.  - PERMISSION_TYPE_CREATE_NSC: Ability to create Notebooks, Shells, and Commands.  - PERMISSION_TYPE_VIEW_NSC: Ability to view Notebooks, Shells, and Commands.  - PERMISSION_TYPE_UPDATE_NSC: Ability to terminate Notebooks, Shells, and Commands.  - PERMISSION_TYPE_UPDATE_GROUP: Ability to create, update, and add / remove users from groups.  - PERMISSION_TYPE_CREATE_WORKSPACE: Ability to create workspaces.  - PERMISSION_TYPE_VIEW_WORKSPACE: Ability to view workspace.  - PERMISSION_TYPE_UPDATE_WORKSPACE: Ability to update workspace.  - PERMISSION_TYPE_DELETE_WORKSPACE: Ability to delete workspace.  - PERMISSION_TYPE_SET_WORKSPACE_AGENT_USER_GROUP: Ability to set workspace agent user group config.  - PERMISSION_TYPE_SET_WORKSPACE_CHECKPOINT_STORAGE_CONFIG: Ability to set workspace checkpoint storage config.  - PERMISSION_TYPE_SET_WORKSPACE_DEFAULT_RESOURCE_POOL: Ability to set workspace default resource pool.  - PERMISSION_TYPE_CREATE_PROJECT: Ability to create projects.  - PERMISSION_TYPE_VIEW_PROJECT: Ability to view projects.  - PERMISSION_TYPE_UPDATE_PROJECT: Ability to update projects.  - PERMISSION_TYPE_DELETE_PROJECT: Ability to delete projects.  - PERMISSION_TYPE_ASSIGN_ROLES: Ability to assign roles to groups / users. If assigned at a workspace scope, can only assign roles to that workspace scope.  - PERMISSION_TYPE_VIEW_MODEL_REGISTRY: Ability to view model registry.  - PERMISSION_TYPE_EDIT_MODEL_REGISTRY: Ability to edit model registry.  - PERMISSION_TYPE_CREATE_MODEL_REGISTRY: Ability to create model registry.  - PERMISSION_TYPE_DELETE_MODEL_REGISTRY: Ability to delete model registry.  - PERMISSION_TYPE_DELETE_MODEL_VERSION: Ability to delete model version.  - PERMISSION_TYPE_DELETE_OTHER_USER_MODEL_REGISTRY: Ability to delete another user's model registry.  - PERMISSION_TYPE_DELETE_OTHER_USER_MODEL_VERSION: Ability to delete another user's model version.  - PERMISSION_TYPE_VIEW_MASTER_LOGS: Ability to view master logs.  - PERMISSION_TYPE_VIEW_CLUSTER_USAGE: Ability to view detailed cluster usage info.  - PERMISSION_TYPE_UPDATE_AGENTS: Ability to update agents.  - PERMISSION_TYPE_VIEW_SENSITIVE_AGENT_INFO: Ability to view sensitive subset of agent info.  - PERMISSION_TYPE_VIEW_MASTER_CONFIG: Ability to view master configs.  - PERMISSION_TYPE_UPDATE_MASTER_CONFIG: Ability to update master configs.  - PERMISSION_TYPE_VIEW_EXTERNAL_JOBS: Ability to view external jobs.  - PERMISSION_TYPE_CONTROL_STRICT_JOB_QUEUE: Ability to control strict job queue.  - PERMISSION_TYPE_VIEW_TEMPLATES: Ability to view templates.  - PERMISSION_TYPE_UPDATE_TEMPLATES: Ability to update templates.  - PERMISSION_TYPE_CREATE_TEMPLATES: Ability to create templates.  - PERMISSION_TYPE_DELETE_TEMPLATES: Ability to delete templates.  - PERMISSION_TYPE_UPDATE_ROLES: Ability to create and update role definitions.  - PERMISSION_TYPE_EDIT_WEBHOOKS: Ability to create and delete webhooks.  - PERMISSION_TYPE_MODIFY_RP_WORKSPACE_BINDINGS: Ability to bind, unbind or overwrite resource pool workspace bindings.
+ * List of permissions types. Value of the enum has 9xxxx for global only permissions. Permissions on the same object share the thousands place value like 2001 and 2002.   - PERMISSION_TYPE_UNSPECIFIED: The permission type is unknown.  - PERMISSION_TYPE_ADMINISTRATE_USER: Can create and update other users. Allows updating other users passwords making this permission give all other permissions effectively.  - PERMISSION_TYPE_ADMINISTRATE_OAUTH: Ability to manage OAuth clients and settings.  - PERMISSION_TYPE_CREATE_EXPERIMENT: Ability to create experiments.  - PERMISSION_TYPE_VIEW_EXPERIMENT_ARTIFACTS: Ability to view experiment's model code, checkpoints, trials.  - PERMISSION_TYPE_VIEW_EXPERIMENT_METADATA: Ability to view experiment's metadata such as experiment config, progress.  - PERMISSION_TYPE_UPDATE_EXPERIMENT: Ability to update experiment and experiment's lifecycle.  - PERMISSION_TYPE_UPDATE_EXPERIMENT_METADATA: Ability to update experiment's metadata.  - PERMISSION_TYPE_DELETE_EXPERIMENT: Ability to delete experiment.  - PERMISSION_TYPE_CREATE_NSC: Ability to create Notebooks, Shells, and Commands.  - PERMISSION_TYPE_VIEW_NSC: Ability to view Notebooks, Shells, and Commands.  - PERMISSION_TYPE_UPDATE_NSC: Ability to terminate Notebooks, Shells, and Commands.  - PERMISSION_TYPE_UPDATE_GROUP: Ability to create, update, and add / remove users from groups.  - PERMISSION_TYPE_CREATE_WORKSPACE: Ability to create workspaces.  - PERMISSION_TYPE_VIEW_WORKSPACE: Ability to view workspace.  - PERMISSION_TYPE_UPDATE_WORKSPACE: Ability to update workspace.  - PERMISSION_TYPE_DELETE_WORKSPACE: Ability to delete workspace.  - PERMISSION_TYPE_SET_WORKSPACE_AGENT_USER_GROUP: Ability to set workspace agent user group config.  - PERMISSION_TYPE_SET_WORKSPACE_CHECKPOINT_STORAGE_CONFIG: Ability to set workspace checkpoint storage config.  - PERMISSION_TYPE_SET_WORKSPACE_DEFAULT_RESOURCE_POOL: Ability to set workspace default resource pool.  - PERMISSION_TYPE_CREATE_PROJECT: Ability to create projects.  - PERMISSION_TYPE_VIEW_PROJECT: Ability to view projects.  - PERMISSION_TYPE_UPDATE_PROJECT: Ability to update projects.  - PERMISSION_TYPE_DELETE_PROJECT: Ability to delete projects.  - PERMISSION_TYPE_ASSIGN_ROLES: Ability to assign roles to groups / users. If assigned at a workspace scope, can only assign roles to that workspace scope.  - PERMISSION_TYPE_VIEW_MODEL_REGISTRY: Ability to view model registry.  - PERMISSION_TYPE_EDIT_MODEL_REGISTRY: Ability to edit model registry.  - PERMISSION_TYPE_CREATE_MODEL_REGISTRY: Ability to create model registry.  - PERMISSION_TYPE_DELETE_MODEL_REGISTRY: Ability to delete model registry.  - PERMISSION_TYPE_DELETE_MODEL_VERSION: Ability to delete model version.  - PERMISSION_TYPE_DELETE_OTHER_USER_MODEL_REGISTRY: Ability to delete another user's model registry.  - PERMISSION_TYPE_DELETE_OTHER_USER_MODEL_VERSION: Ability to delete another user's model version.  - PERMISSION_TYPE_VIEW_MASTER_LOGS: Ability to view master logs.  - PERMISSION_TYPE_VIEW_CLUSTER_USAGE: Ability to view detailed cluster usage info.  - PERMISSION_TYPE_UPDATE_AGENTS: Ability to update agents.  - PERMISSION_TYPE_VIEW_SENSITIVE_AGENT_INFO: Ability to view sensitive subset of agent info.  - PERMISSION_TYPE_VIEW_MASTER_CONFIG: Ability to view master configs.  - PERMISSION_TYPE_UPDATE_MASTER_CONFIG: Ability to update master configs.  - PERMISSION_TYPE_VIEW_EXTERNAL_JOBS: Ability to view external jobs.  - PERMISSION_TYPE_CONTROL_STRICT_JOB_QUEUE: Ability to control strict job queue.  - PERMISSION_TYPE_VIEW_TEMPLATES: Ability to view templates.  - PERMISSION_TYPE_UPDATE_TEMPLATES: Ability to update templates.  - PERMISSION_TYPE_CREATE_TEMPLATES: Ability to create templates.  - PERMISSION_TYPE_DELETE_TEMPLATES: Ability to delete templates.  - PERMISSION_TYPE_UPDATE_ROLES: Ability to create and update role definitions.  - PERMISSION_TYPE_EDIT_WEBHOOKS: Ability to create and delete webhooks.  - PERMISSION_TYPE_VIEW_WEBHOOKS: Ability to view webhooks.  - PERMISSION_TYPE_MODIFY_RP_WORKSPACE_BINDINGS: Ability to bind, unbind or overwrite resource pool workspace bindings.  - PERMISSION_TYPE_SET_WORKSPACE_NAMESPACE_BINDINGS: Ability to bind, unbind, or overwrite namespace workspace bindings.  - PERMISSION_TYPE_SET_RESOURCE_QUOTAS: Ability to set resource quotas on workspaces.  - PERMISSION_TYPE_VIEW_RESOURCE_QUOTAS: Ability to view resource quotas on workspaces.  - PERMISSION_TYPE_MODIFY_GLOBAL_CONFIG_POLICIES: Ability to modify global config policies.  - PERMISSION_TYPE_MODIFY_WORKSPACE_CONFIG_POLICIES: Ability to modify workspace config policies.  - PERMISSION_TYPE_VIEW_GLOBAL_CONFIG_POLICIES: Ability to view global config policies.  - PERMISSION_TYPE_VIEW_WORKSPACE_CONFIG_POLICIES: Ability to view workspace config policies.  - PERMISSION_TYPE_ADMINISTRATE_TOKEN: Ability to administrate other users' tokens.  - PERMISSION_TYPE_UPDATE_TOKEN: Ability to update one's own token.  - PERMISSION_TYPE_CREATE_TOKEN: Ability to create one's own token  - PERMISSION_TYPE_CREATE_OTHER_TOKEN: Ability to create another user's token  - PERMISSION_TYPE_VIEW_OTHER_TOKEN: Ability to view another user's token  - PERMISSION_TYPE_VIEW_TOKEN: Ability to view one's own token
  * @export
  * @enum {string}
  */
@@ -7605,7 +7909,21 @@ export const V1PermissionType = {
     DELETETEMPLATES: 'PERMISSION_TYPE_DELETE_TEMPLATES',
     UPDATEROLES: 'PERMISSION_TYPE_UPDATE_ROLES',
     EDITWEBHOOKS: 'PERMISSION_TYPE_EDIT_WEBHOOKS',
+    VIEWWEBHOOKS: 'PERMISSION_TYPE_VIEW_WEBHOOKS',
     MODIFYRPWORKSPACEBINDINGS: 'PERMISSION_TYPE_MODIFY_RP_WORKSPACE_BINDINGS',
+    SETWORKSPACENAMESPACEBINDINGS: 'PERMISSION_TYPE_SET_WORKSPACE_NAMESPACE_BINDINGS',
+    SETRESOURCEQUOTAS: 'PERMISSION_TYPE_SET_RESOURCE_QUOTAS',
+    VIEWRESOURCEQUOTAS: 'PERMISSION_TYPE_VIEW_RESOURCE_QUOTAS',
+    MODIFYGLOBALCONFIGPOLICIES: 'PERMISSION_TYPE_MODIFY_GLOBAL_CONFIG_POLICIES',
+    MODIFYWORKSPACECONFIGPOLICIES: 'PERMISSION_TYPE_MODIFY_WORKSPACE_CONFIG_POLICIES',
+    VIEWGLOBALCONFIGPOLICIES: 'PERMISSION_TYPE_VIEW_GLOBAL_CONFIG_POLICIES',
+    VIEWWORKSPACECONFIGPOLICIES: 'PERMISSION_TYPE_VIEW_WORKSPACE_CONFIG_POLICIES',
+    ADMINISTRATETOKEN: 'PERMISSION_TYPE_ADMINISTRATE_TOKEN',
+    UPDATETOKEN: 'PERMISSION_TYPE_UPDATE_TOKEN',
+    CREATETOKEN: 'PERMISSION_TYPE_CREATE_TOKEN',
+    CREATEOTHERTOKEN: 'PERMISSION_TYPE_CREATE_OTHER_TOKEN',
+    VIEWOTHERTOKEN: 'PERMISSION_TYPE_VIEW_OTHER_TOKEN',
+    VIEWTOKEN: 'PERMISSION_TYPE_VIEW_TOKEN',
 } as const
 export type V1PermissionType = ValueOf<typeof V1PermissionType>
 /**
@@ -7645,6 +7963,50 @@ export interface V1PolymorphicFilter {
      * @memberof V1PolymorphicFilter
      */
     timeRange?: V1TimestampFieldFilter;
+}
+/**
+ * Create the requested user's accessToken.
+ * @export
+ * @interface V1PostAccessTokenRequest
+ */
+export interface V1PostAccessTokenRequest {
+    /**
+     * The id of the user.
+     * @type {number}
+     * @memberof V1PostAccessTokenRequest
+     */
+    userId: number;
+    /**
+     * Lifespan expressing how long the token should last. Should be a Go-format duration (e.g. "2s", "4m", "72h".)
+     * @type {string}
+     * @memberof V1PostAccessTokenRequest
+     */
+    lifespan?: string;
+    /**
+     * Description of the token.
+     * @type {string}
+     * @memberof V1PostAccessTokenRequest
+     */
+    description?: string;
+}
+/**
+ * Response to PostAccessTokenRequest.
+ * @export
+ * @interface V1PostAccessTokenResponse
+ */
+export interface V1PostAccessTokenResponse {
+    /**
+     * token value string.
+     * @type {string}
+     * @memberof V1PostAccessTokenResponse
+     */
+    token?: string;
+    /**
+     * token id.
+     * @type {number}
+     * @memberof V1PostAccessTokenResponse
+     */
+    tokenId?: number;
 }
 /**
  * Set the accelerator data for some allocation.
@@ -7872,6 +8234,12 @@ export interface V1PostProjectRequest {
      * @memberof V1PostProjectRequest
      */
     workspaceId: number;
+    /**
+     * Key for the project.
+     * @type {string}
+     * @memberof V1PostProjectRequest
+     */
+    key?: string;
 }
 /**
  * Response to PostProjectRequest.
@@ -7887,36 +8255,36 @@ export interface V1PostProjectResponse {
     project: V1Project;
 }
 /**
- * Request for sending operations from a custom search method.
+ * Request to post metadata for a run.
  * @export
- * @interface V1PostSearcherOperationsRequest
+ * @interface V1PostRunMetadataRequest
  */
-export interface V1PostSearcherOperationsRequest {
+export interface V1PostRunMetadataRequest {
     /**
-     * The experiment ID.
+     * The ID of the run to post metadata for.
      * @type {number}
-     * @memberof V1PostSearcherOperationsRequest
+     * @memberof V1PostRunMetadataRequest
      */
-    experimentId?: number;
+    runId?: number;
     /**
-     * List of operations to submit.
-     * @type {Array<V1SearcherOperation>}
-     * @memberof V1PostSearcherOperationsRequest
+     * The arbitrary metadata to post.
+     * @type {any}
+     * @memberof V1PostRunMetadataRequest
      */
-    searcherOperations?: Array<V1SearcherOperation>;
-    /**
-     * The event that triggered the client to send these operations to the master.
-     * @type {V1SearcherEvent}
-     * @memberof V1PostSearcherOperationsRequest
-     */
-    triggeredByEvent?: V1SearcherEvent;
+    metadata: any;
 }
 /**
- * Response to PostSearcherOperationsResponse.
+ * Response to post metadata for a run.
  * @export
- * @interface V1PostSearcherOperationsResponse
+ * @interface V1PostRunMetadataResponse
  */
-export interface V1PostSearcherOperationsResponse {
+export interface V1PostRunMetadataResponse {
+    /**
+     * The new metadata of the run.
+     * @type {any}
+     * @memberof V1PostRunMetadataResponse
+     */
+    metadata?: any;
 }
 /**
  * Request to PostTaskLogs.
@@ -8069,6 +8437,38 @@ export interface V1PostUserSettingRequest {
 export interface V1PostUserSettingResponse {
 }
 /**
+ * Request for triggering custom trigger.
+ * @export
+ * @interface V1PostWebhookEventDataRequest
+ */
+export interface V1PostWebhookEventDataRequest {
+    /**
+     * The event data for custom webhook trigger.
+     * @type {V1CustomWebhookEventData}
+     * @memberof V1PostWebhookEventDataRequest
+     */
+    data: V1CustomWebhookEventData;
+    /**
+     * The id of the experiment.
+     * @type {number}
+     * @memberof V1PostWebhookEventDataRequest
+     */
+    experimentId: number;
+    /**
+     * The id of the trial.
+     * @type {number}
+     * @memberof V1PostWebhookEventDataRequest
+     */
+    trialId?: number;
+}
+/**
+ * Response to PostWebhookEventDataRequest.
+ * @export
+ * @interface V1PostWebhookEventDataResponse
+ */
+export interface V1PostWebhookEventDataResponse {
+}
+/**
  * Response to PostWebhookRequest.
  * @export
  * @interface V1PostWebhookResponse
@@ -8117,6 +8517,18 @@ export interface V1PostWorkspaceRequest {
      * @memberof V1PostWorkspaceRequest
      */
     defaultAuxPool?: string;
+    /**
+     * The map of clusters to workspace-namespace metadata (including the workspace-namespace binding and the resource quota placed on the namespace bound to the workspace for a given cluster).
+     * @type {{ [key: string]: V1WorkspaceNamespaceMeta; }}
+     * @memberof V1PostWorkspaceRequest
+     */
+    clusterNamespaceMeta?: { [key: string]: V1WorkspaceNamespaceMeta; };
+    /**
+     * The map of clusters to the resource quota placed on the auto-generated namespace within that cluster (inherently capping the slots available to a workspace).
+     * @type {{ [key: string]: number; }}
+     * @memberof V1PostWorkspaceRequest
+     */
+    clusterQuotaPairs?: { [key: string]: number; };
 }
 /**
  * Response to PostWorkspaceRequest.
@@ -8130,6 +8542,12 @@ export interface V1PostWorkspaceResponse {
      * @memberof V1PostWorkspaceResponse
      */
     workspace: V1Workspace;
+    /**
+     * The workspace-namespace bindings and resource quotas created.
+     * @type {{ [key: string]: V1WorkspaceNamespaceBinding; }}
+     * @memberof V1PostWorkspaceResponse
+     */
+    namespaceBindings?: { [key: string]: V1WorkspaceNamespaceBinding; };
 }
 /**
  * Preview hyperparameter search.
@@ -8157,11 +8575,11 @@ export interface V1PreviewHPSearchRequest {
  */
 export interface V1PreviewHPSearchResponse {
     /**
-     * The resulting simulation.
-     * @type {V1ExperimentSimulation}
+     * The resulting summary.
+     * @type {V1SearchSummary}
      * @memberof V1PreviewHPSearchResponse
      */
-    simulation?: V1ExperimentSimulation;
+    summary?: V1SearchSummary;
 }
 /**
  * Project is a named collection of experiments.
@@ -8259,6 +8677,18 @@ export interface V1Project {
      * @memberof V1Project
      */
     errorMessage: string;
+    /**
+     * The key of the project.
+     * @type {string}
+     * @memberof V1Project
+     */
+    key: string;
+    /**
+     * Count of runs associated with this project.
+     * @type {number}
+     * @memberof V1Project
+     */
+    numRuns: number;
 }
 /**
  * Project Column is a description of a column used on experiments in the project.
@@ -8425,6 +8855,38 @@ export interface V1PutExperimentsRetainLogsResponse {
     results: Array<V1ExperimentActionResult>;
 }
 /**
+ * PutGlobalConfigPoliciesRequest sets global config policies for the workload type.
+ * @export
+ * @interface V1PutGlobalConfigPoliciesRequest
+ */
+export interface V1PutGlobalConfigPoliciesRequest {
+    /**
+     * The workload type the config policies apply to: EXPERIMENT or NTSC.
+     * @type {string}
+     * @memberof V1PutGlobalConfigPoliciesRequest
+     */
+    workloadType: string;
+    /**
+     * The config policies to use. Contains both invariant configs and constraints in yaml or json format.
+     * @type {string}
+     * @memberof V1PutGlobalConfigPoliciesRequest
+     */
+    configPolicies: string;
+}
+/**
+ * Response to PutGlobalConfigPoliciesRequest.
+ * @export
+ * @interface V1PutGlobalConfigPoliciesResponse
+ */
+export interface V1PutGlobalConfigPoliciesResponse {
+    /**
+     * The config policies saved. Contains both invariant configs and constraints in yaml or json format.
+     * @type {any}
+     * @memberof V1PutGlobalConfigPoliciesResponse
+     */
+    configPolicies?: any;
+}
+/**
  * Request for setting project notes.
  * @export
  * @interface V1PutProjectNotesRequest
@@ -8528,6 +8990,44 @@ export interface V1PutTrialRetainLogsRequest {
 export interface V1PutTrialRetainLogsResponse {
 }
 /**
+ * PutWorkspaceConfigPoliciesRequest sets config policies for the workspace and workload type.
+ * @export
+ * @interface V1PutWorkspaceConfigPoliciesRequest
+ */
+export interface V1PutWorkspaceConfigPoliciesRequest {
+    /**
+     * The workspace the config policies apply to. Use global API for global config policies.
+     * @type {number}
+     * @memberof V1PutWorkspaceConfigPoliciesRequest
+     */
+    workspaceId: number;
+    /**
+     * The workload type the config policies apply to: EXPERIMENT or NTSC.
+     * @type {string}
+     * @memberof V1PutWorkspaceConfigPoliciesRequest
+     */
+    workloadType: string;
+    /**
+     * The config policies to use. Contains both invariant configs and constraints in yaml or json format.
+     * @type {string}
+     * @memberof V1PutWorkspaceConfigPoliciesRequest
+     */
+    configPolicies: string;
+}
+/**
+ * Response to PutWorkspaceConfigPoliciesRequest.
+ * @export
+ * @interface V1PutWorkspaceConfigPoliciesResponse
+ */
+export interface V1PutWorkspaceConfigPoliciesResponse {
+    /**
+     * The config policies saved. Contains both invariant configs and constraints in yaml or json format.
+     * @type {any}
+     * @memberof V1PutWorkspaceConfigPoliciesResponse
+     */
+    configPolicies?: any;
+}
+/**
  * Describes a message to control jobs in a queue.
  * @export
  * @interface V1QueueControl
@@ -8540,13 +9040,13 @@ export interface V1QueueControl {
      */
     jobId: string;
     /**
-     * The desired job position in the queue in terms of another job.
+     * Deprecated; do not use.
      * @type {string}
      * @memberof V1QueueControl
      */
     aheadOf?: string;
     /**
-     * The desired job position in the queue in terms of another job.
+     * Deprecated; do not use.
      * @type {string}
      * @memberof V1QueueControl
      */
@@ -8693,6 +9193,31 @@ export interface V1ReportTrialMetricsRequest {
 export interface V1ReportTrialMetricsResponse {
 }
 /**
+ * For bookkeeping, updates the progress of the trial as a percent torwards the training length requested of it by the searcher.
+ * @export
+ * @interface V1ReportTrialProgressRequest
+ */
+export interface V1ReportTrialProgressRequest {
+    /**
+     * The id of the trial.
+     * @type {number}
+     * @memberof V1ReportTrialProgressRequest
+     */
+    trialId: number;
+    /**
+     * Total units completed by the trial, in terms of the unit used to configure the searcher.
+     * @type {number}
+     * @memberof V1ReportTrialProgressRequest
+     */
+    progress: number;
+    /**
+     * Indicator for if the passed progress is raw and we want to skip any calculation by searcher. Default to false.
+     * @type {boolean}
+     * @memberof V1ReportTrialProgressRequest
+     */
+    isRaw?: boolean;
+}
+/**
  * 
  * @export
  * @interface V1ReportTrialProgressResponse
@@ -8801,12 +9326,6 @@ export interface V1ResourceAllocationAggregatedEntry {
      * @memberof V1ResourceAllocationAggregatedEntry
      */
     byResourcePool: { [key: string]: number; };
-    /**
-     * This field has been deprecated and will be empty.
-     * @type {{ [key: string]: number; }}
-     * @memberof V1ResourceAllocationAggregatedEntry
-     */
-    byAgentLabel: { [key: string]: number; };
 }
 /**
  * Response to ResourceAllocationAggregatedRequest.
@@ -9117,17 +9636,17 @@ export interface V1ResourcePool {
      */
     stats?: V1QueueStats;
     /**
-     * Resource manager name.
-     * @type {string}
-     * @memberof V1ResourcePool
-     */
-    resourceManagerName: string;
-    /**
      * Resource manager's metadata.
      * @type {{ [key: string]: string; }}
      * @memberof V1ResourcePool
      */
     resourceManagerMetadata: { [key: string]: string; };
+    /**
+     * Resource manager's associated cluster name.
+     * @type {string}
+     * @memberof V1ResourcePool
+     */
+    clusterName: string;
 }
 /**
  * 
@@ -9523,6 +10042,44 @@ export interface V1ResourcesSummary {
     exited?: V1ResourcesStopped;
 }
 /**
+ * Request to unpause the experiment associated witha run.
+ * @export
+ * @interface V1ResumeRunsRequest
+ */
+export interface V1ResumeRunsRequest {
+    /**
+     * The ids of the runs being moved.
+     * @type {Array<number>}
+     * @memberof V1ResumeRunsRequest
+     */
+    runIds: Array<number>;
+    /**
+     * The id of the project of the runs being unpaused.
+     * @type {number}
+     * @memberof V1ResumeRunsRequest
+     */
+    projectId: number;
+    /**
+     * Filter expression
+     * @type {string}
+     * @memberof V1ResumeRunsRequest
+     */
+    filter?: string;
+}
+/**
+ * Response to ResumeRunsRequest.
+ * @export
+ * @interface V1ResumeRunsResponse
+ */
+export interface V1ResumeRunsResponse {
+    /**
+     * Details on success or error for each run.
+     * @type {Array<V1RunActionResult>}
+     * @memberof V1ResumeRunsResponse
+     */
+    results: Array<V1RunActionResult>;
+}
+/**
  * 
  * @export
  * @interface V1Role
@@ -9673,36 +10230,6 @@ export interface V1RunActionResult {
     id: number;
 }
 /**
- * RunnableOperation represents a single runnable operation emitted by a searcher.
- * @export
- * @interface V1RunnableOperation
- */
-export interface V1RunnableOperation {
-    /**
-     * This is the type of the operation.
-     * @type {V1RunnableType}
-     * @memberof V1RunnableOperation
-     */
-    type?: V1RunnableType;
-    /**
-     * If the type == WORKLOAD_KIND_TRAIN, this is the number of units
-     * @type {string}
-     * @memberof V1RunnableOperation
-     */
-    length?: string;
-}
-/**
- * RunnableType defines the type of operation that should be executed by trial runners.   - RUNNABLE_TYPE_UNSPECIFIED: Denotes an unknown runnable type.  - RUNNABLE_TYPE_TRAIN: Signals to a trial runner that it should run a train.  - RUNNABLE_TYPE_VALIDATE: Signals to a trial runner it should compute validation metrics.
- * @export
- * @enum {string}
- */
-export const V1RunnableType = {
-    UNSPECIFIED: 'RUNNABLE_TYPE_UNSPECIFIED',
-    TRAIN: 'RUNNABLE_TYPE_TRAIN',
-    VALIDATE: 'RUNNABLE_TYPE_VALIDATE',
-} as const
-export type V1RunnableType = ValueOf<typeof V1RunnableType>
-/**
  * Request to prepare to start reporting to a run.
  * @export
  * @interface V1RunPrepareForReportingRequest
@@ -9769,98 +10296,6 @@ export interface V1ScopeTypeMask {
     workspace?: boolean;
 }
 /**
- * SearcherEvent is a message from master to a client-driven custom searcher informing it of relevant changes in the state of an experiment.
- * @export
- * @interface V1SearcherEvent
- */
-export interface V1SearcherEvent {
-    /**
-     * Incremental ID of the event.
-     * @type {number}
-     * @memberof V1SearcherEvent
-     */
-    id: number;
-    /**
-     * An experiment has just been created.
-     * @type {V1InitialOperations}
-     * @memberof V1SearcherEvent
-     */
-    initialOperations?: V1InitialOperations;
-    /**
-     * A trial has been created.
-     * @type {V1TrialCreated}
-     * @memberof V1SearcherEvent
-     */
-    trialCreated?: V1TrialCreated;
-    /**
-     * Validation has completed.
-     * @type {V1ValidationCompleted}
-     * @memberof V1SearcherEvent
-     */
-    validationCompleted?: V1ValidationCompleted;
-    /**
-     * Trial has finished.
-     * @type {V1TrialClosed}
-     * @memberof V1SearcherEvent
-     */
-    trialClosed?: V1TrialClosed;
-    /**
-     * Trial exited early.
-     * @type {V1TrialExitedEarly}
-     * @memberof V1SearcherEvent
-     */
-    trialExitedEarly?: V1TrialExitedEarly;
-    /**
-     * Trial progress.
-     * @type {V1TrialProgress}
-     * @memberof V1SearcherEvent
-     */
-    trialProgress?: V1TrialProgress;
-    /**
-     * Experiment is inactive.
-     * @type {V1ExperimentInactive}
-     * @memberof V1SearcherEvent
-     */
-    experimentInactive?: V1ExperimentInactive;
-}
-/**
- * SearcherOperation is an operation issued by the custom searcher.
- * @export
- * @interface V1SearcherOperation
- */
-export interface V1SearcherOperation {
-    /**
-     * TrialOperation is issued to tell an existing trial to do something.
-     * @type {V1TrialOperation}
-     * @memberof V1SearcherOperation
-     */
-    trialOperation?: V1TrialOperation;
-    /**
-     * CreateTrialOperation is issued to create a trial.
-     * @type {V1CreateTrialOperation}
-     * @memberof V1SearcherOperation
-     */
-    createTrial?: V1CreateTrialOperation;
-    /**
-     * CloseTrialOperation is issued to close a trial.
-     * @type {V1CloseTrialOperation}
-     * @memberof V1SearcherOperation
-     */
-    closeTrial?: V1CloseTrialOperation;
-    /**
-     * ShutDownOperation is issued to shut down the custom search method.
-     * @type {V1ShutDownOperation}
-     * @memberof V1SearcherOperation
-     */
-    shutDown?: V1ShutDownOperation;
-    /**
-     * SetSearcherProgressOperation is issued to set the progress of the custom search method.
-     * @type {V1SetSearcherProgressOperation}
-     * @memberof V1SearcherOperation
-     */
-    setSearcherProgress?: V1SetSearcherProgressOperation;
-}
-/**
  * 
  * @export
  * @interface V1SearchExperimentExperiment
@@ -9878,6 +10313,43 @@ export interface V1SearchExperimentExperiment {
      * @memberof V1SearchExperimentExperiment
      */
     bestTrial?: Trialv1Trial;
+}
+/**
+ * 
+ * @export
+ * @interface V1SearchExperimentsRequest
+ */
+export interface V1SearchExperimentsRequest {
+    /**
+     * ID of the project to look at
+     * @type {number}
+     * @memberof V1SearchExperimentsRequest
+     */
+    projectId?: number;
+    /**
+     * How many experiments to skip before including in the results
+     * @type {number}
+     * @memberof V1SearchExperimentsRequest
+     */
+    offset?: number;
+    /**
+     * How many results to show
+     * @type {number}
+     * @memberof V1SearchExperimentsRequest
+     */
+    limit?: number;
+    /**
+     * Sort parameters in the format <col1>=(asc|desc),<col2>=(asc|desc)
+     * @type {string}
+     * @memberof V1SearchExperimentsRequest
+     */
+    sort?: string;
+    /**
+     * Filter expression
+     * @type {string}
+     * @memberof V1SearchExperimentsRequest
+     */
+    filter?: string;
 }
 /**
  * 
@@ -9943,6 +10415,43 @@ export interface V1SearchRolesAssignableToScopeResponse {
     roles?: Array<V1Role>;
 }
 /**
+ * Get a list of runs.
+ * @export
+ * @interface V1SearchRunsRequest
+ */
+export interface V1SearchRunsRequest {
+    /**
+     * ID of the project to look at
+     * @type {number}
+     * @memberof V1SearchRunsRequest
+     */
+    projectId?: number;
+    /**
+     * How many experiments to skip before including in the results
+     * @type {number}
+     * @memberof V1SearchRunsRequest
+     */
+    offset?: number;
+    /**
+     * How many results to show
+     * @type {number}
+     * @memberof V1SearchRunsRequest
+     */
+    limit?: number;
+    /**
+     * Sort parameters in the format <col1>=(asc|desc),<col2>=(asc|desc)
+     * @type {string}
+     * @memberof V1SearchRunsRequest
+     */
+    sort?: string;
+    /**
+     * Filter expression
+     * @type {string}
+     * @memberof V1SearchRunsRequest
+     */
+    filter?: string;
+}
+/**
  * Response to SearchRunsResponse.
  * @export
  * @interface V1SearchRunsResponse
@@ -9960,6 +10469,88 @@ export interface V1SearchRunsResponse {
      * @memberof V1SearchRunsResponse
      */
     pagination: V1Pagination;
+}
+/**
+ * SearchSummary contains the estimated trials and training lengths that a search plans to execute.
+ * @export
+ * @interface V1SearchSummary
+ */
+export interface V1SearchSummary {
+    /**
+     * The searcher config from which the summary is generated.
+     * @type {any}
+     * @memberof V1SearchSummary
+     */
+    config: any;
+    /**
+     * A list of planned number of trials to their training lengths.
+     * @type {Array<V1TrialSummary>}
+     * @memberof V1SearchSummary
+     */
+    trials?: Array<V1TrialSummary>;
+}
+/**
+ * SearchUnit describes a length unit used by some searchers to manage training.
+ * @export
+ * @interface V1SearchUnit
+ */
+export interface V1SearchUnit {
+    /**
+     * Name of the length unit (if max_length is false).
+     * @type {string}
+     * @memberof V1SearchUnit
+     */
+    name?: string;
+    /**
+     * Value of the length unit (if max_length is false).
+     * @type {number}
+     * @memberof V1SearchUnit
+     */
+    value?: number;
+    /**
+     * Bool indicating whether the training length is defined in code.
+     * @type {boolean}
+     * @memberof V1SearchUnit
+     */
+    maxLength: boolean;
+}
+/**
+ * Set the cluster-wide message.
+ * @export
+ * @interface V1SetClusterMessageRequest
+ */
+export interface V1SetClusterMessageRequest {
+    /**
+     * Text content of message.
+     * @type {string}
+     * @memberof V1SetClusterMessageRequest
+     */
+    message: string;
+    /**
+     * Time to begin showing message.
+     * @type {Date | DateString}
+     * @memberof V1SetClusterMessageRequest
+     */
+    startTime: Date | DateString;
+    /**
+     * Time to stop showing message.
+     * @type {Date | DateString}
+     * @memberof V1SetClusterMessageRequest
+     */
+    endTime?: Date | DateString;
+    /**
+     * Duration expressing how long the message should last. Should be a Go-format duration (e.g. 24h, 2w, 5d)
+     * @type {string}
+     * @memberof V1SetClusterMessageRequest
+     */
+    duration?: string;
+}
+/**
+ * Response to SetClusterMessageRequest.
+ * @export
+ * @interface V1SetClusterMessageResponse
+ */
+export interface V1SetClusterMessageResponse {
 }
 /**
  * Set the priority of the requested command.
@@ -10026,17 +10617,30 @@ export interface V1SetNotebookPriorityResponse {
     notebook?: V1Notebook;
 }
 /**
- * SetSearcherProgressOperation informs the master of the progress of the custom searcher.
+ * Request to set a resource quota on a workspace (for a specific cluster).
  * @export
- * @interface V1SetSearcherProgressOperation
+ * @interface V1SetResourceQuotasRequest
  */
-export interface V1SetSearcherProgressOperation {
+export interface V1SetResourceQuotasRequest {
     /**
-     * Experiment progress as a float between 0.0 and 1.0.
+     * The id of the workspace.
      * @type {number}
-     * @memberof V1SetSearcherProgressOperation
+     * @memberof V1SetResourceQuotasRequest
      */
-    progress?: number;
+    id: number;
+    /**
+     * A map of cluster to resource-quota pairs used to set GPU request limits on the workspace (for a specific cluster).
+     * @type {{ [key: string]: number; }}
+     * @memberof V1SetResourceQuotasRequest
+     */
+    clusterQuotaPairs?: { [key: string]: number; };
+}
+/**
+ * Response for setting the resource quota for a workspace (for a specific cluster).
+ * @export
+ * @interface V1SetResourceQuotasResponse
+ */
+export interface V1SetResourceQuotasResponse {
 }
 /**
  * Set the priority of the requested shell.
@@ -10114,6 +10718,38 @@ export interface V1SetUserPasswordResponse {
      * @memberof V1SetUserPasswordResponse
      */
     user?: V1User;
+}
+/**
+ * Request for setting workspace-namespace bindings.
+ * @export
+ * @interface V1SetWorkspaceNamespaceBindingsRequest
+ */
+export interface V1SetWorkspaceNamespaceBindingsRequest {
+    /**
+     * The unique id of the workspace.
+     * @type {number}
+     * @memberof V1SetWorkspaceNamespaceBindingsRequest
+     */
+    workspaceId: number;
+    /**
+     * The cluster-namespace pairs used to create workspace-namespace bindings.
+     * @type {{ [key: string]: V1WorkspaceNamespaceMeta; }}
+     * @memberof V1SetWorkspaceNamespaceBindingsRequest
+     */
+    clusterNamespaceMeta?: { [key: string]: V1WorkspaceNamespaceMeta; };
+}
+/**
+ * Response for setting workspace-namespace bindings.
+ * @export
+ * @interface V1SetWorkspaceNamespaceBindingsResponse
+ */
+export interface V1SetWorkspaceNamespaceBindingsResponse {
+    /**
+     * The added workspace-namespace bindings.
+     * @type {{ [key: string]: V1WorkspaceNamespaceBinding; }}
+     * @memberof V1SetWorkspaceNamespaceBindingsResponse
+     */
+    namespaceBindings: { [key: string]: V1WorkspaceNamespaceBinding; };
 }
 /**
  * Shell is an ssh server in a containerized environment.
@@ -10219,25 +10855,6 @@ export interface V1Shell {
     workspaceId: number;
 }
 /**
- * Shut down custom searcher method.
- * @export
- * @interface V1ShutDownOperation
- */
-export interface V1ShutDownOperation {
-    /**
-     * Defines whether the Searcher was cancelled
-     * @type {boolean}
-     * @memberof V1ShutDownOperation
-     */
-    cancel?: boolean;
-    /**
-     * Defines whether the Searcher failed
-     * @type {boolean}
-     * @memberof V1ShutDownOperation
-     */
-    failure?: boolean;
-}
-/**
  * Slot wraps a single device on the agent.
  * @export
  * @interface V1Slot
@@ -10317,6 +10934,12 @@ export interface V1SSOProvider {
      * @memberof V1SSOProvider
      */
     type: string;
+    /**
+     * The flag to indicate if this provider should be always be redirected to, instead of showing the standard sign-in page.
+     * @type {boolean}
+     * @memberof V1SSOProvider
+     */
+    alwaysRedirect?: boolean;
 }
 /**
  * Start a trial.
@@ -10362,6 +10985,17 @@ export interface V1StartTrialResponse {
      */
     stepsCompleted: number;
 }
+/**
+ * Project Table type.   - TABLE_TYPE_UNSPECIFIED: Unspecified table type.  - TABLE_TYPE_EXPERIMENT: experiment table.  - TABLE_TYPE_RUN: run table.
+ * @export
+ * @enum {string}
+ */
+export const V1TableType = {
+    UNSPECIFIED: 'TABLE_TYPE_UNSPECIFIED',
+    EXPERIMENT: 'TABLE_TYPE_EXPERIMENT',
+    RUN: 'TABLE_TYPE_RUN',
+} as const
+export type V1TableType = ValueOf<typeof V1TableType>
 /**
  * Task is the model for a task in the database.
  * @export
@@ -10807,31 +11441,65 @@ export interface V1TimestampFieldFilter {
     gte?: Date | DateString;
 }
 /**
- * TrialClosed is a searcher event triggered when a trial has successfully finished.
+ * TokenInfo represents a token entry in the database.
  * @export
- * @interface V1TrialClosed
+ * @interface V1TokenInfo
  */
-export interface V1TrialClosed {
+export interface V1TokenInfo {
     /**
-     * UUID identifying the trial to the searcher.
-     * @type {string}
-     * @memberof V1TrialClosed
+     * The token ID.
+     * @type {number}
+     * @memberof V1TokenInfo
      */
-    requestId: string;
+    id: number;
+    /**
+     * The id of the user the token belongs to.
+     * @type {number}
+     * @memberof V1TokenInfo
+     */
+    userId: number;
+    /**
+     * Timestamp of when the token expires.
+     * @type {Date | DateString}
+     * @memberof V1TokenInfo
+     */
+    expiry?: Date | DateString;
+    /**
+     * Tiemstamp of when the token was created.
+     * @type {Date | DateString}
+     * @memberof V1TokenInfo
+     */
+    createdAt?: Date | DateString;
+    /**
+     * Type of token this entry represents.
+     * @type {V1TokenType}
+     * @memberof V1TokenInfo
+     */
+    tokenType?: V1TokenType;
+    /**
+     * Flag denoting if this token is revoked.
+     * @type {boolean}
+     * @memberof V1TokenInfo
+     */
+    revoked?: boolean;
+    /**
+     * Description of the token.
+     * @type {string}
+     * @memberof V1TokenInfo
+     */
+    description?: string;
 }
 /**
- * TrialCreated is a searcher event signaling the creation of a trial.
+ * Token type.   - TOKEN_TYPE_UNSPECIFIED: Default token type.  - TOKEN_TYPE_USER_SESSION: User Session token.  - TOKEN_TYPE_ACCESS_TOKEN: Access token.
  * @export
- * @interface V1TrialCreated
+ * @enum {string}
  */
-export interface V1TrialCreated {
-    /**
-     * UUID identifying the trial to the searcher.
-     * @type {string}
-     * @memberof V1TrialCreated
-     */
-    requestId: string;
-}
+export const V1TokenType = {
+    UNSPECIFIED: 'TOKEN_TYPE_UNSPECIFIED',
+    USERSESSION: 'TOKEN_TYPE_USER_SESSION',
+    ACCESSTOKEN: 'TOKEN_TYPE_ACCESS_TOKEN',
+} as const
+export type V1TokenType = ValueOf<typeof V1TokenType>
 /**
  * Signals to the experiment the trial early exited.
  * @export
@@ -10856,37 +11524,6 @@ export const V1TrialEarlyExitExitedReason = {
     INITINVALIDHP: 'EXITED_REASON_INIT_INVALID_HP',
 } as const
 export type V1TrialEarlyExitExitedReason = ValueOf<typeof V1TrialEarlyExitExitedReason>
-/**
- * TrialExitedEarly is a searcher event triggered when a trial exited prematurely.
- * @export
- * @interface V1TrialExitedEarly
- */
-export interface V1TrialExitedEarly {
-    /**
-     * UUID identifying the trial to the searcher.
-     * @type {string}
-     * @memberof V1TrialExitedEarly
-     */
-    requestId: string;
-    /**
-     * The reason for the exit.
-     * @type {V1TrialExitedEarlyExitedReason}
-     * @memberof V1TrialExitedEarly
-     */
-    exitedReason: V1TrialExitedEarlyExitedReason;
-}
-/**
- * The reason for an early exit.   - EXITED_REASON_UNSPECIFIED: Zero-value (not allowed).  - EXITED_REASON_INVALID_HP: Indicates the trial exited due to an invalid hyperparameter.  - EXITED_REASON_USER_REQUESTED_STOP: Indicates the trial exited due to a user requested stop, from code.  - EXITED_REASON_USER_CANCELED: Indicates the trial exited due to a user requested stop, from the CLI or UI.
- * @export
- * @enum {string}
- */
-export const V1TrialExitedEarlyExitedReason = {
-    UNSPECIFIED: 'EXITED_REASON_UNSPECIFIED',
-    INVALIDHP: 'EXITED_REASON_INVALID_HP',
-    USERREQUESTEDSTOP: 'EXITED_REASON_USER_REQUESTED_STOP',
-    USERCANCELED: 'EXITED_REASON_USER_CANCELED',
-} as const
-export type V1TrialExitedEarlyExitedReason = ValueOf<typeof V1TrialExitedEarlyExitedReason>
 /**
  * Response to TrialLogFieldsRequest.
  * @export
@@ -11035,19 +11672,6 @@ export interface V1TrialMetrics {
     metrics: V1Metrics;
 }
 /**
- * TrialOperation is any operation that a trial can perform while it is active.
- * @export
- * @interface V1TrialOperation
- */
-export interface V1TrialOperation {
-    /**
-     * ValidateAfter means a trial is currently training and will later validate.
-     * @type {V1ValidateAfterOperation}
-     * @memberof V1TrialOperation
-     */
-    validateAfter?: V1ValidateAfterOperation;
-}
-/**
  * 
  * @export
  * @interface V1TrialProfilerMetricLabels
@@ -11116,25 +11740,6 @@ export interface V1TrialProfilerMetricsBatch {
     labels: V1TrialProfilerMetricLabels;
 }
 /**
- * TrialProgress is a searcher event that tells you the number of batches completed in the trial.
- * @export
- * @interface V1TrialProgress
- */
-export interface V1TrialProgress {
-    /**
-     * UUID identifying the trial to the searcher.
-     * @type {string}
-     * @memberof V1TrialProgress
-     */
-    requestId: string;
-    /**
-     * partial_units represent partial epochs, batches or records where the Unit is implied.
-     * @type {number}
-     * @memberof V1TrialProgress
-     */
-    partialUnits: number;
-}
-/**
  * The metadata pertaining to the current running task for a trial.
  * @export
  * @interface V1TrialRunnerMetadata
@@ -11146,25 +11751,6 @@ export interface V1TrialRunnerMetadata {
      * @memberof V1TrialRunnerMetadata
      */
     state: string;
-}
-/**
- * TrialSimulation is a specific sequence of workloads that were run before the trial was completed.
- * @export
- * @interface V1TrialSimulation
- */
-export interface V1TrialSimulation {
-    /**
-     * The list of operations that were run before the trial was completed.
-     * @type {Array<V1RunnableOperation>}
-     * @memberof V1TrialSimulation
-     */
-    operations?: Array<V1RunnableOperation>;
-    /**
-     * The number of times that this trial configuration has occurred during the simulation.
-     * @type {number}
-     * @memberof V1TrialSimulation
-     */
-    occurrences?: number;
 }
 /**
  * 
@@ -11309,6 +11895,25 @@ export interface V1TrialsSnapshotResponseTrial {
     batchesProcessed: number;
 }
 /**
+ * TrialSummary describes the runs that are estimated to train for a certain length.
+ * @export
+ * @interface V1TrialSummary
+ */
+export interface V1TrialSummary {
+    /**
+     * Number of trials.
+     * @type {number}
+     * @memberof V1TrialSummary
+     */
+    count: number;
+    /**
+     * Training length for the trials.
+     * @type {V1SearchUnit}
+     * @memberof V1TrialSummary
+     */
+    unit: V1SearchUnit;
+}
+/**
  * 
  * @export
  * @interface V1Trigger
@@ -11340,7 +11945,7 @@ export interface V1Trigger {
     webhookId?: number;
 }
 /**
- * Enum values for expected trigger types.   - TRIGGER_TYPE_UNSPECIFIED: Default value  - TRIGGER_TYPE_EXPERIMENT_STATE_CHANGE: For an experiment changing state  - TRIGGER_TYPE_METRIC_THRESHOLD_EXCEEDED: For metrics emitted during training.  - TRIGGER_TYPE_TASK_LOG: For task logs.
+ * Enum values for expected trigger types.   - TRIGGER_TYPE_UNSPECIFIED: Default value  - TRIGGER_TYPE_EXPERIMENT_STATE_CHANGE: For an experiment changing state  - TRIGGER_TYPE_METRIC_THRESHOLD_EXCEEDED: For metrics emitted during training.  - TRIGGER_TYPE_TASK_LOG: For task logs.  - TRIGGER_TYPE_CUSTOM: For custom alert.
  * @export
  * @enum {string}
  */
@@ -11349,6 +11954,7 @@ export const V1TriggerType = {
     EXPERIMENTSTATECHANGE: 'TRIGGER_TYPE_EXPERIMENT_STATE_CHANGE',
     METRICTHRESHOLDEXCEEDED: 'TRIGGER_TYPE_METRIC_THRESHOLD_EXCEEDED',
     TASKLOG: 'TRIGGER_TYPE_TASK_LOG',
+    CUSTOM: 'TRIGGER_TYPE_CUSTOM',
 } as const
 export type V1TriggerType = ValueOf<typeof V1TriggerType>
 /**
@@ -11709,50 +12315,6 @@ export interface V1UserWebSetting {
     value?: string;
 }
 /**
- * ValidateAfterOperation means the trial should train and validate after training the given length.
- * @export
- * @interface V1ValidateAfterOperation
- */
-export interface V1ValidateAfterOperation {
-    /**
-     * The ID of the trial that should train.
-     * @type {string}
-     * @memberof V1ValidateAfterOperation
-     */
-    requestId?: string;
-    /**
-     * The length to train before reporting a validation.
-     * @type {string}
-     * @memberof V1ValidateAfterOperation
-     */
-    length?: string;
-}
-/**
- * ValidationCompleted is a searcher event triggered when a validation has been completed.
- * @export
- * @interface V1ValidationCompleted
- */
-export interface V1ValidationCompleted {
-    /**
-     * UUID identifying the trial to the searcher.
-     * @type {string}
-     * @memberof V1ValidationCompleted
-     */
-    requestId: string;
-    /**
-     * Value of the validation metric used to direct the search.
-     * @type {any}
-     * @memberof V1ValidationCompleted
-     */
-    metric: any;
-    /**
-     * Length from ValidateAfterOperation.
-     * @type {string}
-     * @memberof V1ValidationCompleted
-     */
-    validateAfterLength: string;
-}
-/**
  * ValidationHistoryEntry is a single entry for a validation history for an experiment.
  * @export
  * @interface V1ValidationHistoryEntry
@@ -11807,7 +12369,36 @@ export interface V1Webhook {
      * @memberof V1Webhook
      */
     webhookType: V1WebhookType;
+    /**
+     * The name of the webhook.
+     * @type {string}
+     * @memberof V1Webhook
+     */
+    name: string;
+    /**
+     * The workspace of the webhook.
+     * @type {number}
+     * @memberof V1Webhook
+     */
+    workspaceId?: number;
+    /**
+     * The mode of the webhook.
+     * @type {V1WebhookMode}
+     * @memberof V1Webhook
+     */
+    mode: V1WebhookMode;
 }
+/**
+ * Enum values for webhook mode.   - WEBHOOK_MODE_UNSPECIFIED: Default value  - WEBHOOK_MODE_WORKSPACE: Webhook will be triggered by all experiment in the workspace  - WEBHOOK_MODE_SPECIFIC: Webhook will only be triggered by experiment with matching configuration in the same workspace as the web hook
+ * @export
+ * @enum {string}
+ */
+export const V1WebhookMode = {
+    UNSPECIFIED: 'WEBHOOK_MODE_UNSPECIFIED',
+    WORKSPACE: 'WEBHOOK_MODE_WORKSPACE',
+    SPECIFIC: 'WEBHOOK_MODE_SPECIFIC',
+} as const
+export type V1WebhookMode = ValueOf<typeof V1WebhookMode>
 /**
  * Enum values for expected webhook types.   - WEBHOOK_TYPE_UNSPECIFIED: Default value  - WEBHOOK_TYPE_DEFAULT: For a default webhook  - WEBHOOK_TYPE_SLACK: For a slack webhook.
  * @export
@@ -11946,6 +12537,80 @@ export interface V1Workspace {
      * @memberof V1Workspace
      */
     defaultAuxPool?: string;
+    /**
+     * Optional auto-created namespace bound to the workspace.
+     * @type {string}
+     * @memberof V1Workspace
+     */
+    autoCreatedNamespace?: string;
+}
+/**
+ * WorkspaceNamespace represents a workspace-namespace binding for a given workspace and cluster.
+ * @export
+ * @interface V1WorkspaceNamespaceBinding
+ */
+export interface V1WorkspaceNamespaceBinding {
+    /**
+     * The id of the workspace.
+     * @type {number}
+     * @memberof V1WorkspaceNamespaceBinding
+     */
+    workspaceId?: number;
+    /**
+     * The Kubernetes namespace.
+     * @type {string}
+     * @memberof V1WorkspaceNamespaceBinding
+     */
+    namespace?: string;
+    /**
+     * User cluster name.
+     * @type {string}
+     * @memberof V1WorkspaceNamespaceBinding
+     */
+    clusterName?: string;
+    /**
+     * Whether the namespace was auto-created for a workspace-namespace binding.
+     * @type {boolean}
+     * @memberof V1WorkspaceNamespaceBinding
+     */
+    autoCreateNamespace?: boolean;
+}
+/**
+ * WorkspaceNamespaceMeta is the metadata associated with a workspace-namespace binding.
+ * @export
+ * @interface V1WorkspaceNamespaceMeta
+ */
+export interface V1WorkspaceNamespaceMeta {
+    /**
+     * The optional namespace of the workspace-namespace binding.
+     * @type {string}
+     * @memberof V1WorkspaceNamespaceMeta
+     */
+    namespace?: string;
+    /**
+     * Whether we want to auto-create a namespace for a workspace-namespace binding.
+     * @type {boolean}
+     * @memberof V1WorkspaceNamespaceMeta
+     */
+    autoCreateNamespace?: boolean;
+    /**
+     * Whether we want to auto-create a namespace for each cluster's workspace-namespace binding.
+     * @type {boolean}
+     * @memberof V1WorkspaceNamespaceMeta
+     */
+    autoCreateNamespaceAllClusters?: boolean;
+    /**
+     * The cluster to which we apply the workspace-namespace binding or resource quota.
+     * @type {string}
+     * @memberof V1WorkspaceNamespaceMeta
+     */
+    clusterName?: string;
+    /**
+     * The optional resource quota placed on the namespace (and consequentially, the workspace). TODO (CM-495): Remove this field and use GetKubernetesResourceQuotasRequest instead.
+     * @type {number}
+     * @memberof V1WorkspaceNamespaceMeta
+     */
+    resourceQuota?: number;
 }
 /**
  * WorkspaceState is used to track progress during a deletion.   - WORKSPACE_STATE_UNSPECIFIED: Object deletion is not in progress.  - WORKSPACE_STATE_DELETING: The object is being deleted.  - WORKSPACE_STATE_DELETE_FAILED: The object failed to delete.  - WORKSPACE_STATE_DELETED: The object finished deleting.
@@ -11959,6 +12624,553 @@ export const V1WorkspaceState = {
     DELETED: 'WORKSPACE_STATE_DELETED',
 } as const
 export type V1WorkspaceState = ValueOf<typeof V1WorkspaceState>
+/**
+ * AlphaApi - fetch parameter creator
+ * @export
+ */
+export const AlphaApiFetchParamCreator = function (configuration?: Configuration) {
+    return {
+        /**
+         * 
+         * @summary Delete global task config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteGlobalConfigPolicies(workloadType: string, options: any = {}): FetchArgs {
+            // verify required parameter 'workloadType' is not null or undefined
+            if (workloadType === null || workloadType === undefined) {
+                throw new RequiredError('workloadType','Required parameter workloadType was null or undefined when calling deleteGlobalConfigPolicies.');
+            }
+            const localVarPath = `/api/v1/config-policies/global/{workloadType}`
+                .replace(`{${"workloadType"}}`, encodeURIComponent(String(workloadType)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'DELETE', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Delete workspace task config policies.
+         * @param {number} workspaceId The workspace the config policies apply to. Use global API for global config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteWorkspaceConfigPolicies(workspaceId: number, workloadType: string, options: any = {}): FetchArgs {
+            // verify required parameter 'workspaceId' is not null or undefined
+            if (workspaceId === null || workspaceId === undefined) {
+                throw new RequiredError('workspaceId','Required parameter workspaceId was null or undefined when calling deleteWorkspaceConfigPolicies.');
+            }
+            // verify required parameter 'workloadType' is not null or undefined
+            if (workloadType === null || workloadType === undefined) {
+                throw new RequiredError('workloadType','Required parameter workloadType was null or undefined when calling deleteWorkspaceConfigPolicies.');
+            }
+            const localVarPath = `/api/v1/config-policies/workspaces/{workspaceId}/{workloadType}`
+                .replace(`{${"workspaceId"}}`, encodeURIComponent(String(workspaceId)))
+                .replace(`{${"workloadType"}}`, encodeURIComponent(String(workloadType)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'DELETE', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Get global task config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getGlobalConfigPolicies(workloadType: string, options: any = {}): FetchArgs {
+            // verify required parameter 'workloadType' is not null or undefined
+            if (workloadType === null || workloadType === undefined) {
+                throw new RequiredError('workloadType','Required parameter workloadType was null or undefined when calling getGlobalConfigPolicies.');
+            }
+            const localVarPath = `/api/v1/config-policies/global/{workloadType}`
+                .replace(`{${"workloadType"}}`, encodeURIComponent(String(workloadType)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'GET', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Get workspace task config policies.
+         * @param {number} workspaceId The workspace the config policies apply to. Use global API for global config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getWorkspaceConfigPolicies(workspaceId: number, workloadType: string, options: any = {}): FetchArgs {
+            // verify required parameter 'workspaceId' is not null or undefined
+            if (workspaceId === null || workspaceId === undefined) {
+                throw new RequiredError('workspaceId','Required parameter workspaceId was null or undefined when calling getWorkspaceConfigPolicies.');
+            }
+            // verify required parameter 'workloadType' is not null or undefined
+            if (workloadType === null || workloadType === undefined) {
+                throw new RequiredError('workloadType','Required parameter workloadType was null or undefined when calling getWorkspaceConfigPolicies.');
+            }
+            const localVarPath = `/api/v1/config-policies/workspaces/{workspaceId}/{workloadType}`
+                .replace(`{${"workspaceId"}}`, encodeURIComponent(String(workspaceId)))
+                .replace(`{${"workloadType"}}`, encodeURIComponent(String(workloadType)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'GET', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Add or update global task config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {V1PutGlobalConfigPoliciesRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        putGlobalConfigPolicies(workloadType: string, body: V1PutGlobalConfigPoliciesRequest, options: any = {}): FetchArgs {
+            // verify required parameter 'workloadType' is not null or undefined
+            if (workloadType === null || workloadType === undefined) {
+                throw new RequiredError('workloadType','Required parameter workloadType was null or undefined when calling putGlobalConfigPolicies.');
+            }
+            // verify required parameter 'body' is not null or undefined
+            if (body === null || body === undefined) {
+                throw new RequiredError('body','Required parameter body was null or undefined when calling putGlobalConfigPolicies.');
+            }
+            const localVarPath = `/api/v1/config-policies/global/{workloadType}`
+                .replace(`{${"workloadType"}}`, encodeURIComponent(String(workloadType)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'PUT', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            localVarRequestOptions.body = JSON.stringify(body)
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Add or update workspace task config policies.
+         * @param {number} workspaceId The workspace the config policies apply to. Use global API for global config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {V1PutWorkspaceConfigPoliciesRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        putWorkspaceConfigPolicies(workspaceId: number, workloadType: string, body: V1PutWorkspaceConfigPoliciesRequest, options: any = {}): FetchArgs {
+            // verify required parameter 'workspaceId' is not null or undefined
+            if (workspaceId === null || workspaceId === undefined) {
+                throw new RequiredError('workspaceId','Required parameter workspaceId was null or undefined when calling putWorkspaceConfigPolicies.');
+            }
+            // verify required parameter 'workloadType' is not null or undefined
+            if (workloadType === null || workloadType === undefined) {
+                throw new RequiredError('workloadType','Required parameter workloadType was null or undefined when calling putWorkspaceConfigPolicies.');
+            }
+            // verify required parameter 'body' is not null or undefined
+            if (body === null || body === undefined) {
+                throw new RequiredError('body','Required parameter body was null or undefined when calling putWorkspaceConfigPolicies.');
+            }
+            const localVarPath = `/api/v1/config-policies/workspaces/{workspaceId}/{workloadType}`
+                .replace(`{${"workspaceId"}}`, encodeURIComponent(String(workspaceId)))
+                .replace(`{${"workloadType"}}`, encodeURIComponent(String(workloadType)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'PUT', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            localVarRequestOptions.body = JSON.stringify(body)
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+    }
+};
+
+/**
+ * AlphaApi - functional programming interface
+ * @export
+ */
+export const AlphaApiFp = function (configuration?: Configuration) {
+    return {
+        /**
+         * 
+         * @summary Delete global task config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteGlobalConfigPolicies(workloadType: string, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1DeleteGlobalConfigPoliciesResponse> {
+            const localVarFetchArgs = AlphaApiFetchParamCreator(configuration).deleteGlobalConfigPolicies(workloadType, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary Delete workspace task config policies.
+         * @param {number} workspaceId The workspace the config policies apply to. Use global API for global config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteWorkspaceConfigPolicies(workspaceId: number, workloadType: string, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1DeleteWorkspaceConfigPoliciesResponse> {
+            const localVarFetchArgs = AlphaApiFetchParamCreator(configuration).deleteWorkspaceConfigPolicies(workspaceId, workloadType, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary Get global task config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getGlobalConfigPolicies(workloadType: string, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetGlobalConfigPoliciesResponse> {
+            const localVarFetchArgs = AlphaApiFetchParamCreator(configuration).getGlobalConfigPolicies(workloadType, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary Get workspace task config policies.
+         * @param {number} workspaceId The workspace the config policies apply to. Use global API for global config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getWorkspaceConfigPolicies(workspaceId: number, workloadType: string, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetWorkspaceConfigPoliciesResponse> {
+            const localVarFetchArgs = AlphaApiFetchParamCreator(configuration).getWorkspaceConfigPolicies(workspaceId, workloadType, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary Add or update global task config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {V1PutGlobalConfigPoliciesRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        putGlobalConfigPolicies(workloadType: string, body: V1PutGlobalConfigPoliciesRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1PutGlobalConfigPoliciesResponse> {
+            const localVarFetchArgs = AlphaApiFetchParamCreator(configuration).putGlobalConfigPolicies(workloadType, body, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary Add or update workspace task config policies.
+         * @param {number} workspaceId The workspace the config policies apply to. Use global API for global config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {V1PutWorkspaceConfigPoliciesRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        putWorkspaceConfigPolicies(workspaceId: number, workloadType: string, body: V1PutWorkspaceConfigPoliciesRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1PutWorkspaceConfigPoliciesResponse> {
+            const localVarFetchArgs = AlphaApiFetchParamCreator(configuration).putWorkspaceConfigPolicies(workspaceId, workloadType, body, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+    }
+};
+
+/**
+ * AlphaApi - factory interface
+ * @export
+ */
+export const AlphaApiFactory = function (configuration?: Configuration, fetch?: FetchAPI, basePath?: string) {
+    return {
+        /**
+         * 
+         * @summary Delete global task config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteGlobalConfigPolicies(workloadType: string, options?: any) {
+            return AlphaApiFp(configuration).deleteGlobalConfigPolicies(workloadType, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Delete workspace task config policies.
+         * @param {number} workspaceId The workspace the config policies apply to. Use global API for global config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteWorkspaceConfigPolicies(workspaceId: number, workloadType: string, options?: any) {
+            return AlphaApiFp(configuration).deleteWorkspaceConfigPolicies(workspaceId, workloadType, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Get global task config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getGlobalConfigPolicies(workloadType: string, options?: any) {
+            return AlphaApiFp(configuration).getGlobalConfigPolicies(workloadType, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Get workspace task config policies.
+         * @param {number} workspaceId The workspace the config policies apply to. Use global API for global config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getWorkspaceConfigPolicies(workspaceId: number, workloadType: string, options?: any) {
+            return AlphaApiFp(configuration).getWorkspaceConfigPolicies(workspaceId, workloadType, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Add or update global task config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {V1PutGlobalConfigPoliciesRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        putGlobalConfigPolicies(workloadType: string, body: V1PutGlobalConfigPoliciesRequest, options?: any) {
+            return AlphaApiFp(configuration).putGlobalConfigPolicies(workloadType, body, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Add or update workspace task config policies.
+         * @param {number} workspaceId The workspace the config policies apply to. Use global API for global config policies.
+         * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+         * @param {V1PutWorkspaceConfigPoliciesRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        putWorkspaceConfigPolicies(workspaceId: number, workloadType: string, body: V1PutWorkspaceConfigPoliciesRequest, options?: any) {
+            return AlphaApiFp(configuration).putWorkspaceConfigPolicies(workspaceId, workloadType, body, options)(fetch, basePath);
+        },
+    }
+};
+
+/**
+ * AlphaApi - object-oriented interface
+ * @export
+ * @class
+ * @extends {BaseAPI}
+ */
+export class AlphaApi extends BaseAPI {
+    /**
+     * 
+     * @summary Delete global task config policies.
+     * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AlphaApi
+     */
+    public deleteGlobalConfigPolicies(workloadType: string, options?: any) {
+        return AlphaApiFp(this.configuration).deleteGlobalConfigPolicies(workloadType, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Delete workspace task config policies.
+     * @param {number} workspaceId The workspace the config policies apply to. Use global API for global config policies.
+     * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AlphaApi
+     */
+    public deleteWorkspaceConfigPolicies(workspaceId: number, workloadType: string, options?: any) {
+        return AlphaApiFp(this.configuration).deleteWorkspaceConfigPolicies(workspaceId, workloadType, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Get global task config policies.
+     * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AlphaApi
+     */
+    public getGlobalConfigPolicies(workloadType: string, options?: any) {
+        return AlphaApiFp(this.configuration).getGlobalConfigPolicies(workloadType, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Get workspace task config policies.
+     * @param {number} workspaceId The workspace the config policies apply to. Use global API for global config policies.
+     * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AlphaApi
+     */
+    public getWorkspaceConfigPolicies(workspaceId: number, workloadType: string, options?: any) {
+        return AlphaApiFp(this.configuration).getWorkspaceConfigPolicies(workspaceId, workloadType, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Add or update global task config policies.
+     * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+     * @param {V1PutGlobalConfigPoliciesRequest} body
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AlphaApi
+     */
+    public putGlobalConfigPolicies(workloadType: string, body: V1PutGlobalConfigPoliciesRequest, options?: any) {
+        return AlphaApiFp(this.configuration).putGlobalConfigPolicies(workloadType, body, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Add or update workspace task config policies.
+     * @param {number} workspaceId The workspace the config policies apply to. Use global API for global config policies.
+     * @param {string} workloadType The workload type the config policies apply to: EXPERIMENT or NTSC.
+     * @param {V1PutWorkspaceConfigPoliciesRequest} body
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AlphaApi
+     */
+    public putWorkspaceConfigPolicies(workspaceId: number, workloadType: string, body: V1PutWorkspaceConfigPoliciesRequest, options?: any) {
+        return AlphaApiFp(this.configuration).putWorkspaceConfigPolicies(workspaceId, workloadType, body, options)(this.fetch, this.basePath)
+    }
+    
+}
+
 /**
  * AuthenticationApi - fetch parameter creator
  * @export
@@ -12569,6 +13781,36 @@ export const ClusterApiFetchParamCreator = function (configuration?: Configurati
     return {
         /**
          * 
+         * @summary Clear the cluster-wide message shown to all users.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteClusterMessage(options: any = {}): FetchArgs {
+            const localVarPath = `/api/v1/master/cluster_message`;
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'DELETE', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary Disable the agent.
          * @param {string} agentId The id of the agent.
          * @param {V1DisableAgentRequest} body
@@ -12782,13 +14024,12 @@ export const ClusterApiFetchParamCreator = function (configuration?: Configurati
          * @param {V1OrderBy} [orderBy] Order agents in either ascending or descending order.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
          * @param {number} [offset] Skip the number of agents before returning results. Negative values denote number of agents to skip from the end before returning results.
          * @param {number} [limit] Limit the number of agents. A value of 0 denotes no limit.
-         * @param {string} [label] This field has been deprecated and will be ignored.
          * @param {boolean} [excludeSlots] exclude slots.
          * @param {boolean} [excludeContainers] exclude containers.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getAgents(sortBy?: V1GetAgentsRequestSortBy, orderBy?: V1OrderBy, offset?: number, limit?: number, label?: string, excludeSlots?: boolean, excludeContainers?: boolean, options: any = {}): FetchArgs {
+        getAgents(sortBy?: V1GetAgentsRequestSortBy, orderBy?: V1OrderBy, offset?: number, limit?: number, excludeSlots?: boolean, excludeContainers?: boolean, options: any = {}): FetchArgs {
             const localVarPath = `/api/v1/agents`;
             const localVarUrlObj = new URL(localVarPath, BASE_PATH);
             const localVarRequestOptions = { method: 'GET', ...options };
@@ -12819,16 +14060,42 @@ export const ClusterApiFetchParamCreator = function (configuration?: Configurati
                 localVarQueryParameter['limit'] = limit
             }
             
-            if (label !== undefined) {
-                localVarQueryParameter['label'] = label
-            }
-            
             if (excludeSlots !== undefined) {
                 localVarQueryParameter['excludeSlots'] = excludeSlots
             }
             
             if (excludeContainers !== undefined) {
                 localVarQueryParameter['excludeContainers'] = excludeContainers
+            }
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Get the currently configured cluster-wide message.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getClusterMessage(options: any = {}): FetchArgs {
+            const localVarPath = `/api/v1/master/cluster_message`;
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'GET', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
             }
             
             objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
@@ -13188,6 +14455,44 @@ export const ClusterApiFetchParamCreator = function (configuration?: Configurati
                 options: localVarRequestOptions,
             };
         },
+        /**
+         * 
+         * @summary Set the cluster-wide message shown to users. Only one can be set at at time, so any existing message will be disabled.
+         * @param {V1SetClusterMessageRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        setClusterMessage(body: V1SetClusterMessageRequest, options: any = {}): FetchArgs {
+            // verify required parameter 'body' is not null or undefined
+            if (body === null || body === undefined) {
+                throw new RequiredError('body','Required parameter body was null or undefined when calling setClusterMessage.');
+            }
+            const localVarPath = `/api/v1/master/cluster_message`;
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'PUT', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            localVarRequestOptions.body = JSON.stringify(body)
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
     }
 };
 
@@ -13197,6 +14502,24 @@ export const ClusterApiFetchParamCreator = function (configuration?: Configurati
  */
 export const ClusterApiFp = function (configuration?: Configuration) {
     return {
+        /**
+         * 
+         * @summary Clear the cluster-wide message shown to all users.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteClusterMessage(options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1DeleteClusterMessageResponse> {
+            const localVarFetchArgs = ClusterApiFetchParamCreator(configuration).deleteClusterMessage(options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
         /**
          * 
          * @summary Disable the agent.
@@ -13303,14 +14626,31 @@ export const ClusterApiFp = function (configuration?: Configuration) {
          * @param {V1OrderBy} [orderBy] Order agents in either ascending or descending order.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
          * @param {number} [offset] Skip the number of agents before returning results. Negative values denote number of agents to skip from the end before returning results.
          * @param {number} [limit] Limit the number of agents. A value of 0 denotes no limit.
-         * @param {string} [label] This field has been deprecated and will be ignored.
          * @param {boolean} [excludeSlots] exclude slots.
          * @param {boolean} [excludeContainers] exclude containers.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getAgents(sortBy?: V1GetAgentsRequestSortBy, orderBy?: V1OrderBy, offset?: number, limit?: number, label?: string, excludeSlots?: boolean, excludeContainers?: boolean, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetAgentsResponse> {
-            const localVarFetchArgs = ClusterApiFetchParamCreator(configuration).getAgents(sortBy, orderBy, offset, limit, label, excludeSlots, excludeContainers, options);
+        getAgents(sortBy?: V1GetAgentsRequestSortBy, orderBy?: V1OrderBy, offset?: number, limit?: number, excludeSlots?: boolean, excludeContainers?: boolean, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetAgentsResponse> {
+            const localVarFetchArgs = ClusterApiFetchParamCreator(configuration).getAgents(sortBy, orderBy, offset, limit, excludeSlots, excludeContainers, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary Get the currently configured cluster-wide message.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getClusterMessage(options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetClusterMessageResponse> {
+            const localVarFetchArgs = ClusterApiFetchParamCreator(configuration).getClusterMessage(options);
             return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
                 return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
                     if (response.status >= 200 && response.status < 300) {
@@ -13495,6 +14835,25 @@ export const ClusterApiFp = function (configuration?: Configuration) {
                 });
             };
         },
+        /**
+         * 
+         * @summary Set the cluster-wide message shown to users. Only one can be set at at time, so any existing message will be disabled.
+         * @param {V1SetClusterMessageRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        setClusterMessage(body: V1SetClusterMessageRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1SetClusterMessageResponse> {
+            const localVarFetchArgs = ClusterApiFetchParamCreator(configuration).setClusterMessage(body, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
     }
 };
 
@@ -13504,6 +14863,15 @@ export const ClusterApiFp = function (configuration?: Configuration) {
  */
 export const ClusterApiFactory = function (configuration?: Configuration, fetch?: FetchAPI, basePath?: string) {
     return {
+        /**
+         * 
+         * @summary Clear the cluster-wide message shown to all users.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteClusterMessage(options?: any) {
+            return ClusterApiFp(configuration).deleteClusterMessage(options)(fetch, basePath);
+        },
         /**
          * 
          * @summary Disable the agent.
@@ -13565,14 +14933,22 @@ export const ClusterApiFactory = function (configuration?: Configuration, fetch?
          * @param {V1OrderBy} [orderBy] Order agents in either ascending or descending order.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
          * @param {number} [offset] Skip the number of agents before returning results. Negative values denote number of agents to skip from the end before returning results.
          * @param {number} [limit] Limit the number of agents. A value of 0 denotes no limit.
-         * @param {string} [label] This field has been deprecated and will be ignored.
          * @param {boolean} [excludeSlots] exclude slots.
          * @param {boolean} [excludeContainers] exclude containers.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getAgents(sortBy?: V1GetAgentsRequestSortBy, orderBy?: V1OrderBy, offset?: number, limit?: number, label?: string, excludeSlots?: boolean, excludeContainers?: boolean, options?: any) {
-            return ClusterApiFp(configuration).getAgents(sortBy, orderBy, offset, limit, label, excludeSlots, excludeContainers, options)(fetch, basePath);
+        getAgents(sortBy?: V1GetAgentsRequestSortBy, orderBy?: V1OrderBy, offset?: number, limit?: number, excludeSlots?: boolean, excludeContainers?: boolean, options?: any) {
+            return ClusterApiFp(configuration).getAgents(sortBy, orderBy, offset, limit, excludeSlots, excludeContainers, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Get the currently configured cluster-wide message.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getClusterMessage(options?: any) {
+            return ClusterApiFp(configuration).getClusterMessage(options)(fetch, basePath);
         },
         /**
          * 
@@ -13667,6 +15043,16 @@ export const ClusterApiFactory = function (configuration?: Configuration, fetch?
         resourceAllocationRaw(timestampAfter: Date | DateString, timestampBefore: Date | DateString, options?: any) {
             return ClusterApiFp(configuration).resourceAllocationRaw(timestampAfter, timestampBefore, options)(fetch, basePath);
         },
+        /**
+         * 
+         * @summary Set the cluster-wide message shown to users. Only one can be set at at time, so any existing message will be disabled.
+         * @param {V1SetClusterMessageRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        setClusterMessage(body: V1SetClusterMessageRequest, options?: any) {
+            return ClusterApiFp(configuration).setClusterMessage(body, options)(fetch, basePath);
+        },
     }
 };
 
@@ -13677,6 +15063,17 @@ export const ClusterApiFactory = function (configuration?: Configuration, fetch?
  * @extends {BaseAPI}
  */
 export class ClusterApi extends BaseAPI {
+    /**
+     * 
+     * @summary Clear the cluster-wide message shown to all users.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof ClusterApi
+     */
+    public deleteClusterMessage(options?: any) {
+        return ClusterApiFp(this.configuration).deleteClusterMessage(options)(this.fetch, this.basePath)
+    }
+    
     /**
      * 
      * @summary Disable the agent.
@@ -13748,15 +15145,25 @@ export class ClusterApi extends BaseAPI {
      * @param {V1OrderBy} [orderBy] Order agents in either ascending or descending order.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
      * @param {number} [offset] Skip the number of agents before returning results. Negative values denote number of agents to skip from the end before returning results.
      * @param {number} [limit] Limit the number of agents. A value of 0 denotes no limit.
-     * @param {string} [label] This field has been deprecated and will be ignored.
      * @param {boolean} [excludeSlots] exclude slots.
      * @param {boolean} [excludeContainers] exclude containers.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof ClusterApi
      */
-    public getAgents(sortBy?: V1GetAgentsRequestSortBy, orderBy?: V1OrderBy, offset?: number, limit?: number, label?: string, excludeSlots?: boolean, excludeContainers?: boolean, options?: any) {
-        return ClusterApiFp(this.configuration).getAgents(sortBy, orderBy, offset, limit, label, excludeSlots, excludeContainers, options)(this.fetch, this.basePath)
+    public getAgents(sortBy?: V1GetAgentsRequestSortBy, orderBy?: V1OrderBy, offset?: number, limit?: number, excludeSlots?: boolean, excludeContainers?: boolean, options?: any) {
+        return ClusterApiFp(this.configuration).getAgents(sortBy, orderBy, offset, limit, excludeSlots, excludeContainers, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Get the currently configured cluster-wide message.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof ClusterApi
+     */
+    public getClusterMessage(options?: any) {
+        return ClusterApiFp(this.configuration).getClusterMessage(options)(this.fetch, this.basePath)
     }
     
     /**
@@ -13868,6 +15275,18 @@ export class ClusterApi extends BaseAPI {
      */
     public resourceAllocationRaw(timestampAfter: Date | DateString, timestampBefore: Date | DateString, options?: any) {
         return ClusterApiFp(this.configuration).resourceAllocationRaw(timestampAfter, timestampBefore, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Set the cluster-wide message shown to users. Only one can be set at at time, so any existing message will be disabled.
+     * @param {V1SetClusterMessageRequest} body
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof ClusterApi
+     */
+    public setClusterMessage(body: V1SetClusterMessageRequest, options?: any) {
+        return ClusterApiFp(this.configuration).setClusterMessage(body, options)(this.fetch, this.basePath)
     }
     
 }
@@ -15379,42 +16798,6 @@ export const ExperimentsApiFetchParamCreator = function (configuration?: Configu
         },
         /**
          * 
-         * @summary Get the list of custom searcher events with long polling.
-         * @param {number} experimentId The ID of the experiment.
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getSearcherEvents(experimentId: number, options: any = {}): FetchArgs {
-            // verify required parameter 'experimentId' is not null or undefined
-            if (experimentId === null || experimentId === undefined) {
-                throw new RequiredError('experimentId','Required parameter experimentId was null or undefined when calling getSearcherEvents.');
-            }
-            const localVarPath = `/api/v1/experiments/{experimentId}/searcher_events`
-                .replace(`{${"experimentId"}}`, encodeURIComponent(String(experimentId)));
-            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
-            const localVarRequestOptions = { method: 'GET', ...options };
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-            
-            // authentication BearerToken required
-            if (configuration && configuration.apiKey) {
-                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
-                    ? configuration.apiKey("Authorization")
-                    : configuration.apiKey;
-                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
-            }
-            
-            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
-            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
-            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
-            
-            return {
-                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
-                options: localVarRequestOptions,
-            };
-        },
-        /**
-         * 
          * @summary Get a single trial.
          * @param {number} trialId The requested trial's id.
          * @param {*} [options] Override http request option.
@@ -15845,50 +17228,6 @@ export const ExperimentsApiFetchParamCreator = function (configuration?: Configu
         },
         /**
          * 
-         * @summary Submit operations to a custom searcher.
-         * @param {number} experimentId The experiment ID.
-         * @param {V1PostSearcherOperationsRequest} body
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        postSearcherOperations(experimentId: number, body: V1PostSearcherOperationsRequest, options: any = {}): FetchArgs {
-            // verify required parameter 'experimentId' is not null or undefined
-            if (experimentId === null || experimentId === undefined) {
-                throw new RequiredError('experimentId','Required parameter experimentId was null or undefined when calling postSearcherOperations.');
-            }
-            // verify required parameter 'body' is not null or undefined
-            if (body === null || body === undefined) {
-                throw new RequiredError('body','Required parameter body was null or undefined when calling postSearcherOperations.');
-            }
-            const localVarPath = `/api/v1/experiments/{experimentId}/searcher_operations`
-                .replace(`{${"experimentId"}}`, encodeURIComponent(String(experimentId)));
-            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
-            const localVarRequestOptions = { method: 'POST', ...options };
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-            
-            // authentication BearerToken required
-            if (configuration && configuration.apiKey) {
-                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
-                    ? configuration.apiKey("Authorization")
-                    : configuration.apiKey;
-                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
-            }
-            
-            localVarHeaderParameter['Content-Type'] = 'application/json';
-            
-            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
-            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
-            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
-            localVarRequestOptions.body = JSON.stringify(body)
-            
-            return {
-                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
-                options: localVarRequestOptions,
-            };
-        },
-        /**
-         * 
          * @summary Preview hyperparameter search.
          * @param {V1PreviewHPSearchRequest} body
          * @param {*} [options] Override http request option.
@@ -16058,18 +17397,18 @@ export const ExperimentsApiFetchParamCreator = function (configuration?: Configu
         /**
          * 
          * @summary Get experiments with grouping and search syntax
-         * @param {number} [projectId] ID of the project to look at.
-         * @param {number} [offset] How many experiments to skip before including in the results.
-         * @param {number} [limit] How many results to show.
-         * @param {string} [sort] Sort parameters in the format <col1>=(asc|desc),<col2>=(asc|desc).
-         * @param {string} [filter] Filter expression.
+         * @param {V1SearchExperimentsRequest} body
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        searchExperiments(projectId?: number, offset?: number, limit?: number, sort?: string, filter?: string, options: any = {}): FetchArgs {
+        searchExperiments(body: V1SearchExperimentsRequest, options: any = {}): FetchArgs {
+            // verify required parameter 'body' is not null or undefined
+            if (body === null || body === undefined) {
+                throw new RequiredError('body','Required parameter body was null or undefined when calling searchExperiments.');
+            }
             const localVarPath = `/api/v1/experiments-search`;
             const localVarUrlObj = new URL(localVarPath, BASE_PATH);
-            const localVarRequestOptions = { method: 'GET', ...options };
+            const localVarRequestOptions = { method: 'POST', ...options };
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
             
@@ -16081,29 +17420,12 @@ export const ExperimentsApiFetchParamCreator = function (configuration?: Configu
                 localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
             }
             
-            if (projectId !== undefined) {
-                localVarQueryParameter['projectId'] = projectId
-            }
-            
-            if (offset !== undefined) {
-                localVarQueryParameter['offset'] = offset
-            }
-            
-            if (limit !== undefined) {
-                localVarQueryParameter['limit'] = limit
-            }
-            
-            if (sort !== undefined) {
-                localVarQueryParameter['sort'] = sort
-            }
-            
-            if (filter !== undefined) {
-                localVarQueryParameter['filter'] = filter
-            }
+            localVarHeaderParameter['Content-Type'] = 'application/json';
             
             objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
             objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
             localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            localVarRequestOptions.body = JSON.stringify(body)
             
             return {
                 url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
@@ -16126,10 +17448,11 @@ export const ExperimentsApiFetchParamCreator = function (configuration?: Configu
          * @param {Date | DateString} [timestampAfter] Limit the trial logs to ones with a timestamp after a given time.
          * @param {V1OrderBy} [orderBy] Order logs in either ascending or descending order by timestamp.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
          * @param {string} [searchText] Search the logs by whether the text contains a substring.
+         * @param {boolean} [enableRegex] Search text is regex. Default to false.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        trialLogs(trialId: number, limit?: number, follow?: boolean, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, options: any = {}): FetchArgs {
+        trialLogs(trialId: number, limit?: number, follow?: boolean, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, enableRegex?: boolean, options: any = {}): FetchArgs {
             // verify required parameter 'trialId' is not null or undefined
             if (trialId === null || trialId === undefined) {
                 throw new RequiredError('trialId','Required parameter trialId was null or undefined when calling trialLogs.');
@@ -16195,6 +17518,10 @@ export const ExperimentsApiFetchParamCreator = function (configuration?: Configu
             
             if (searchText !== undefined) {
                 localVarQueryParameter['searchText'] = searchText
+            }
+            
+            if (enableRegex !== undefined) {
+                localVarQueryParameter['enableRegex'] = enableRegex
             }
             
             objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
@@ -16775,25 +18102,6 @@ export const ExperimentsApiFp = function (configuration?: Configuration) {
         },
         /**
          * 
-         * @summary Get the list of custom searcher events with long polling.
-         * @param {number} experimentId The ID of the experiment.
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getSearcherEvents(experimentId: number, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetSearcherEventsResponse> {
-            const localVarFetchArgs = ExperimentsApiFetchParamCreator(configuration).getSearcherEvents(experimentId, options);
-            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
-                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
-                    if (response.status >= 200 && response.status < 300) {
-                        return response.json();
-                    } else {
-                        throw response;
-                    }
-                });
-            };
-        },
-        /**
-         * 
          * @summary Get a single trial.
          * @param {number} trialId The requested trial's id.
          * @param {*} [options] Override http request option.
@@ -16995,26 +18303,6 @@ export const ExperimentsApiFp = function (configuration?: Configuration) {
         },
         /**
          * 
-         * @summary Submit operations to a custom searcher.
-         * @param {number} experimentId The experiment ID.
-         * @param {V1PostSearcherOperationsRequest} body
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        postSearcherOperations(experimentId: number, body: V1PostSearcherOperationsRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1PostSearcherOperationsResponse> {
-            const localVarFetchArgs = ExperimentsApiFetchParamCreator(configuration).postSearcherOperations(experimentId, body, options);
-            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
-                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
-                    if (response.status >= 200 && response.status < 300) {
-                        return response.json();
-                    } else {
-                        throw response;
-                    }
-                });
-            };
-        },
-        /**
-         * 
          * @summary Preview hyperparameter search.
          * @param {V1PreviewHPSearchRequest} body
          * @param {*} [options] Override http request option.
@@ -17095,16 +18383,12 @@ export const ExperimentsApiFp = function (configuration?: Configuration) {
         /**
          * 
          * @summary Get experiments with grouping and search syntax
-         * @param {number} [projectId] ID of the project to look at.
-         * @param {number} [offset] How many experiments to skip before including in the results.
-         * @param {number} [limit] How many results to show.
-         * @param {string} [sort] Sort parameters in the format <col1>=(asc|desc),<col2>=(asc|desc).
-         * @param {string} [filter] Filter expression.
+         * @param {V1SearchExperimentsRequest} body
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        searchExperiments(projectId?: number, offset?: number, limit?: number, sort?: string, filter?: string, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1SearchExperimentsResponse> {
-            const localVarFetchArgs = ExperimentsApiFetchParamCreator(configuration).searchExperiments(projectId, offset, limit, sort, filter, options);
+        searchExperiments(body: V1SearchExperimentsRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1SearchExperimentsResponse> {
+            const localVarFetchArgs = ExperimentsApiFetchParamCreator(configuration).searchExperiments(body, options);
             return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
                 return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
                     if (response.status >= 200 && response.status < 300) {
@@ -17131,11 +18415,12 @@ export const ExperimentsApiFp = function (configuration?: Configuration) {
          * @param {Date | DateString} [timestampAfter] Limit the trial logs to ones with a timestamp after a given time.
          * @param {V1OrderBy} [orderBy] Order logs in either ascending or descending order by timestamp.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
          * @param {string} [searchText] Search the logs by whether the text contains a substring.
+         * @param {boolean} [enableRegex] Search text is regex. Default to false.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        trialLogs(trialId: number, limit?: number, follow?: boolean, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<StreamResultOfV1TrialLogsResponse> {
-            const localVarFetchArgs = ExperimentsApiFetchParamCreator(configuration).trialLogs(trialId, limit, follow, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, options);
+        trialLogs(trialId: number, limit?: number, follow?: boolean, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, enableRegex?: boolean, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<StreamResultOfV1TrialLogsResponse> {
+            const localVarFetchArgs = ExperimentsApiFetchParamCreator(configuration).trialLogs(trialId, limit, follow, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, enableRegex, options);
             return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
                 return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
                     if (response.status >= 200 && response.status < 300) {
@@ -17473,16 +18758,6 @@ export const ExperimentsApiFactory = function (configuration?: Configuration, fe
         },
         /**
          * 
-         * @summary Get the list of custom searcher events with long polling.
-         * @param {number} experimentId The ID of the experiment.
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getSearcherEvents(experimentId: number, options?: any) {
-            return ExperimentsApiFp(configuration).getSearcherEvents(experimentId, options)(fetch, basePath);
-        },
-        /**
-         * 
          * @summary Get a single trial.
          * @param {number} trialId The requested trial's id.
          * @param {*} [options] Override http request option.
@@ -17594,17 +18869,6 @@ export const ExperimentsApiFactory = function (configuration?: Configuration, fe
         },
         /**
          * 
-         * @summary Submit operations to a custom searcher.
-         * @param {number} experimentId The experiment ID.
-         * @param {V1PostSearcherOperationsRequest} body
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        postSearcherOperations(experimentId: number, body: V1PostSearcherOperationsRequest, options?: any) {
-            return ExperimentsApiFp(configuration).postSearcherOperations(experimentId, body, options)(fetch, basePath);
-        },
-        /**
-         * 
          * @summary Preview hyperparameter search.
          * @param {V1PreviewHPSearchRequest} body
          * @param {*} [options] Override http request option.
@@ -17649,16 +18913,12 @@ export const ExperimentsApiFactory = function (configuration?: Configuration, fe
         /**
          * 
          * @summary Get experiments with grouping and search syntax
-         * @param {number} [projectId] ID of the project to look at.
-         * @param {number} [offset] How many experiments to skip before including in the results.
-         * @param {number} [limit] How many results to show.
-         * @param {string} [sort] Sort parameters in the format <col1>=(asc|desc),<col2>=(asc|desc).
-         * @param {string} [filter] Filter expression.
+         * @param {V1SearchExperimentsRequest} body
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        searchExperiments(projectId?: number, offset?: number, limit?: number, sort?: string, filter?: string, options?: any) {
-            return ExperimentsApiFp(configuration).searchExperiments(projectId, offset, limit, sort, filter, options)(fetch, basePath);
+        searchExperiments(body: V1SearchExperimentsRequest, options?: any) {
+            return ExperimentsApiFp(configuration).searchExperiments(body, options)(fetch, basePath);
         },
         /**
          * 
@@ -17676,11 +18936,12 @@ export const ExperimentsApiFactory = function (configuration?: Configuration, fe
          * @param {Date | DateString} [timestampAfter] Limit the trial logs to ones with a timestamp after a given time.
          * @param {V1OrderBy} [orderBy] Order logs in either ascending or descending order by timestamp.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
          * @param {string} [searchText] Search the logs by whether the text contains a substring.
+         * @param {boolean} [enableRegex] Search text is regex. Default to false.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        trialLogs(trialId: number, limit?: number, follow?: boolean, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, options?: any) {
-            return ExperimentsApiFp(configuration).trialLogs(trialId, limit, follow, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, options)(fetch, basePath);
+        trialLogs(trialId: number, limit?: number, follow?: boolean, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, enableRegex?: boolean, options?: any) {
+            return ExperimentsApiFp(configuration).trialLogs(trialId, limit, follow, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, enableRegex, options)(fetch, basePath);
         },
         /**
          * 
@@ -18023,18 +19284,6 @@ export class ExperimentsApi extends BaseAPI {
     
     /**
      * 
-     * @summary Get the list of custom searcher events with long polling.
-     * @param {number} experimentId The ID of the experiment.
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof ExperimentsApi
-     */
-    public getSearcherEvents(experimentId: number, options?: any) {
-        return ExperimentsApiFp(this.configuration).getSearcherEvents(experimentId, options)(this.fetch, this.basePath)
-    }
-    
-    /**
-     * 
      * @summary Get a single trial.
      * @param {number} trialId The requested trial's id.
      * @param {*} [options] Override http request option.
@@ -18166,19 +19415,6 @@ export class ExperimentsApi extends BaseAPI {
     
     /**
      * 
-     * @summary Submit operations to a custom searcher.
-     * @param {number} experimentId The experiment ID.
-     * @param {V1PostSearcherOperationsRequest} body
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof ExperimentsApi
-     */
-    public postSearcherOperations(experimentId: number, body: V1PostSearcherOperationsRequest, options?: any) {
-        return ExperimentsApiFp(this.configuration).postSearcherOperations(experimentId, body, options)(this.fetch, this.basePath)
-    }
-    
-    /**
-     * 
      * @summary Preview hyperparameter search.
      * @param {V1PreviewHPSearchRequest} body
      * @param {*} [options] Override http request option.
@@ -18231,17 +19467,13 @@ export class ExperimentsApi extends BaseAPI {
     /**
      * 
      * @summary Get experiments with grouping and search syntax
-     * @param {number} [projectId] ID of the project to look at.
-     * @param {number} [offset] How many experiments to skip before including in the results.
-     * @param {number} [limit] How many results to show.
-     * @param {string} [sort] Sort parameters in the format <col1>=(asc|desc),<col2>=(asc|desc).
-     * @param {string} [filter] Filter expression.
+     * @param {V1SearchExperimentsRequest} body
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof ExperimentsApi
      */
-    public searchExperiments(projectId?: number, offset?: number, limit?: number, sort?: string, filter?: string, options?: any) {
-        return ExperimentsApiFp(this.configuration).searchExperiments(projectId, offset, limit, sort, filter, options)(this.fetch, this.basePath)
+    public searchExperiments(body: V1SearchExperimentsRequest, options?: any) {
+        return ExperimentsApiFp(this.configuration).searchExperiments(body, options)(this.fetch, this.basePath)
     }
     
     /**
@@ -18260,12 +19492,13 @@ export class ExperimentsApi extends BaseAPI {
      * @param {Date | DateString} [timestampAfter] Limit the trial logs to ones with a timestamp after a given time.
      * @param {V1OrderBy} [orderBy] Order logs in either ascending or descending order by timestamp.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
      * @param {string} [searchText] Search the logs by whether the text contains a substring.
+     * @param {boolean} [enableRegex] Search text is regex. Default to false.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof ExperimentsApi
      */
-    public trialLogs(trialId: number, limit?: number, follow?: boolean, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, options?: any) {
-        return ExperimentsApiFp(this.configuration).trialLogs(trialId, limit, follow, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, options)(this.fetch, this.basePath)
+    public trialLogs(trialId: number, limit?: number, follow?: boolean, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, enableRegex?: boolean, options?: any) {
+        return ExperimentsApiFp(this.configuration).trialLogs(trialId, limit, follow, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, enableRegex, options)(this.fetch, this.basePath)
     }
     
     /**
@@ -18769,50 +20002,6 @@ export const InternalApiFetchParamCreator = function (configuration?: Configurat
         },
         /**
          * 
-         * @summary Reports to the searcher that the trial has completed the given searcher operation.
-         * @param {number} trialId The id of the trial.
-         * @param {V1CompleteValidateAfterOperation} body The completed operation.
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        completeTrialSearcherValidation(trialId: number, body: V1CompleteValidateAfterOperation, options: any = {}): FetchArgs {
-            // verify required parameter 'trialId' is not null or undefined
-            if (trialId === null || trialId === undefined) {
-                throw new RequiredError('trialId','Required parameter trialId was null or undefined when calling completeTrialSearcherValidation.');
-            }
-            // verify required parameter 'body' is not null or undefined
-            if (body === null || body === undefined) {
-                throw new RequiredError('body','Required parameter body was null or undefined when calling completeTrialSearcherValidation.');
-            }
-            const localVarPath = `/api/v1/trials/{trialId}/searcher/completed_operation`
-                .replace(`{${"trialId"}}`, encodeURIComponent(String(trialId)));
-            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
-            const localVarRequestOptions = { method: 'POST', ...options };
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-            
-            // authentication BearerToken required
-            if (configuration && configuration.apiKey) {
-                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
-                    ? configuration.apiKey("Authorization")
-                    : configuration.apiKey;
-                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
-            }
-            
-            localVarHeaderParameter['Content-Type'] = 'application/json';
-            
-            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
-            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
-            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
-            localVarRequestOptions.body = JSON.stringify(body)
-            
-            return {
-                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
-                options: localVarRequestOptions,
-            };
-        },
-        /**
-         * 
          * @summary Continues an experiment either to make the existing experiment train longer or to retry it.
          * @param {V1ContinueExperimentRequest} body
          * @param {*} [options] Override http request option.
@@ -19193,42 +20382,6 @@ export const InternalApiFetchParamCreator = function (configuration?: Configurat
         },
         /**
          * 
-         * @summary Get the current searcher operation.
-         * @param {number} trialId The id of the trial.
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getCurrentTrialSearcherOperation(trialId: number, options: any = {}): FetchArgs {
-            // verify required parameter 'trialId' is not null or undefined
-            if (trialId === null || trialId === undefined) {
-                throw new RequiredError('trialId','Required parameter trialId was null or undefined when calling getCurrentTrialSearcherOperation.');
-            }
-            const localVarPath = `/api/v1/trials/{trialId}/searcher/operation`
-                .replace(`{${"trialId"}}`, encodeURIComponent(String(trialId)));
-            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
-            const localVarRequestOptions = { method: 'GET', ...options };
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-            
-            // authentication BearerToken required
-            if (configuration && configuration.apiKey) {
-                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
-                    ? configuration.apiKey("Authorization")
-                    : configuration.apiKey;
-                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
-            }
-            
-            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
-            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
-            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
-            
-            return {
-                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
-                options: localVarRequestOptions,
-            };
-        },
-        /**
-         * 
          * @summary Get task config
          * @param {string} taskId The id of the task.
          * @param {*} [options] Override http request option.
@@ -19484,12 +20637,85 @@ export const InternalApiFetchParamCreator = function (configuration?: Configurat
         },
         /**
          * 
-         * @summary Get a list of columns for experiment list table.
-         * @param {number} id The id of the project.
+         * @summary Get a list of all Kubernetes cluster names.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getProjectColumns(id: number, options: any = {}): FetchArgs {
+        getKubernetesResourceManagers(options: any = {}): FetchArgs {
+            const localVarPath = `/api/v1/k8s-resource-managers`;
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'GET', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Retrieve run metadata values for a given string typed key within a given project.
+         * @param {number} projectId Project id
+         * @param {string} key Metadata key
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getMetadataValues(projectId: number, key: string, options: any = {}): FetchArgs {
+            // verify required parameter 'projectId' is not null or undefined
+            if (projectId === null || projectId === undefined) {
+                throw new RequiredError('projectId','Required parameter projectId was null or undefined when calling getMetadataValues.');
+            }
+            // verify required parameter 'key' is not null or undefined
+            if (key === null || key === undefined) {
+                throw new RequiredError('key','Required parameter key was null or undefined when calling getMetadataValues.');
+            }
+            const localVarPath = `/api/v1/projects/{projectId}/metadata/{key}`
+                .replace(`{${"projectId"}}`, encodeURIComponent(String(projectId)))
+                .replace(`{${"key"}}`, encodeURIComponent(String(key)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'GET', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Get a list of columns for experiment list table.
+         * @param {number} id The id of the project.
+         * @param {V1TableType} [tableType] type of table for project columns.   - TABLE_TYPE_UNSPECIFIED: Unspecified table type.  - TABLE_TYPE_EXPERIMENT: experiment table.  - TABLE_TYPE_RUN: run table.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getProjectColumns(id: number, tableType?: V1TableType, options: any = {}): FetchArgs {
             // verify required parameter 'id' is not null or undefined
             if (id === null || id === undefined) {
                 throw new RequiredError('id','Required parameter id was null or undefined when calling getProjectColumns.');
@@ -19507,6 +20733,10 @@ export const InternalApiFetchParamCreator = function (configuration?: Configurat
                     ? configuration.apiKey("Authorization")
                     : configuration.apiKey;
                 localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            if (tableType !== undefined) {
+                localVarQueryParameter['tableType'] = tableType
             }
             
             objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
@@ -19588,6 +20818,42 @@ export const InternalApiFetchParamCreator = function (configuration?: Configurat
             
             if (unbound !== undefined) {
                 localVarQueryParameter['unbound'] = unbound
+            }
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Get run metadata.
+         * @param {number} runId The ID of the run to get metadata for.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getRunMetadata(runId: number, options: any = {}): FetchArgs {
+            // verify required parameter 'runId' is not null or undefined
+            if (runId === null || runId === undefined) {
+                throw new RequiredError('runId','Required parameter runId was null or undefined when calling getRunMetadata.');
+            }
+            const localVarPath = `/api/v1/runs/{runId}/metadata`
+                .replace(`{${"runId"}}`, encodeURIComponent(String(runId)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'GET', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
             }
             
             objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
@@ -19799,6 +21065,42 @@ export const InternalApiFetchParamCreator = function (configuration?: Configurat
         },
         /**
          * 
+         * @summary Get the list of trials for an experiment.
+         * @param {number} id The trial id.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getTrialRemainingLogRetentionDays(id: number, options: any = {}): FetchArgs {
+            // verify required parameter 'id' is not null or undefined
+            if (id === null || id === undefined) {
+                throw new RequiredError('id','Required parameter id was null or undefined when calling getTrialRemainingLogRetentionDays.');
+            }
+            const localVarPath = `/api/v1/trials/{id}/remaining_log_retention_days`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'GET', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary Get the list of workloads for a trial.
          * @param {number} trialId Limit workloads to those that are owned by the specified trial.
          * @param {V1OrderBy} [orderBy] Order workloads in either ascending or descending order.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
@@ -19968,7 +21270,7 @@ export const InternalApiFetchParamCreator = function (configuration?: Configurat
         },
         /**
          * 
-         * @summary Get a list of runs.
+         * @summary Kill runs.
          * @param {V1KillRunsRequest} body
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -20490,6 +21792,44 @@ export const InternalApiFetchParamCreator = function (configuration?: Configurat
         },
         /**
          * 
+         * @summary Pause experiment associated with provided runs.
+         * @param {V1PauseRunsRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        pauseRuns(body: V1PauseRunsRequest, options: any = {}): FetchArgs {
+            // verify required parameter 'body' is not null or undefined
+            if (body === null || body === undefined) {
+                throw new RequiredError('body','Required parameter body was null or undefined when calling pauseRuns.');
+            }
+            const localVarPath = `/api/v1/runs/pause`;
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'POST', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            localVarRequestOptions.body = JSON.stringify(body)
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary PostAllocationAcceleratorData sets the accelerator for a given allocation.
          * @param {string} allocationId The id of the allocation.
          * @param {V1PostAllocationAcceleratorDataRequest} body
@@ -20551,6 +21891,50 @@ export const InternalApiFetchParamCreator = function (configuration?: Configurat
             }
             const localVarPath = `/api/v1/allocations/{allocationId}/proxy_address`
                 .replace(`{${"allocationId"}}`, encodeURIComponent(String(allocationId)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'POST', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            localVarRequestOptions.body = JSON.stringify(body)
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Update run metadata.
+         * @param {number} runId The ID of the run to post metadata for.
+         * @param {V1PostRunMetadataRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        postRunMetadata(runId: number, body: V1PostRunMetadataRequest, options: any = {}): FetchArgs {
+            // verify required parameter 'runId' is not null or undefined
+            if (runId === null || runId === undefined) {
+                throw new RequiredError('runId','Required parameter runId was null or undefined when calling postRunMetadata.');
+            }
+            // verify required parameter 'body' is not null or undefined
+            if (body === null || body === undefined) {
+                throw new RequiredError('body','Required parameter body was null or undefined when calling postRunMetadata.');
+            }
+            const localVarPath = `/api/v1/runs/{runId}/metadata`
+                .replace(`{${"runId"}}`, encodeURIComponent(String(runId)));
             const localVarUrlObj = new URL(localVarPath, BASE_PATH);
             const localVarRequestOptions = { method: 'POST', ...options };
             const localVarHeaderParameter = {} as any;
@@ -20864,11 +22248,11 @@ export const InternalApiFetchParamCreator = function (configuration?: Configurat
          * 
          * @summary For bookkeeping, updates the progress towards to current requested searcher training length.
          * @param {number} trialId The id of the trial.
-         * @param {number} body Total units completed by the trial, in terms of the unit used to configure the searcher.
+         * @param {V1ReportTrialProgressRequest} body
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        reportTrialProgress(trialId: number, body: number, options: any = {}): FetchArgs {
+        reportTrialProgress(trialId: number, body: V1ReportTrialProgressRequest, options: any = {}): FetchArgs {
             // verify required parameter 'trialId' is not null or undefined
             if (trialId === null || trialId === undefined) {
                 throw new RequiredError('trialId','Required parameter trialId was null or undefined when calling reportTrialProgress.');
@@ -21076,6 +22460,44 @@ export const InternalApiFetchParamCreator = function (configuration?: Configurat
         },
         /**
          * 
+         * @summary Unpause experiment associated with provided runs.
+         * @param {V1ResumeRunsRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        resumeRuns(body: V1ResumeRunsRequest, options: any = {}): FetchArgs {
+            // verify required parameter 'body' is not null or undefined
+            if (body === null || body === undefined) {
+                throw new RequiredError('body','Required parameter body was null or undefined when calling resumeRuns.');
+            }
+            const localVarPath = `/api/v1/runs/resume`;
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'POST', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            localVarRequestOptions.body = JSON.stringify(body)
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary Start syncing and prepare to be able to report to a run. This should be called once per task that will report to the run.
          * @param {V1RunPrepareForReportingRequest} body
          * @param {*} [options] Override http request option.
@@ -21115,18 +22537,18 @@ export const InternalApiFetchParamCreator = function (configuration?: Configurat
         /**
          * 
          * @summary Get experiments with grouping and search syntax
-         * @param {number} [projectId] ID of the project to look at.
-         * @param {number} [offset] How many experiments to skip before including in the results.
-         * @param {number} [limit] How many results to show.
-         * @param {string} [sort] Sort parameters in the format <col1>=(asc|desc),<col2>=(asc|desc).
-         * @param {string} [filter] Filter expression.
+         * @param {V1SearchExperimentsRequest} body
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        searchExperiments(projectId?: number, offset?: number, limit?: number, sort?: string, filter?: string, options: any = {}): FetchArgs {
+        searchExperiments(body: V1SearchExperimentsRequest, options: any = {}): FetchArgs {
+            // verify required parameter 'body' is not null or undefined
+            if (body === null || body === undefined) {
+                throw new RequiredError('body','Required parameter body was null or undefined when calling searchExperiments.');
+            }
             const localVarPath = `/api/v1/experiments-search`;
             const localVarUrlObj = new URL(localVarPath, BASE_PATH);
-            const localVarRequestOptions = { method: 'GET', ...options };
+            const localVarRequestOptions = { method: 'POST', ...options };
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
             
@@ -21138,29 +22560,12 @@ export const InternalApiFetchParamCreator = function (configuration?: Configurat
                 localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
             }
             
-            if (projectId !== undefined) {
-                localVarQueryParameter['projectId'] = projectId
-            }
-            
-            if (offset !== undefined) {
-                localVarQueryParameter['offset'] = offset
-            }
-            
-            if (limit !== undefined) {
-                localVarQueryParameter['limit'] = limit
-            }
-            
-            if (sort !== undefined) {
-                localVarQueryParameter['sort'] = sort
-            }
-            
-            if (filter !== undefined) {
-                localVarQueryParameter['filter'] = filter
-            }
+            localVarHeaderParameter['Content-Type'] = 'application/json';
             
             objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
             objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
             localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            localVarRequestOptions.body = JSON.stringify(body)
             
             return {
                 url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
@@ -21170,18 +22575,18 @@ export const InternalApiFetchParamCreator = function (configuration?: Configurat
         /**
          * 
          * @summary Get a list of runs.
-         * @param {number} [projectId] ID of the project to look at.
-         * @param {number} [offset] How many experiments to skip before including in the results.
-         * @param {number} [limit] How many results to show.
-         * @param {string} [sort] Sort parameters in the format <col1>=(asc|desc),<col2>=(asc|desc).
-         * @param {string} [filter] Filter expression.
+         * @param {V1SearchRunsRequest} body
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        searchRuns(projectId?: number, offset?: number, limit?: number, sort?: string, filter?: string, options: any = {}): FetchArgs {
+        searchRuns(body: V1SearchRunsRequest, options: any = {}): FetchArgs {
+            // verify required parameter 'body' is not null or undefined
+            if (body === null || body === undefined) {
+                throw new RequiredError('body','Required parameter body was null or undefined when calling searchRuns.');
+            }
             const localVarPath = `/api/v1/runs`;
             const localVarUrlObj = new URL(localVarPath, BASE_PATH);
-            const localVarRequestOptions = { method: 'GET', ...options };
+            const localVarRequestOptions = { method: 'POST', ...options };
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
             
@@ -21193,29 +22598,12 @@ export const InternalApiFetchParamCreator = function (configuration?: Configurat
                 localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
             }
             
-            if (projectId !== undefined) {
-                localVarQueryParameter['projectId'] = projectId
-            }
-            
-            if (offset !== undefined) {
-                localVarQueryParameter['offset'] = offset
-            }
-            
-            if (limit !== undefined) {
-                localVarQueryParameter['limit'] = limit
-            }
-            
-            if (sort !== undefined) {
-                localVarQueryParameter['sort'] = sort
-            }
-            
-            if (filter !== undefined) {
-                localVarQueryParameter['filter'] = filter
-            }
+            localVarHeaderParameter['Content-Type'] = 'application/json';
             
             objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
             objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
             localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            localVarRequestOptions.body = JSON.stringify(body)
             
             return {
                 url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
@@ -21847,26 +23235,6 @@ export const InternalApiFp = function (configuration?: Configuration) {
         },
         /**
          * 
-         * @summary Reports to the searcher that the trial has completed the given searcher operation.
-         * @param {number} trialId The id of the trial.
-         * @param {V1CompleteValidateAfterOperation} body The completed operation.
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        completeTrialSearcherValidation(trialId: number, body: V1CompleteValidateAfterOperation, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1CompleteTrialSearcherValidationResponse> {
-            const localVarFetchArgs = InternalApiFetchParamCreator(configuration).completeTrialSearcherValidation(trialId, body, options);
-            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
-                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
-                    if (response.status >= 200 && response.status < 300) {
-                        return response.json();
-                    } else {
-                        throw response;
-                    }
-                });
-            };
-        },
-        /**
-         * 
          * @summary Continues an experiment either to make the existing experiment train longer or to retry it.
          * @param {V1ContinueExperimentRequest} body
          * @param {*} [options] Override http request option.
@@ -22058,25 +23426,6 @@ export const InternalApiFp = function (configuration?: Configuration) {
         },
         /**
          * 
-         * @summary Get the current searcher operation.
-         * @param {number} trialId The id of the trial.
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getCurrentTrialSearcherOperation(trialId: number, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetCurrentTrialSearcherOperationResponse> {
-            const localVarFetchArgs = InternalApiFetchParamCreator(configuration).getCurrentTrialSearcherOperation(trialId, options);
-            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
-                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
-                    if (response.status >= 200 && response.status < 300) {
-                        return response.json();
-                    } else {
-                        throw response;
-                    }
-                });
-            };
-        },
-        /**
-         * 
          * @summary Get task config
          * @param {string} taskId The id of the task.
          * @param {*} [options] Override http request option.
@@ -22199,13 +23548,52 @@ export const InternalApiFp = function (configuration?: Configuration) {
         },
         /**
          * 
-         * @summary Get a list of columns for experiment list table.
-         * @param {number} id The id of the project.
+         * @summary Get a list of all Kubernetes cluster names.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getProjectColumns(id: number, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetProjectColumnsResponse> {
-            const localVarFetchArgs = InternalApiFetchParamCreator(configuration).getProjectColumns(id, options);
+        getKubernetesResourceManagers(options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetKubernetesResourceManagersResponse> {
+            const localVarFetchArgs = InternalApiFetchParamCreator(configuration).getKubernetesResourceManagers(options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary Retrieve run metadata values for a given string typed key within a given project.
+         * @param {number} projectId Project id
+         * @param {string} key Metadata key
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getMetadataValues(projectId: number, key: string, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetMetadataValuesResponse> {
+            const localVarFetchArgs = InternalApiFetchParamCreator(configuration).getMetadataValues(projectId, key, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary Get a list of columns for experiment list table.
+         * @param {number} id The id of the project.
+         * @param {V1TableType} [tableType] type of table for project columns.   - TABLE_TYPE_UNSPECIFIED: Unspecified table type.  - TABLE_TYPE_EXPERIMENT: experiment table.  - TABLE_TYPE_RUN: run table.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getProjectColumns(id: number, tableType?: V1TableType, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetProjectColumnsResponse> {
+            const localVarFetchArgs = InternalApiFetchParamCreator(configuration).getProjectColumns(id, tableType, options);
             return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
                 return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
                     if (response.status >= 200 && response.status < 300) {
@@ -22246,6 +23634,25 @@ export const InternalApiFp = function (configuration?: Configuration) {
          */
         getResourcePools(offset?: number, limit?: number, unbound?: boolean, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetResourcePoolsResponse> {
             const localVarFetchArgs = InternalApiFetchParamCreator(configuration).getResourcePools(offset, limit, unbound, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary Get run metadata.
+         * @param {number} runId The ID of the run to get metadata for.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getRunMetadata(runId: number, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetRunMetadataResponse> {
+            const localVarFetchArgs = InternalApiFetchParamCreator(configuration).getRunMetadata(runId, options);
             return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
                 return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
                     if (response.status >= 200 && response.status < 300) {
@@ -22358,6 +23765,25 @@ export const InternalApiFp = function (configuration?: Configuration) {
         },
         /**
          * 
+         * @summary Get the list of trials for an experiment.
+         * @param {number} id The trial id.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getTrialRemainingLogRetentionDays(id: number, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetTrialRemainingLogRetentionDaysResponse> {
+            const localVarFetchArgs = InternalApiFetchParamCreator(configuration).getTrialRemainingLogRetentionDays(id, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
          * @summary Get the list of workloads for a trial.
          * @param {number} trialId Limit workloads to those that are owned by the specified trial.
          * @param {V1OrderBy} [orderBy] Order workloads in either ascending or descending order.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
@@ -22426,7 +23852,7 @@ export const InternalApiFp = function (configuration?: Configuration) {
         },
         /**
          * 
-         * @summary Get a list of runs.
+         * @summary Kill runs.
          * @param {V1KillRunsRequest} body
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -22667,6 +24093,25 @@ export const InternalApiFp = function (configuration?: Configuration) {
         },
         /**
          * 
+         * @summary Pause experiment associated with provided runs.
+         * @param {V1PauseRunsRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        pauseRuns(body: V1PauseRunsRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1PauseRunsResponse> {
+            const localVarFetchArgs = InternalApiFetchParamCreator(configuration).pauseRuns(body, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
          * @summary PostAllocationAcceleratorData sets the accelerator for a given allocation.
          * @param {string} allocationId The id of the allocation.
          * @param {V1PostAllocationAcceleratorDataRequest} body
@@ -22695,6 +24140,26 @@ export const InternalApiFp = function (configuration?: Configuration) {
          */
         postAllocationProxyAddress(allocationId: string, body: V1PostAllocationProxyAddressRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1PostAllocationProxyAddressResponse> {
             const localVarFetchArgs = InternalApiFetchParamCreator(configuration).postAllocationProxyAddress(allocationId, body, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary Update run metadata.
+         * @param {number} runId The ID of the run to post metadata for.
+         * @param {V1PostRunMetadataRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        postRunMetadata(runId: number, body: V1PostRunMetadataRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1PostRunMetadataResponse> {
+            const localVarFetchArgs = InternalApiFetchParamCreator(configuration).postRunMetadata(runId, body, options);
             return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
                 return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
                     if (response.status >= 200 && response.status < 300) {
@@ -22845,11 +24310,11 @@ export const InternalApiFp = function (configuration?: Configuration) {
          * 
          * @summary For bookkeeping, updates the progress towards to current requested searcher training length.
          * @param {number} trialId The id of the trial.
-         * @param {number} body Total units completed by the trial, in terms of the unit used to configure the searcher.
+         * @param {V1ReportTrialProgressRequest} body
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        reportTrialProgress(trialId: number, body: number, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1ReportTrialProgressResponse> {
+        reportTrialProgress(trialId: number, body: V1ReportTrialProgressRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1ReportTrialProgressResponse> {
             const localVarFetchArgs = InternalApiFetchParamCreator(configuration).reportTrialProgress(trialId, body, options);
             return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
                 return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
@@ -22942,6 +24407,25 @@ export const InternalApiFp = function (configuration?: Configuration) {
         },
         /**
          * 
+         * @summary Unpause experiment associated with provided runs.
+         * @param {V1ResumeRunsRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        resumeRuns(body: V1ResumeRunsRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1ResumeRunsResponse> {
+            const localVarFetchArgs = InternalApiFetchParamCreator(configuration).resumeRuns(body, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
          * @summary Start syncing and prepare to be able to report to a run. This should be called once per task that will report to the run.
          * @param {V1RunPrepareForReportingRequest} body
          * @param {*} [options] Override http request option.
@@ -22962,16 +24446,12 @@ export const InternalApiFp = function (configuration?: Configuration) {
         /**
          * 
          * @summary Get experiments with grouping and search syntax
-         * @param {number} [projectId] ID of the project to look at.
-         * @param {number} [offset] How many experiments to skip before including in the results.
-         * @param {number} [limit] How many results to show.
-         * @param {string} [sort] Sort parameters in the format <col1>=(asc|desc),<col2>=(asc|desc).
-         * @param {string} [filter] Filter expression.
+         * @param {V1SearchExperimentsRequest} body
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        searchExperiments(projectId?: number, offset?: number, limit?: number, sort?: string, filter?: string, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1SearchExperimentsResponse> {
-            const localVarFetchArgs = InternalApiFetchParamCreator(configuration).searchExperiments(projectId, offset, limit, sort, filter, options);
+        searchExperiments(body: V1SearchExperimentsRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1SearchExperimentsResponse> {
+            const localVarFetchArgs = InternalApiFetchParamCreator(configuration).searchExperiments(body, options);
             return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
                 return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
                     if (response.status >= 200 && response.status < 300) {
@@ -22985,16 +24465,12 @@ export const InternalApiFp = function (configuration?: Configuration) {
         /**
          * 
          * @summary Get a list of runs.
-         * @param {number} [projectId] ID of the project to look at.
-         * @param {number} [offset] How many experiments to skip before including in the results.
-         * @param {number} [limit] How many results to show.
-         * @param {string} [sort] Sort parameters in the format <col1>=(asc|desc),<col2>=(asc|desc).
-         * @param {string} [filter] Filter expression.
+         * @param {V1SearchRunsRequest} body
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        searchRuns(projectId?: number, offset?: number, limit?: number, sort?: string, filter?: string, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1SearchRunsResponse> {
-            const localVarFetchArgs = InternalApiFetchParamCreator(configuration).searchRuns(projectId, offset, limit, sort, filter, options);
+        searchRuns(body: V1SearchRunsRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1SearchRunsResponse> {
+            const localVarFetchArgs = InternalApiFetchParamCreator(configuration).searchRuns(body, options);
             return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
                 return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
                     if (response.status >= 200 && response.status < 300) {
@@ -23302,17 +24778,6 @@ export const InternalApiFactory = function (configuration?: Configuration, fetch
         },
         /**
          * 
-         * @summary Reports to the searcher that the trial has completed the given searcher operation.
-         * @param {number} trialId The id of the trial.
-         * @param {V1CompleteValidateAfterOperation} body The completed operation.
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        completeTrialSearcherValidation(trialId: number, body: V1CompleteValidateAfterOperation, options?: any) {
-            return InternalApiFp(configuration).completeTrialSearcherValidation(trialId, body, options)(fetch, basePath);
-        },
-        /**
-         * 
          * @summary Continues an experiment either to make the existing experiment train longer or to retry it.
          * @param {V1ContinueExperimentRequest} body
          * @param {*} [options] Override http request option.
@@ -23414,16 +24879,6 @@ export const InternalApiFactory = function (configuration?: Configuration, fetch
         },
         /**
          * 
-         * @summary Get the current searcher operation.
-         * @param {number} trialId The id of the trial.
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        getCurrentTrialSearcherOperation(trialId: number, options?: any) {
-            return InternalApiFp(configuration).getCurrentTrialSearcherOperation(trialId, options)(fetch, basePath);
-        },
-        /**
-         * 
          * @summary Get task config
          * @param {string} taskId The id of the task.
          * @param {*} [options] Override http request option.
@@ -23492,13 +24947,34 @@ export const InternalApiFactory = function (configuration?: Configuration, fetch
         },
         /**
          * 
-         * @summary Get a list of columns for experiment list table.
-         * @param {number} id The id of the project.
+         * @summary Get a list of all Kubernetes cluster names.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getProjectColumns(id: number, options?: any) {
-            return InternalApiFp(configuration).getProjectColumns(id, options)(fetch, basePath);
+        getKubernetesResourceManagers(options?: any) {
+            return InternalApiFp(configuration).getKubernetesResourceManagers(options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Retrieve run metadata values for a given string typed key within a given project.
+         * @param {number} projectId Project id
+         * @param {string} key Metadata key
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getMetadataValues(projectId: number, key: string, options?: any) {
+            return InternalApiFp(configuration).getMetadataValues(projectId, key, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Get a list of columns for experiment list table.
+         * @param {number} id The id of the project.
+         * @param {V1TableType} [tableType] type of table for project columns.   - TABLE_TYPE_UNSPECIFIED: Unspecified table type.  - TABLE_TYPE_EXPERIMENT: experiment table.  - TABLE_TYPE_RUN: run table.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getProjectColumns(id: number, tableType?: V1TableType, options?: any) {
+            return InternalApiFp(configuration).getProjectColumns(id, tableType, options)(fetch, basePath);
         },
         /**
          * 
@@ -23521,6 +24997,16 @@ export const InternalApiFactory = function (configuration?: Configuration, fetch
          */
         getResourcePools(offset?: number, limit?: number, unbound?: boolean, options?: any) {
             return InternalApiFp(configuration).getResourcePools(offset, limit, unbound, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Get run metadata.
+         * @param {number} runId The ID of the run to get metadata for.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getRunMetadata(runId: number, options?: any) {
+            return InternalApiFp(configuration).getRunMetadata(runId, options)(fetch, basePath);
         },
         /**
          * 
@@ -23579,6 +25065,16 @@ export const InternalApiFactory = function (configuration?: Configuration, fetch
         },
         /**
          * 
+         * @summary Get the list of trials for an experiment.
+         * @param {number} id The trial id.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getTrialRemainingLogRetentionDays(id: number, options?: any) {
+            return InternalApiFp(configuration).getTrialRemainingLogRetentionDays(id, options)(fetch, basePath);
+        },
+        /**
+         * 
          * @summary Get the list of workloads for a trial.
          * @param {number} trialId Limit workloads to those that are owned by the specified trial.
          * @param {V1OrderBy} [orderBy] Order workloads in either ascending or descending order.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
@@ -23620,7 +25116,7 @@ export const InternalApiFactory = function (configuration?: Configuration, fetch
         },
         /**
          * 
-         * @summary Get a list of runs.
+         * @summary Kill runs.
          * @param {V1KillRunsRequest} body
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -23753,6 +25249,16 @@ export const InternalApiFactory = function (configuration?: Configuration, fetch
         },
         /**
          * 
+         * @summary Pause experiment associated with provided runs.
+         * @param {V1PauseRunsRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        pauseRuns(body: V1PauseRunsRequest, options?: any) {
+            return InternalApiFp(configuration).pauseRuns(body, options)(fetch, basePath);
+        },
+        /**
+         * 
          * @summary PostAllocationAcceleratorData sets the accelerator for a given allocation.
          * @param {string} allocationId The id of the allocation.
          * @param {V1PostAllocationAcceleratorDataRequest} body
@@ -23772,6 +25278,17 @@ export const InternalApiFactory = function (configuration?: Configuration, fetch
          */
         postAllocationProxyAddress(allocationId: string, body: V1PostAllocationProxyAddressRequest, options?: any) {
             return InternalApiFp(configuration).postAllocationProxyAddress(allocationId, body, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Update run metadata.
+         * @param {number} runId The ID of the run to post metadata for.
+         * @param {V1PostRunMetadataRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        postRunMetadata(runId: number, body: V1PostRunMetadataRequest, options?: any) {
+            return InternalApiFp(configuration).postRunMetadata(runId, body, options)(fetch, basePath);
         },
         /**
          * 
@@ -23850,11 +25367,11 @@ export const InternalApiFactory = function (configuration?: Configuration, fetch
          * 
          * @summary For bookkeeping, updates the progress towards to current requested searcher training length.
          * @param {number} trialId The id of the trial.
-         * @param {number} body Total units completed by the trial, in terms of the unit used to configure the searcher.
+         * @param {V1ReportTrialProgressRequest} body
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        reportTrialProgress(trialId: number, body: number, options?: any) {
+        reportTrialProgress(trialId: number, body: V1ReportTrialProgressRequest, options?: any) {
             return InternalApiFp(configuration).reportTrialProgress(trialId, body, options)(fetch, basePath);
         },
         /**
@@ -23902,6 +25419,16 @@ export const InternalApiFactory = function (configuration?: Configuration, fetch
         },
         /**
          * 
+         * @summary Unpause experiment associated with provided runs.
+         * @param {V1ResumeRunsRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        resumeRuns(body: V1ResumeRunsRequest, options?: any) {
+            return InternalApiFp(configuration).resumeRuns(body, options)(fetch, basePath);
+        },
+        /**
+         * 
          * @summary Start syncing and prepare to be able to report to a run. This should be called once per task that will report to the run.
          * @param {V1RunPrepareForReportingRequest} body
          * @param {*} [options] Override http request option.
@@ -23913,30 +25440,22 @@ export const InternalApiFactory = function (configuration?: Configuration, fetch
         /**
          * 
          * @summary Get experiments with grouping and search syntax
-         * @param {number} [projectId] ID of the project to look at.
-         * @param {number} [offset] How many experiments to skip before including in the results.
-         * @param {number} [limit] How many results to show.
-         * @param {string} [sort] Sort parameters in the format <col1>=(asc|desc),<col2>=(asc|desc).
-         * @param {string} [filter] Filter expression.
+         * @param {V1SearchExperimentsRequest} body
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        searchExperiments(projectId?: number, offset?: number, limit?: number, sort?: string, filter?: string, options?: any) {
-            return InternalApiFp(configuration).searchExperiments(projectId, offset, limit, sort, filter, options)(fetch, basePath);
+        searchExperiments(body: V1SearchExperimentsRequest, options?: any) {
+            return InternalApiFp(configuration).searchExperiments(body, options)(fetch, basePath);
         },
         /**
          * 
          * @summary Get a list of runs.
-         * @param {number} [projectId] ID of the project to look at.
-         * @param {number} [offset] How many experiments to skip before including in the results.
-         * @param {number} [limit] How many results to show.
-         * @param {string} [sort] Sort parameters in the format <col1>=(asc|desc),<col2>=(asc|desc).
-         * @param {string} [filter] Filter expression.
+         * @param {V1SearchRunsRequest} body
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        searchRuns(projectId?: number, offset?: number, limit?: number, sort?: string, filter?: string, options?: any) {
-            return InternalApiFp(configuration).searchRuns(projectId, offset, limit, sort, filter, options)(fetch, basePath);
+        searchRuns(body: V1SearchRunsRequest, options?: any) {
+            return InternalApiFp(configuration).searchRuns(body, options)(fetch, basePath);
         },
         /**
          * 
@@ -24186,19 +25705,6 @@ export class InternalApi extends BaseAPI {
     
     /**
      * 
-     * @summary Reports to the searcher that the trial has completed the given searcher operation.
-     * @param {number} trialId The id of the trial.
-     * @param {V1CompleteValidateAfterOperation} body The completed operation.
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof InternalApi
-     */
-    public completeTrialSearcherValidation(trialId: number, body: V1CompleteValidateAfterOperation, options?: any) {
-        return InternalApiFp(this.configuration).completeTrialSearcherValidation(trialId, body, options)(this.fetch, this.basePath)
-    }
-    
-    /**
-     * 
      * @summary Continues an experiment either to make the existing experiment train longer or to retry it.
      * @param {V1ContinueExperimentRequest} body
      * @param {*} [options] Override http request option.
@@ -24320,18 +25826,6 @@ export class InternalApi extends BaseAPI {
     
     /**
      * 
-     * @summary Get the current searcher operation.
-     * @param {number} trialId The id of the trial.
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof InternalApi
-     */
-    public getCurrentTrialSearcherOperation(trialId: number, options?: any) {
-        return InternalApiFp(this.configuration).getCurrentTrialSearcherOperation(trialId, options)(this.fetch, this.basePath)
-    }
-    
-    /**
-     * 
      * @summary Get task config
      * @param {string} taskId The id of the task.
      * @param {*} [options] Override http request option.
@@ -24412,14 +25906,39 @@ export class InternalApi extends BaseAPI {
     
     /**
      * 
-     * @summary Get a list of columns for experiment list table.
-     * @param {number} id The id of the project.
+     * @summary Get a list of all Kubernetes cluster names.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof InternalApi
      */
-    public getProjectColumns(id: number, options?: any) {
-        return InternalApiFp(this.configuration).getProjectColumns(id, options)(this.fetch, this.basePath)
+    public getKubernetesResourceManagers(options?: any) {
+        return InternalApiFp(this.configuration).getKubernetesResourceManagers(options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Retrieve run metadata values for a given string typed key within a given project.
+     * @param {number} projectId Project id
+     * @param {string} key Metadata key
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof InternalApi
+     */
+    public getMetadataValues(projectId: number, key: string, options?: any) {
+        return InternalApiFp(this.configuration).getMetadataValues(projectId, key, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Get a list of columns for experiment list table.
+     * @param {number} id The id of the project.
+     * @param {V1TableType} [tableType] type of table for project columns.   - TABLE_TYPE_UNSPECIFIED: Unspecified table type.  - TABLE_TYPE_EXPERIMENT: experiment table.  - TABLE_TYPE_RUN: run table.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof InternalApi
+     */
+    public getProjectColumns(id: number, tableType?: V1TableType, options?: any) {
+        return InternalApiFp(this.configuration).getProjectColumns(id, tableType, options)(this.fetch, this.basePath)
     }
     
     /**
@@ -24446,6 +25965,18 @@ export class InternalApi extends BaseAPI {
      */
     public getResourcePools(offset?: number, limit?: number, unbound?: boolean, options?: any) {
         return InternalApiFp(this.configuration).getResourcePools(offset, limit, unbound, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Get run metadata.
+     * @param {number} runId The ID of the run to get metadata for.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof InternalApi
+     */
+    public getRunMetadata(runId: number, options?: any) {
+        return InternalApiFp(this.configuration).getRunMetadata(runId, options)(this.fetch, this.basePath)
     }
     
     /**
@@ -24515,6 +26046,18 @@ export class InternalApi extends BaseAPI {
     
     /**
      * 
+     * @summary Get the list of trials for an experiment.
+     * @param {number} id The trial id.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof InternalApi
+     */
+    public getTrialRemainingLogRetentionDays(id: number, options?: any) {
+        return InternalApiFp(this.configuration).getTrialRemainingLogRetentionDays(id, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
      * @summary Get the list of workloads for a trial.
      * @param {number} trialId Limit workloads to those that are owned by the specified trial.
      * @param {V1OrderBy} [orderBy] Order workloads in either ascending or descending order.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
@@ -24562,7 +26105,7 @@ export class InternalApi extends BaseAPI {
     
     /**
      * 
-     * @summary Get a list of runs.
+     * @summary Kill runs.
      * @param {V1KillRunsRequest} body
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -24719,6 +26262,18 @@ export class InternalApi extends BaseAPI {
     
     /**
      * 
+     * @summary Pause experiment associated with provided runs.
+     * @param {V1PauseRunsRequest} body
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof InternalApi
+     */
+    public pauseRuns(body: V1PauseRunsRequest, options?: any) {
+        return InternalApiFp(this.configuration).pauseRuns(body, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
      * @summary PostAllocationAcceleratorData sets the accelerator for a given allocation.
      * @param {string} allocationId The id of the allocation.
      * @param {V1PostAllocationAcceleratorDataRequest} body
@@ -24741,6 +26296,19 @@ export class InternalApi extends BaseAPI {
      */
     public postAllocationProxyAddress(allocationId: string, body: V1PostAllocationProxyAddressRequest, options?: any) {
         return InternalApiFp(this.configuration).postAllocationProxyAddress(allocationId, body, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Update run metadata.
+     * @param {number} runId The ID of the run to post metadata for.
+     * @param {V1PostRunMetadataRequest} body
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof InternalApi
+     */
+    public postRunMetadata(runId: number, body: V1PostRunMetadataRequest, options?: any) {
+        return InternalApiFp(this.configuration).postRunMetadata(runId, body, options)(this.fetch, this.basePath)
     }
     
     /**
@@ -24834,12 +26402,12 @@ export class InternalApi extends BaseAPI {
      * 
      * @summary For bookkeeping, updates the progress towards to current requested searcher training length.
      * @param {number} trialId The id of the trial.
-     * @param {number} body Total units completed by the trial, in terms of the unit used to configure the searcher.
+     * @param {V1ReportTrialProgressRequest} body
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof InternalApi
      */
-    public reportTrialProgress(trialId: number, body: number, options?: any) {
+    public reportTrialProgress(trialId: number, body: V1ReportTrialProgressRequest, options?: any) {
         return InternalApiFp(this.configuration).reportTrialProgress(trialId, body, options)(this.fetch, this.basePath)
     }
     
@@ -24896,6 +26464,18 @@ export class InternalApi extends BaseAPI {
     
     /**
      * 
+     * @summary Unpause experiment associated with provided runs.
+     * @param {V1ResumeRunsRequest} body
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof InternalApi
+     */
+    public resumeRuns(body: V1ResumeRunsRequest, options?: any) {
+        return InternalApiFp(this.configuration).resumeRuns(body, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
      * @summary Start syncing and prepare to be able to report to a run. This should be called once per task that will report to the run.
      * @param {V1RunPrepareForReportingRequest} body
      * @param {*} [options] Override http request option.
@@ -24909,33 +26489,25 @@ export class InternalApi extends BaseAPI {
     /**
      * 
      * @summary Get experiments with grouping and search syntax
-     * @param {number} [projectId] ID of the project to look at.
-     * @param {number} [offset] How many experiments to skip before including in the results.
-     * @param {number} [limit] How many results to show.
-     * @param {string} [sort] Sort parameters in the format <col1>=(asc|desc),<col2>=(asc|desc).
-     * @param {string} [filter] Filter expression.
+     * @param {V1SearchExperimentsRequest} body
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof InternalApi
      */
-    public searchExperiments(projectId?: number, offset?: number, limit?: number, sort?: string, filter?: string, options?: any) {
-        return InternalApiFp(this.configuration).searchExperiments(projectId, offset, limit, sort, filter, options)(this.fetch, this.basePath)
+    public searchExperiments(body: V1SearchExperimentsRequest, options?: any) {
+        return InternalApiFp(this.configuration).searchExperiments(body, options)(this.fetch, this.basePath)
     }
     
     /**
      * 
      * @summary Get a list of runs.
-     * @param {number} [projectId] ID of the project to look at.
-     * @param {number} [offset] How many experiments to skip before including in the results.
-     * @param {number} [limit] How many results to show.
-     * @param {string} [sort] Sort parameters in the format <col1>=(asc|desc),<col2>=(asc|desc).
-     * @param {string} [filter] Filter expression.
+     * @param {V1SearchRunsRequest} body
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof InternalApi
      */
-    public searchRuns(projectId?: number, offset?: number, limit?: number, sort?: string, filter?: string, options?: any) {
-        return InternalApiFp(this.configuration).searchRuns(projectId, offset, limit, sort, filter, options)(this.fetch, this.basePath)
+    public searchRuns(body: V1SearchRunsRequest, options?: any) {
+        return InternalApiFp(this.configuration).searchRuns(body, options)(this.fetch, this.basePath)
     }
     
     /**
@@ -25076,10 +26648,11 @@ export const JobsApiFetchParamCreator = function (configuration?: Configuration)
          * @param {Date | DateString} [timestampAfter] Limit the trial logs to ones with a timestamp after a given time.
          * @param {V1OrderBy} [orderBy] Order logs in either ascending or descending order by timestamp.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
          * @param {string} [searchText] Search the logs by whether the text contains a substring.
+         * @param {boolean} [enableRegex] Search text is regex. Default to false.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        taskLogs(taskId: string, limit?: number, follow?: boolean, allocationIds?: Array<string>, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, options: any = {}): FetchArgs {
+        taskLogs(taskId: string, limit?: number, follow?: boolean, allocationIds?: Array<string>, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, enableRegex?: boolean, options: any = {}): FetchArgs {
             // verify required parameter 'taskId' is not null or undefined
             if (taskId === null || taskId === undefined) {
                 throw new RequiredError('taskId','Required parameter taskId was null or undefined when calling taskLogs.');
@@ -25149,6 +26722,10 @@ export const JobsApiFetchParamCreator = function (configuration?: Configuration)
             
             if (searchText !== undefined) {
                 localVarQueryParameter['searchText'] = searchText
+            }
+            
+            if (enableRegex !== undefined) {
+                localVarQueryParameter['enableRegex'] = enableRegex
             }
             
             objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
@@ -25227,11 +26804,12 @@ export const JobsApiFp = function (configuration?: Configuration) {
          * @param {Date | DateString} [timestampAfter] Limit the trial logs to ones with a timestamp after a given time.
          * @param {V1OrderBy} [orderBy] Order logs in either ascending or descending order by timestamp.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
          * @param {string} [searchText] Search the logs by whether the text contains a substring.
+         * @param {boolean} [enableRegex] Search text is regex. Default to false.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        taskLogs(taskId: string, limit?: number, follow?: boolean, allocationIds?: Array<string>, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<StreamResultOfV1TaskLogsResponse> {
-            const localVarFetchArgs = JobsApiFetchParamCreator(configuration).taskLogs(taskId, limit, follow, allocationIds, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, options);
+        taskLogs(taskId: string, limit?: number, follow?: boolean, allocationIds?: Array<string>, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, enableRegex?: boolean, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<StreamResultOfV1TaskLogsResponse> {
+            const localVarFetchArgs = JobsApiFetchParamCreator(configuration).taskLogs(taskId, limit, follow, allocationIds, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, enableRegex, options);
             return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
                 return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
                     if (response.status >= 200 && response.status < 300) {
@@ -25288,11 +26866,12 @@ export const JobsApiFactory = function (configuration?: Configuration, fetch?: F
          * @param {Date | DateString} [timestampAfter] Limit the trial logs to ones with a timestamp after a given time.
          * @param {V1OrderBy} [orderBy] Order logs in either ascending or descending order by timestamp.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
          * @param {string} [searchText] Search the logs by whether the text contains a substring.
+         * @param {boolean} [enableRegex] Search text is regex. Default to false.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        taskLogs(taskId: string, limit?: number, follow?: boolean, allocationIds?: Array<string>, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, options?: any) {
-            return JobsApiFp(configuration).taskLogs(taskId, limit, follow, allocationIds, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, options)(fetch, basePath);
+        taskLogs(taskId: string, limit?: number, follow?: boolean, allocationIds?: Array<string>, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, enableRegex?: boolean, options?: any) {
+            return JobsApiFp(configuration).taskLogs(taskId, limit, follow, allocationIds, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, enableRegex, options)(fetch, basePath);
         },
         /**
          * 
@@ -25332,12 +26911,13 @@ export class JobsApi extends BaseAPI {
      * @param {Date | DateString} [timestampAfter] Limit the trial logs to ones with a timestamp after a given time.
      * @param {V1OrderBy} [orderBy] Order logs in either ascending or descending order by timestamp.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
      * @param {string} [searchText] Search the logs by whether the text contains a substring.
+     * @param {boolean} [enableRegex] Search text is regex. Default to false.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof JobsApi
      */
-    public taskLogs(taskId: string, limit?: number, follow?: boolean, allocationIds?: Array<string>, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, options?: any) {
-        return JobsApiFp(this.configuration).taskLogs(taskId, limit, follow, allocationIds, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, options)(this.fetch, this.basePath)
+    public taskLogs(taskId: string, limit?: number, follow?: boolean, allocationIds?: Array<string>, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, enableRegex?: boolean, options?: any) {
+        return JobsApiFp(this.configuration).taskLogs(taskId, limit, follow, allocationIds, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, enableRegex, options)(this.fetch, this.basePath)
     }
     
     /**
@@ -27547,12 +29127,49 @@ export const ProjectsApiFetchParamCreator = function (configuration?: Configurat
         },
         /**
          * 
-         * @summary Get a list of columns for experiment list table.
-         * @param {number} id The id of the project.
+         * @summary Get the request project by key.
+         * @param {string} key The key of the project.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getProjectColumns(id: number, options: any = {}): FetchArgs {
+        getProjectByKey(key: string, options: any = {}): FetchArgs {
+            // verify required parameter 'key' is not null or undefined
+            if (key === null || key === undefined) {
+                throw new RequiredError('key','Required parameter key was null or undefined when calling getProjectByKey.');
+            }
+            const localVarPath = `/api/v1/projects/key/{key}`
+                .replace(`{${"key"}}`, encodeURIComponent(String(key)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'GET', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Get a list of columns for experiment list table.
+         * @param {number} id The id of the project.
+         * @param {V1TableType} [tableType] type of table for project columns.   - TABLE_TYPE_UNSPECIFIED: Unspecified table type.  - TABLE_TYPE_EXPERIMENT: experiment table.  - TABLE_TYPE_RUN: run table.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getProjectColumns(id: number, tableType?: V1TableType, options: any = {}): FetchArgs {
             // verify required parameter 'id' is not null or undefined
             if (id === null || id === undefined) {
                 throw new RequiredError('id','Required parameter id was null or undefined when calling getProjectColumns.');
@@ -27570,6 +29187,10 @@ export const ProjectsApiFetchParamCreator = function (configuration?: Configurat
                     ? configuration.apiKey("Authorization")
                     : configuration.apiKey;
                 localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            if (tableType !== undefined) {
+                localVarQueryParameter['tableType'] = tableType
             }
             
             objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
@@ -27952,13 +29573,33 @@ export const ProjectsApiFp = function (configuration?: Configuration) {
         },
         /**
          * 
-         * @summary Get a list of columns for experiment list table.
-         * @param {number} id The id of the project.
+         * @summary Get the request project by key.
+         * @param {string} key The key of the project.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getProjectColumns(id: number, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetProjectColumnsResponse> {
-            const localVarFetchArgs = ProjectsApiFetchParamCreator(configuration).getProjectColumns(id, options);
+        getProjectByKey(key: string, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetProjectByKeyResponse> {
+            const localVarFetchArgs = ProjectsApiFetchParamCreator(configuration).getProjectByKey(key, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary Get a list of columns for experiment list table.
+         * @param {number} id The id of the project.
+         * @param {V1TableType} [tableType] type of table for project columns.   - TABLE_TYPE_UNSPECIFIED: Unspecified table type.  - TABLE_TYPE_EXPERIMENT: experiment table.  - TABLE_TYPE_RUN: run table.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getProjectColumns(id: number, tableType?: V1TableType, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetProjectColumnsResponse> {
+            const localVarFetchArgs = ProjectsApiFetchParamCreator(configuration).getProjectColumns(id, tableType, options);
             return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
                 return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
                     if (response.status >= 200 && response.status < 300) {
@@ -28158,13 +29799,24 @@ export const ProjectsApiFactory = function (configuration?: Configuration, fetch
         },
         /**
          * 
-         * @summary Get a list of columns for experiment list table.
-         * @param {number} id The id of the project.
+         * @summary Get the request project by key.
+         * @param {string} key The key of the project.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        getProjectColumns(id: number, options?: any) {
-            return ProjectsApiFp(configuration).getProjectColumns(id, options)(fetch, basePath);
+        getProjectByKey(key: string, options?: any) {
+            return ProjectsApiFp(configuration).getProjectByKey(key, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Get a list of columns for experiment list table.
+         * @param {number} id The id of the project.
+         * @param {V1TableType} [tableType] type of table for project columns.   - TABLE_TYPE_UNSPECIFIED: Unspecified table type.  - TABLE_TYPE_EXPERIMENT: experiment table.  - TABLE_TYPE_RUN: run table.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getProjectColumns(id: number, tableType?: V1TableType, options?: any) {
+            return ProjectsApiFp(configuration).getProjectColumns(id, tableType, options)(fetch, basePath);
         },
         /**
          * 
@@ -28301,14 +29953,27 @@ export class ProjectsApi extends BaseAPI {
     
     /**
      * 
-     * @summary Get a list of columns for experiment list table.
-     * @param {number} id The id of the project.
+     * @summary Get the request project by key.
+     * @param {string} key The key of the project.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof ProjectsApi
      */
-    public getProjectColumns(id: number, options?: any) {
-        return ProjectsApiFp(this.configuration).getProjectColumns(id, options)(this.fetch, this.basePath)
+    public getProjectByKey(key: string, options?: any) {
+        return ProjectsApiFp(this.configuration).getProjectByKey(key, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Get a list of columns for experiment list table.
+     * @param {number} id The id of the project.
+     * @param {V1TableType} [tableType] type of table for project columns.   - TABLE_TYPE_UNSPECIFIED: Unspecified table type.  - TABLE_TYPE_EXPERIMENT: experiment table.  - TABLE_TYPE_RUN: run table.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof ProjectsApi
+     */
+    public getProjectColumns(id: number, tableType?: V1TableType, options?: any) {
+        return ProjectsApiFp(this.configuration).getProjectColumns(id, tableType, options)(this.fetch, this.basePath)
     }
     
     /**
@@ -29775,10 +31440,11 @@ export const TasksApiFetchParamCreator = function (configuration?: Configuration
          * @param {Date | DateString} [timestampAfter] Limit the trial logs to ones with a timestamp after a given time.
          * @param {V1OrderBy} [orderBy] Order logs in either ascending or descending order by timestamp.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
          * @param {string} [searchText] Search the logs by whether the text contains a substring.
+         * @param {boolean} [enableRegex] Search text is regex. Default to false.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        taskLogs(taskId: string, limit?: number, follow?: boolean, allocationIds?: Array<string>, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, options: any = {}): FetchArgs {
+        taskLogs(taskId: string, limit?: number, follow?: boolean, allocationIds?: Array<string>, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, enableRegex?: boolean, options: any = {}): FetchArgs {
             // verify required parameter 'taskId' is not null or undefined
             if (taskId === null || taskId === undefined) {
                 throw new RequiredError('taskId','Required parameter taskId was null or undefined when calling taskLogs.');
@@ -29848,6 +31514,10 @@ export const TasksApiFetchParamCreator = function (configuration?: Configuration
             
             if (searchText !== undefined) {
                 localVarQueryParameter['searchText'] = searchText
+            }
+            
+            if (enableRegex !== undefined) {
+                localVarQueryParameter['enableRegex'] = enableRegex
             }
             
             objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
@@ -30000,11 +31670,12 @@ export const TasksApiFp = function (configuration?: Configuration) {
          * @param {Date | DateString} [timestampAfter] Limit the trial logs to ones with a timestamp after a given time.
          * @param {V1OrderBy} [orderBy] Order logs in either ascending or descending order by timestamp.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
          * @param {string} [searchText] Search the logs by whether the text contains a substring.
+         * @param {boolean} [enableRegex] Search text is regex. Default to false.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        taskLogs(taskId: string, limit?: number, follow?: boolean, allocationIds?: Array<string>, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<StreamResultOfV1TaskLogsResponse> {
-            const localVarFetchArgs = TasksApiFetchParamCreator(configuration).taskLogs(taskId, limit, follow, allocationIds, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, options);
+        taskLogs(taskId: string, limit?: number, follow?: boolean, allocationIds?: Array<string>, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, enableRegex?: boolean, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<StreamResultOfV1TaskLogsResponse> {
+            const localVarFetchArgs = TasksApiFetchParamCreator(configuration).taskLogs(taskId, limit, follow, allocationIds, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, enableRegex, options);
             return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
                 return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
                     if (response.status >= 200 && response.status < 300) {
@@ -30099,11 +31770,12 @@ export const TasksApiFactory = function (configuration?: Configuration, fetch?: 
          * @param {Date | DateString} [timestampAfter] Limit the trial logs to ones with a timestamp after a given time.
          * @param {V1OrderBy} [orderBy] Order logs in either ascending or descending order by timestamp.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
          * @param {string} [searchText] Search the logs by whether the text contains a substring.
+         * @param {boolean} [enableRegex] Search text is regex. Default to false.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        taskLogs(taskId: string, limit?: number, follow?: boolean, allocationIds?: Array<string>, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, options?: any) {
-            return TasksApiFp(configuration).taskLogs(taskId, limit, follow, allocationIds, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, options)(fetch, basePath);
+        taskLogs(taskId: string, limit?: number, follow?: boolean, allocationIds?: Array<string>, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, enableRegex?: boolean, options?: any) {
+            return TasksApiFp(configuration).taskLogs(taskId, limit, follow, allocationIds, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, enableRegex, options)(fetch, basePath);
         },
         /**
          * 
@@ -30189,12 +31861,13 @@ export class TasksApi extends BaseAPI {
      * @param {Date | DateString} [timestampAfter] Limit the trial logs to ones with a timestamp after a given time.
      * @param {V1OrderBy} [orderBy] Order logs in either ascending or descending order by timestamp.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
      * @param {string} [searchText] Search the logs by whether the text contains a substring.
+     * @param {boolean} [enableRegex] Search text is regex. Default to false.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof TasksApi
      */
-    public taskLogs(taskId: string, limit?: number, follow?: boolean, allocationIds?: Array<string>, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, options?: any) {
-        return TasksApiFp(this.configuration).taskLogs(taskId, limit, follow, allocationIds, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, options)(this.fetch, this.basePath)
+    public taskLogs(taskId: string, limit?: number, follow?: boolean, allocationIds?: Array<string>, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, enableRegex?: boolean, options?: any) {
+        return TasksApiFp(this.configuration).taskLogs(taskId, limit, follow, allocationIds, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, enableRegex, options)(this.fetch, this.basePath)
     }
     
     /**
@@ -31343,6 +33016,333 @@ export class TensorboardsApi extends BaseAPI {
 }
 
 /**
+ * TokensApi - fetch parameter creator
+ * @export
+ */
+export const TokensApiFetchParamCreator = function (configuration?: Configuration) {
+    return {
+        /**
+         * 
+         * @summary Get a list of all access token records.
+         * @param {V1GetAccessTokensRequestSortBy} [sortBy] Sort token info by the given field.   - SORT_BY_UNSPECIFIED: Returns token info in an unsorted list.  - SORT_BY_USER_ID: Returns token info sorted by user id.  - SORT_BY_EXPIRY: Returns token info sorted by expiry.  - SORT_BY_CREATED_AT: Returns token info sorted by created at.  - SORT_BY_TOKEN_TYPE: Returns token info sorted by token type.  - SORT_BY_REVOKED: Returns token info sorted by if it is revoked.  - SORT_BY_DESCRIPTION: Returns token info sorted by description of token.
+         * @param {V1OrderBy} [orderBy] Order token info in either ascending or descending order.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
+         * @param {number} [offset] Skip the number of projects before returning results. Negative values denote number of projects to skip from the end before returning results.
+         * @param {number} [limit] Limit the number of projects. A value of 0 denotes no limit.
+         * @param {Array<number>} [tokenIds] Filter on token_ids.
+         * @param {string} [username] Filter by username.
+         * @param {boolean} [showInactive] Filter by active status.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getAccessTokens(sortBy?: V1GetAccessTokensRequestSortBy, orderBy?: V1OrderBy, offset?: number, limit?: number, tokenIds?: Array<number>, username?: string, showInactive?: boolean, options: any = {}): FetchArgs {
+            const localVarPath = `/api/v1/tokens`;
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'GET', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            if (sortBy !== undefined) {
+                localVarQueryParameter['sortBy'] = sortBy
+            }
+            
+            if (orderBy !== undefined) {
+                localVarQueryParameter['orderBy'] = orderBy
+            }
+            
+            if (offset !== undefined) {
+                localVarQueryParameter['offset'] = offset
+            }
+            
+            if (limit !== undefined) {
+                localVarQueryParameter['limit'] = limit
+            }
+            
+            if (tokenIds) {
+                localVarQueryParameter['tokenIds'] = tokenIds
+            }
+            
+            if (username !== undefined) {
+                localVarQueryParameter['username'] = username
+            }
+            
+            if (showInactive !== undefined) {
+                localVarQueryParameter['showInactive'] = showInactive
+            }
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Patch an access token's mutable fields.
+         * @param {number} tokenId The id of the token.
+         * @param {V1PatchAccessTokenRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        patchAccessToken(tokenId: number, body: V1PatchAccessTokenRequest, options: any = {}): FetchArgs {
+            // verify required parameter 'tokenId' is not null or undefined
+            if (tokenId === null || tokenId === undefined) {
+                throw new RequiredError('tokenId','Required parameter tokenId was null or undefined when calling patchAccessToken.');
+            }
+            // verify required parameter 'body' is not null or undefined
+            if (body === null || body === undefined) {
+                throw new RequiredError('body','Required parameter body was null or undefined when calling patchAccessToken.');
+            }
+            const localVarPath = `/api/v1/tokens/{tokenId}`
+                .replace(`{${"tokenId"}}`, encodeURIComponent(String(tokenId)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'PATCH', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            localVarRequestOptions.body = JSON.stringify(body)
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Create and get a user's access token
+         * @param {V1PostAccessTokenRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        postAccessToken(body: V1PostAccessTokenRequest, options: any = {}): FetchArgs {
+            // verify required parameter 'body' is not null or undefined
+            if (body === null || body === undefined) {
+                throw new RequiredError('body','Required parameter body was null or undefined when calling postAccessToken.');
+            }
+            const localVarPath = `/api/v1/tokens`;
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'POST', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            localVarRequestOptions.body = JSON.stringify(body)
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+    }
+};
+
+/**
+ * TokensApi - functional programming interface
+ * @export
+ */
+export const TokensApiFp = function (configuration?: Configuration) {
+    return {
+        /**
+         * 
+         * @summary Get a list of all access token records.
+         * @param {V1GetAccessTokensRequestSortBy} [sortBy] Sort token info by the given field.   - SORT_BY_UNSPECIFIED: Returns token info in an unsorted list.  - SORT_BY_USER_ID: Returns token info sorted by user id.  - SORT_BY_EXPIRY: Returns token info sorted by expiry.  - SORT_BY_CREATED_AT: Returns token info sorted by created at.  - SORT_BY_TOKEN_TYPE: Returns token info sorted by token type.  - SORT_BY_REVOKED: Returns token info sorted by if it is revoked.  - SORT_BY_DESCRIPTION: Returns token info sorted by description of token.
+         * @param {V1OrderBy} [orderBy] Order token info in either ascending or descending order.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
+         * @param {number} [offset] Skip the number of projects before returning results. Negative values denote number of projects to skip from the end before returning results.
+         * @param {number} [limit] Limit the number of projects. A value of 0 denotes no limit.
+         * @param {Array<number>} [tokenIds] Filter on token_ids.
+         * @param {string} [username] Filter by username.
+         * @param {boolean} [showInactive] Filter by active status.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getAccessTokens(sortBy?: V1GetAccessTokensRequestSortBy, orderBy?: V1OrderBy, offset?: number, limit?: number, tokenIds?: Array<number>, username?: string, showInactive?: boolean, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetAccessTokensResponse> {
+            const localVarFetchArgs = TokensApiFetchParamCreator(configuration).getAccessTokens(sortBy, orderBy, offset, limit, tokenIds, username, showInactive, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary Patch an access token's mutable fields.
+         * @param {number} tokenId The id of the token.
+         * @param {V1PatchAccessTokenRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        patchAccessToken(tokenId: number, body: V1PatchAccessTokenRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1PatchAccessTokenResponse> {
+            const localVarFetchArgs = TokensApiFetchParamCreator(configuration).patchAccessToken(tokenId, body, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary Create and get a user's access token
+         * @param {V1PostAccessTokenRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        postAccessToken(body: V1PostAccessTokenRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1PostAccessTokenResponse> {
+            const localVarFetchArgs = TokensApiFetchParamCreator(configuration).postAccessToken(body, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+    }
+};
+
+/**
+ * TokensApi - factory interface
+ * @export
+ */
+export const TokensApiFactory = function (configuration?: Configuration, fetch?: FetchAPI, basePath?: string) {
+    return {
+        /**
+         * 
+         * @summary Get a list of all access token records.
+         * @param {V1GetAccessTokensRequestSortBy} [sortBy] Sort token info by the given field.   - SORT_BY_UNSPECIFIED: Returns token info in an unsorted list.  - SORT_BY_USER_ID: Returns token info sorted by user id.  - SORT_BY_EXPIRY: Returns token info sorted by expiry.  - SORT_BY_CREATED_AT: Returns token info sorted by created at.  - SORT_BY_TOKEN_TYPE: Returns token info sorted by token type.  - SORT_BY_REVOKED: Returns token info sorted by if it is revoked.  - SORT_BY_DESCRIPTION: Returns token info sorted by description of token.
+         * @param {V1OrderBy} [orderBy] Order token info in either ascending or descending order.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
+         * @param {number} [offset] Skip the number of projects before returning results. Negative values denote number of projects to skip from the end before returning results.
+         * @param {number} [limit] Limit the number of projects. A value of 0 denotes no limit.
+         * @param {Array<number>} [tokenIds] Filter on token_ids.
+         * @param {string} [username] Filter by username.
+         * @param {boolean} [showInactive] Filter by active status.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getAccessTokens(sortBy?: V1GetAccessTokensRequestSortBy, orderBy?: V1OrderBy, offset?: number, limit?: number, tokenIds?: Array<number>, username?: string, showInactive?: boolean, options?: any) {
+            return TokensApiFp(configuration).getAccessTokens(sortBy, orderBy, offset, limit, tokenIds, username, showInactive, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Patch an access token's mutable fields.
+         * @param {number} tokenId The id of the token.
+         * @param {V1PatchAccessTokenRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        patchAccessToken(tokenId: number, body: V1PatchAccessTokenRequest, options?: any) {
+            return TokensApiFp(configuration).patchAccessToken(tokenId, body, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Create and get a user's access token
+         * @param {V1PostAccessTokenRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        postAccessToken(body: V1PostAccessTokenRequest, options?: any) {
+            return TokensApiFp(configuration).postAccessToken(body, options)(fetch, basePath);
+        },
+    }
+};
+
+/**
+ * TokensApi - object-oriented interface
+ * @export
+ * @class
+ * @extends {BaseAPI}
+ */
+export class TokensApi extends BaseAPI {
+    /**
+     * 
+     * @summary Get a list of all access token records.
+     * @param {V1GetAccessTokensRequestSortBy} [sortBy] Sort token info by the given field.   - SORT_BY_UNSPECIFIED: Returns token info in an unsorted list.  - SORT_BY_USER_ID: Returns token info sorted by user id.  - SORT_BY_EXPIRY: Returns token info sorted by expiry.  - SORT_BY_CREATED_AT: Returns token info sorted by created at.  - SORT_BY_TOKEN_TYPE: Returns token info sorted by token type.  - SORT_BY_REVOKED: Returns token info sorted by if it is revoked.  - SORT_BY_DESCRIPTION: Returns token info sorted by description of token.
+     * @param {V1OrderBy} [orderBy] Order token info in either ascending or descending order.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
+     * @param {number} [offset] Skip the number of projects before returning results. Negative values denote number of projects to skip from the end before returning results.
+     * @param {number} [limit] Limit the number of projects. A value of 0 denotes no limit.
+     * @param {Array<number>} [tokenIds] Filter on token_ids.
+     * @param {string} [username] Filter by username.
+     * @param {boolean} [showInactive] Filter by active status.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof TokensApi
+     */
+    public getAccessTokens(sortBy?: V1GetAccessTokensRequestSortBy, orderBy?: V1OrderBy, offset?: number, limit?: number, tokenIds?: Array<number>, username?: string, showInactive?: boolean, options?: any) {
+        return TokensApiFp(this.configuration).getAccessTokens(sortBy, orderBy, offset, limit, tokenIds, username, showInactive, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Patch an access token's mutable fields.
+     * @param {number} tokenId The id of the token.
+     * @param {V1PatchAccessTokenRequest} body
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof TokensApi
+     */
+    public patchAccessToken(tokenId: number, body: V1PatchAccessTokenRequest, options?: any) {
+        return TokensApiFp(this.configuration).patchAccessToken(tokenId, body, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Create and get a user's access token
+     * @param {V1PostAccessTokenRequest} body
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof TokensApi
+     */
+    public postAccessToken(body: V1PostAccessTokenRequest, options?: any) {
+        return TokensApiFp(this.configuration).postAccessToken(body, options)(this.fetch, this.basePath)
+    }
+    
+}
+
+/**
  * TrialsApi - fetch parameter creator
  * @export
  */
@@ -31740,10 +33740,11 @@ export const TrialsApiFetchParamCreator = function (configuration?: Configuratio
          * @param {Date | DateString} [timestampAfter] Limit the trial logs to ones with a timestamp after a given time.
          * @param {V1OrderBy} [orderBy] Order logs in either ascending or descending order by timestamp.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
          * @param {string} [searchText] Search the logs by whether the text contains a substring.
+         * @param {boolean} [enableRegex] Search text is regex. Default to false.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        trialLogs(trialId: number, limit?: number, follow?: boolean, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, options: any = {}): FetchArgs {
+        trialLogs(trialId: number, limit?: number, follow?: boolean, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, enableRegex?: boolean, options: any = {}): FetchArgs {
             // verify required parameter 'trialId' is not null or undefined
             if (trialId === null || trialId === undefined) {
                 throw new RequiredError('trialId','Required parameter trialId was null or undefined when calling trialLogs.');
@@ -31809,6 +33810,10 @@ export const TrialsApiFetchParamCreator = function (configuration?: Configuratio
             
             if (searchText !== undefined) {
                 localVarQueryParameter['searchText'] = searchText
+            }
+            
+            if (enableRegex !== undefined) {
+                localVarQueryParameter['enableRegex'] = enableRegex
             }
             
             objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
@@ -32054,11 +34059,12 @@ export const TrialsApiFp = function (configuration?: Configuration) {
          * @param {Date | DateString} [timestampAfter] Limit the trial logs to ones with a timestamp after a given time.
          * @param {V1OrderBy} [orderBy] Order logs in either ascending or descending order by timestamp.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
          * @param {string} [searchText] Search the logs by whether the text contains a substring.
+         * @param {boolean} [enableRegex] Search text is regex. Default to false.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        trialLogs(trialId: number, limit?: number, follow?: boolean, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<StreamResultOfV1TrialLogsResponse> {
-            const localVarFetchArgs = TrialsApiFetchParamCreator(configuration).trialLogs(trialId, limit, follow, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, options);
+        trialLogs(trialId: number, limit?: number, follow?: boolean, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, enableRegex?: boolean, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<StreamResultOfV1TrialLogsResponse> {
+            const localVarFetchArgs = TrialsApiFetchParamCreator(configuration).trialLogs(trialId, limit, follow, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, enableRegex, options);
             return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
                 return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
                     if (response.status >= 200 && response.status < 300) {
@@ -32210,11 +34216,12 @@ export const TrialsApiFactory = function (configuration?: Configuration, fetch?:
          * @param {Date | DateString} [timestampAfter] Limit the trial logs to ones with a timestamp after a given time.
          * @param {V1OrderBy} [orderBy] Order logs in either ascending or descending order by timestamp.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
          * @param {string} [searchText] Search the logs by whether the text contains a substring.
+         * @param {boolean} [enableRegex] Search text is regex. Default to false.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        trialLogs(trialId: number, limit?: number, follow?: boolean, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, options?: any) {
-            return TrialsApiFp(configuration).trialLogs(trialId, limit, follow, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, options)(fetch, basePath);
+        trialLogs(trialId: number, limit?: number, follow?: boolean, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, enableRegex?: boolean, options?: any) {
+            return TrialsApiFp(configuration).trialLogs(trialId, limit, follow, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, enableRegex, options)(fetch, basePath);
         },
         /**
          * 
@@ -32365,12 +34372,13 @@ export class TrialsApi extends BaseAPI {
      * @param {Date | DateString} [timestampAfter] Limit the trial logs to ones with a timestamp after a given time.
      * @param {V1OrderBy} [orderBy] Order logs in either ascending or descending order by timestamp.   - ORDER_BY_UNSPECIFIED: Returns records in no specific order.  - ORDER_BY_ASC: Returns records in ascending order.  - ORDER_BY_DESC: Returns records in descending order.
      * @param {string} [searchText] Search the logs by whether the text contains a substring.
+     * @param {boolean} [enableRegex] Search text is regex. Default to false.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof TrialsApi
      */
-    public trialLogs(trialId: number, limit?: number, follow?: boolean, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, options?: any) {
-        return TrialsApiFp(this.configuration).trialLogs(trialId, limit, follow, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, options)(this.fetch, this.basePath)
+    public trialLogs(trialId: number, limit?: number, follow?: boolean, agentIds?: Array<string>, containerIds?: Array<string>, rankIds?: Array<number>, levels?: Array<V1LogLevel>, stdtypes?: Array<string>, sources?: Array<string>, timestampBefore?: Date | DateString, timestampAfter?: Date | DateString, orderBy?: V1OrderBy, searchText?: string, enableRegex?: boolean, options?: any) {
+        return TrialsApiFp(this.configuration).trialLogs(trialId, limit, follow, agentIds, containerIds, rankIds, levels, stdtypes, sources, timestampBefore, timestampAfter, orderBy, searchText, enableRegex, options)(this.fetch, this.basePath)
     }
     
     /**
@@ -33402,6 +35410,50 @@ export const WebhooksApiFetchParamCreator = function (configuration?: Configurat
         },
         /**
          * 
+         * @summary Update a webhook.
+         * @param {number} id The id of the webhook.
+         * @param {V1PatchWebhook} body The desired webhook fields and values to update.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        patchWebhook(id: number, body: V1PatchWebhook, options: any = {}): FetchArgs {
+            // verify required parameter 'id' is not null or undefined
+            if (id === null || id === undefined) {
+                throw new RequiredError('id','Required parameter id was null or undefined when calling patchWebhook.');
+            }
+            // verify required parameter 'body' is not null or undefined
+            if (body === null || body === undefined) {
+                throw new RequiredError('body','Required parameter body was null or undefined when calling patchWebhook.');
+            }
+            const localVarPath = `/api/v1/webhooks/{id}`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'PATCH', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            localVarRequestOptions.body = JSON.stringify(body)
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary Create a webhook. TODO(???): Simplify req/response structs?
          * @param {V1Webhook} body The webhook to store.
          * @param {*} [options] Override http request option.
@@ -33413,6 +35465,44 @@ export const WebhooksApiFetchParamCreator = function (configuration?: Configurat
                 throw new RequiredError('body','Required parameter body was null or undefined when calling postWebhook.');
             }
             const localVarPath = `/api/v1/webhooks`;
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'POST', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            localVarRequestOptions.body = JSON.stringify(body)
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Trigger custom trigger of webhooks.
+         * @param {V1PostWebhookEventDataRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        postWebhookEventData(body: V1PostWebhookEventDataRequest, options: any = {}): FetchArgs {
+            // verify required parameter 'body' is not null or undefined
+            if (body === null || body === undefined) {
+                throw new RequiredError('body','Required parameter body was null or undefined when calling postWebhookEventData.');
+            }
+            const localVarPath = `/api/v1/webhooks/custom`;
             const localVarUrlObj = new URL(localVarPath, BASE_PATH);
             const localVarRequestOptions = { method: 'POST', ...options };
             const localVarHeaderParameter = {} as any;
@@ -33522,6 +35612,26 @@ export const WebhooksApiFp = function (configuration?: Configuration) {
         },
         /**
          * 
+         * @summary Update a webhook.
+         * @param {number} id The id of the webhook.
+         * @param {V1PatchWebhook} body The desired webhook fields and values to update.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        patchWebhook(id: number, body: V1PatchWebhook, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1PatchWebhookResponse> {
+            const localVarFetchArgs = WebhooksApiFetchParamCreator(configuration).patchWebhook(id, body, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
          * @summary Create a webhook. TODO(???): Simplify req/response structs?
          * @param {V1Webhook} body The webhook to store.
          * @param {*} [options] Override http request option.
@@ -33529,6 +35639,25 @@ export const WebhooksApiFp = function (configuration?: Configuration) {
          */
         postWebhook(body: V1Webhook, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1PostWebhookResponse> {
             const localVarFetchArgs = WebhooksApiFetchParamCreator(configuration).postWebhook(body, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary Trigger custom trigger of webhooks.
+         * @param {V1PostWebhookEventDataRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        postWebhookEventData(body: V1PostWebhookEventDataRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1PostWebhookEventDataResponse> {
+            const localVarFetchArgs = WebhooksApiFetchParamCreator(configuration).postWebhookEventData(body, options);
             return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
                 return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
                     if (response.status >= 200 && response.status < 300) {
@@ -33588,6 +35717,17 @@ export const WebhooksApiFactory = function (configuration?: Configuration, fetch
         },
         /**
          * 
+         * @summary Update a webhook.
+         * @param {number} id The id of the webhook.
+         * @param {V1PatchWebhook} body The desired webhook fields and values to update.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        patchWebhook(id: number, body: V1PatchWebhook, options?: any) {
+            return WebhooksApiFp(configuration).patchWebhook(id, body, options)(fetch, basePath);
+        },
+        /**
+         * 
          * @summary Create a webhook. TODO(???): Simplify req/response structs?
          * @param {V1Webhook} body The webhook to store.
          * @param {*} [options] Override http request option.
@@ -33595,6 +35735,16 @@ export const WebhooksApiFactory = function (configuration?: Configuration, fetch
          */
         postWebhook(body: V1Webhook, options?: any) {
             return WebhooksApiFp(configuration).postWebhook(body, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Trigger custom trigger of webhooks.
+         * @param {V1PostWebhookEventDataRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        postWebhookEventData(body: V1PostWebhookEventDataRequest, options?: any) {
+            return WebhooksApiFp(configuration).postWebhookEventData(body, options)(fetch, basePath);
         },
         /**
          * 
@@ -33641,6 +35791,19 @@ export class WebhooksApi extends BaseAPI {
     
     /**
      * 
+     * @summary Update a webhook.
+     * @param {number} id The id of the webhook.
+     * @param {V1PatchWebhook} body The desired webhook fields and values to update.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WebhooksApi
+     */
+    public patchWebhook(id: number, body: V1PatchWebhook, options?: any) {
+        return WebhooksApiFp(this.configuration).patchWebhook(id, body, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
      * @summary Create a webhook. TODO(???): Simplify req/response structs?
      * @param {V1Webhook} body The webhook to store.
      * @param {*} [options] Override http request option.
@@ -33649,6 +35812,18 @@ export class WebhooksApi extends BaseAPI {
      */
     public postWebhook(body: V1Webhook, options?: any) {
         return WebhooksApiFp(this.configuration).postWebhook(body, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Trigger custom trigger of webhooks.
+     * @param {V1PostWebhookEventDataRequest} body
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WebhooksApi
+     */
+    public postWebhookEventData(body: V1PostWebhookEventDataRequest, options?: any) {
+        return WebhooksApiFp(this.configuration).postWebhookEventData(body, options)(this.fetch, this.basePath)
     }
     
     /**
@@ -33709,6 +35884,44 @@ export const WorkspacesApiFetchParamCreator = function (configuration?: Configur
         },
         /**
          * 
+         * @summary Binds the given workpaces to new auto-created namespaces.
+         * @param {V1BulkAutoCreateWorkspaceNamespaceBindingsRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        bulkAutoCreateWorkspaceNamespaceBindings(body: V1BulkAutoCreateWorkspaceNamespaceBindingsRequest, options: any = {}): FetchArgs {
+            // verify required parameter 'body' is not null or undefined
+            if (body === null || body === undefined) {
+                throw new RequiredError('body','Required parameter body was null or undefined when calling bulkAutoCreateWorkspaceNamespaceBindings.');
+            }
+            const localVarPath = `/api/v1/namespace-bindings/bulk-auto-create`;
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'POST', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            localVarRequestOptions.body = JSON.stringify(body)
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary Delete a workspace.
          * @param {number} id The id of the workspace.
          * @param {*} [options] Override http request option.
@@ -33723,6 +35936,83 @@ export const WorkspacesApiFetchParamCreator = function (configuration?: Configur
                 .replace(`{${"id"}}`, encodeURIComponent(String(id)));
             const localVarUrlObj = new URL(localVarPath, BASE_PATH);
             const localVarRequestOptions = { method: 'DELETE', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Deletes workpace namespace bindings.
+         * @param {number} workspaceId The unique id of the workspace.
+         * @param {Array<string>} [clusterNames] The names of the clusters to delete the bindings for.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteWorkspaceNamespaceBindings(workspaceId: number, clusterNames?: Array<string>, options: any = {}): FetchArgs {
+            // verify required parameter 'workspaceId' is not null or undefined
+            if (workspaceId === null || workspaceId === undefined) {
+                throw new RequiredError('workspaceId','Required parameter workspaceId was null or undefined when calling deleteWorkspaceNamespaceBindings.');
+            }
+            const localVarPath = `/api/v1/workspaces/{workspaceId}/namespace-bindings`
+                .replace(`{${"workspaceId"}}`, encodeURIComponent(String(workspaceId)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'DELETE', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            if (clusterNames) {
+                localVarQueryParameter['clusterNames'] = clusterNames
+            }
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Get Kubernetes Resource Quotas for a workspace by the cluster name.
+         * @param {number} id The unique id of the workspace.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getKubernetesResourceQuotas(id: number, options: any = {}): FetchArgs {
+            // verify required parameter 'id' is not null or undefined
+            if (id === null || id === undefined) {
+                throw new RequiredError('id','Required parameter id was null or undefined when calling getKubernetesResourceQuotas.');
+            }
+            const localVarPath = `/api/v1/workspaces/{id}/get-k8s-resource-quotas`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'GET', ...options };
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
             
@@ -33937,6 +36227,36 @@ export const WorkspacesApiFetchParamCreator = function (configuration?: Configur
         },
         /**
          * 
+         * @summary Gets the ids of all workspaces that are bound to the default namespace for atleast one cluster.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getWorkspacesWithDefaultNamespaceBindings(options: any = {}): FetchArgs {
+            const localVarPath = `/api/v1/namespace-bindings/workspace-ids-with-default-bindings`;
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'GET', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary List all resource pools, bound and unbound, available to a specific workspace
          * @param {number} workspaceId Workspace ID.
          * @param {number} [offset] The offset to use with pagination.
@@ -33970,6 +36290,42 @@ export const WorkspacesApiFetchParamCreator = function (configuration?: Configur
             
             if (limit !== undefined) {
                 localVarQueryParameter['limit'] = limit
+            }
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary List namespaces bound to a workspace.
+         * @param {number} id The unique id of the workspace.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listWorkspaceNamespaceBindings(id: number, options: any = {}): FetchArgs {
+            // verify required parameter 'id' is not null or undefined
+            if (id === null || id === undefined) {
+                throw new RequiredError('id','Required parameter id was null or undefined when calling listWorkspaceNamespaceBindings.');
+            }
+            const localVarPath = `/api/v1/workspaces/{id}/list-namespace-bindings`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'GET', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
             }
             
             objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
@@ -34101,6 +36457,94 @@ export const WorkspacesApiFetchParamCreator = function (configuration?: Configur
         },
         /**
          * 
+         * @summary Set a resource quota for a workspace (within a specific cluster).
+         * @param {number} id The id of the workspace.
+         * @param {V1SetResourceQuotasRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        setResourceQuotas(id: number, body: V1SetResourceQuotasRequest, options: any = {}): FetchArgs {
+            // verify required parameter 'id' is not null or undefined
+            if (id === null || id === undefined) {
+                throw new RequiredError('id','Required parameter id was null or undefined when calling setResourceQuotas.');
+            }
+            // verify required parameter 'body' is not null or undefined
+            if (body === null || body === undefined) {
+                throw new RequiredError('body','Required parameter body was null or undefined when calling setResourceQuotas.');
+            }
+            const localVarPath = `/api/v1/workspaces/{id}/set-resource-quota`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'POST', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            localVarRequestOptions.body = JSON.stringify(body)
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Bind a namespace to a workspace.
+         * @param {number} workspaceId The unique id of the workspace.
+         * @param {V1SetWorkspaceNamespaceBindingsRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        setWorkspaceNamespaceBindings(workspaceId: number, body: V1SetWorkspaceNamespaceBindingsRequest, options: any = {}): FetchArgs {
+            // verify required parameter 'workspaceId' is not null or undefined
+            if (workspaceId === null || workspaceId === undefined) {
+                throw new RequiredError('workspaceId','Required parameter workspaceId was null or undefined when calling setWorkspaceNamespaceBindings.');
+            }
+            // verify required parameter 'body' is not null or undefined
+            if (body === null || body === undefined) {
+                throw new RequiredError('body','Required parameter body was null or undefined when calling setWorkspaceNamespaceBindings.');
+            }
+            const localVarPath = `/api/v1/workspaces/{workspaceId}/namespace-bindings`
+                .replace(`{${"workspaceId"}}`, encodeURIComponent(String(workspaceId)));
+            const localVarUrlObj = new URL(localVarPath, BASE_PATH);
+            const localVarRequestOptions = { method: 'POST', ...options };
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+            
+            // authentication BearerToken required
+            if (configuration && configuration.apiKey) {
+                const localVarApiKeyValue = typeof configuration.apiKey === 'function'
+                    ? configuration.apiKey("Authorization")
+                    : configuration.apiKey;
+                localVarHeaderParameter["Authorization"] = localVarApiKeyValue;
+            }
+            
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            
+            objToSearchParams(localVarQueryParameter, localVarUrlObj.searchParams);
+            objToSearchParams(options.query || {}, localVarUrlObj.searchParams);
+            localVarRequestOptions.headers = { ...localVarHeaderParameter, ...options.headers };
+            localVarRequestOptions.body = JSON.stringify(body)
+            
+            return {
+                url: `${localVarUrlObj.pathname}${localVarUrlObj.search}`,
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
          * @summary Unarchive a workspace.
          * @param {number} id The id of the workspace.
          * @param {*} [options] Override http request option.
@@ -34201,6 +36645,25 @@ export const WorkspacesApiFp = function (configuration?: Configuration) {
         },
         /**
          * 
+         * @summary Binds the given workpaces to new auto-created namespaces.
+         * @param {V1BulkAutoCreateWorkspaceNamespaceBindingsRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        bulkAutoCreateWorkspaceNamespaceBindings(body: V1BulkAutoCreateWorkspaceNamespaceBindingsRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1BulkAutoCreateWorkspaceNamespaceBindingsResponse> {
+            const localVarFetchArgs = WorkspacesApiFetchParamCreator(configuration).bulkAutoCreateWorkspaceNamespaceBindings(body, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
          * @summary Delete a workspace.
          * @param {number} id The id of the workspace.
          * @param {*} [options] Override http request option.
@@ -34208,6 +36671,45 @@ export const WorkspacesApiFp = function (configuration?: Configuration) {
          */
         deleteWorkspace(id: number, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1DeleteWorkspaceResponse> {
             const localVarFetchArgs = WorkspacesApiFetchParamCreator(configuration).deleteWorkspace(id, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary Deletes workpace namespace bindings.
+         * @param {number} workspaceId The unique id of the workspace.
+         * @param {Array<string>} [clusterNames] The names of the clusters to delete the bindings for.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteWorkspaceNamespaceBindings(workspaceId: number, clusterNames?: Array<string>, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1DeleteWorkspaceNamespaceBindingsResponse> {
+            const localVarFetchArgs = WorkspacesApiFetchParamCreator(configuration).deleteWorkspaceNamespaceBindings(workspaceId, clusterNames, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary Get Kubernetes Resource Quotas for a workspace by the cluster name.
+         * @param {number} id The unique id of the workspace.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getKubernetesResourceQuotas(id: number, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetKubernetesResourceQuotasResponse> {
+            const localVarFetchArgs = WorkspacesApiFetchParamCreator(configuration).getKubernetesResourceQuotas(id, options);
             return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
                 return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
                     if (response.status >= 200 && response.status < 300) {
@@ -34294,6 +36796,24 @@ export const WorkspacesApiFp = function (configuration?: Configuration) {
         },
         /**
          * 
+         * @summary Gets the ids of all workspaces that are bound to the default namespace for atleast one cluster.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getWorkspacesWithDefaultNamespaceBindings(options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1GetWorkspacesWithDefaultNamespaceBindingsResponse> {
+            const localVarFetchArgs = WorkspacesApiFetchParamCreator(configuration).getWorkspacesWithDefaultNamespaceBindings(options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
          * @summary List all resource pools, bound and unbound, available to a specific workspace
          * @param {number} workspaceId Workspace ID.
          * @param {number} [offset] The offset to use with pagination.
@@ -34303,6 +36823,25 @@ export const WorkspacesApiFp = function (configuration?: Configuration) {
          */
         listRPsBoundToWorkspace(workspaceId: number, offset?: number, limit?: number, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1ListRPsBoundToWorkspaceResponse> {
             const localVarFetchArgs = WorkspacesApiFetchParamCreator(configuration).listRPsBoundToWorkspace(workspaceId, offset, limit, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary List namespaces bound to a workspace.
+         * @param {number} id The unique id of the workspace.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listWorkspaceNamespaceBindings(id: number, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1ListWorkspaceNamespaceBindingsResponse> {
+            const localVarFetchArgs = WorkspacesApiFetchParamCreator(configuration).listWorkspaceNamespaceBindings(id, options);
             return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
                 return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
                     if (response.status >= 200 && response.status < 300) {
@@ -34373,6 +36912,46 @@ export const WorkspacesApiFp = function (configuration?: Configuration) {
         },
         /**
          * 
+         * @summary Set a resource quota for a workspace (within a specific cluster).
+         * @param {number} id The id of the workspace.
+         * @param {V1SetResourceQuotasRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        setResourceQuotas(id: number, body: V1SetResourceQuotasRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1SetResourceQuotasResponse> {
+            const localVarFetchArgs = WorkspacesApiFetchParamCreator(configuration).setResourceQuotas(id, body, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
+         * @summary Bind a namespace to a workspace.
+         * @param {number} workspaceId The unique id of the workspace.
+         * @param {V1SetWorkspaceNamespaceBindingsRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        setWorkspaceNamespaceBindings(workspaceId: number, body: V1SetWorkspaceNamespaceBindingsRequest, options?: any): (fetch?: FetchAPI, basePath?: string) => Promise<V1SetWorkspaceNamespaceBindingsResponse> {
+            const localVarFetchArgs = WorkspacesApiFetchParamCreator(configuration).setWorkspaceNamespaceBindings(workspaceId, body, options);
+            return (fetch: FetchAPI = window.fetch, basePath: string = BASE_PATH) => {
+                return fetch(basePath + localVarFetchArgs.url, localVarFetchArgs.options).then((response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        return response.json();
+                    } else {
+                        throw response;
+                    }
+                });
+            };
+        },
+        /**
+         * 
          * @summary Unarchive a workspace.
          * @param {number} id The id of the workspace.
          * @param {*} [options] Override http request option.
@@ -34430,6 +37009,16 @@ export const WorkspacesApiFactory = function (configuration?: Configuration, fet
         },
         /**
          * 
+         * @summary Binds the given workpaces to new auto-created namespaces.
+         * @param {V1BulkAutoCreateWorkspaceNamespaceBindingsRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        bulkAutoCreateWorkspaceNamespaceBindings(body: V1BulkAutoCreateWorkspaceNamespaceBindingsRequest, options?: any) {
+            return WorkspacesApiFp(configuration).bulkAutoCreateWorkspaceNamespaceBindings(body, options)(fetch, basePath);
+        },
+        /**
+         * 
          * @summary Delete a workspace.
          * @param {number} id The id of the workspace.
          * @param {*} [options] Override http request option.
@@ -34437,6 +37026,27 @@ export const WorkspacesApiFactory = function (configuration?: Configuration, fet
          */
         deleteWorkspace(id: number, options?: any) {
             return WorkspacesApiFp(configuration).deleteWorkspace(id, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Deletes workpace namespace bindings.
+         * @param {number} workspaceId The unique id of the workspace.
+         * @param {Array<string>} [clusterNames] The names of the clusters to delete the bindings for.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteWorkspaceNamespaceBindings(workspaceId: number, clusterNames?: Array<string>, options?: any) {
+            return WorkspacesApiFp(configuration).deleteWorkspaceNamespaceBindings(workspaceId, clusterNames, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Get Kubernetes Resource Quotas for a workspace by the cluster name.
+         * @param {number} id The unique id of the workspace.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getKubernetesResourceQuotas(id: number, options?: any) {
+            return WorkspacesApiFp(configuration).getKubernetesResourceQuotas(id, options)(fetch, basePath);
         },
         /**
          * 
@@ -34487,6 +37097,15 @@ export const WorkspacesApiFactory = function (configuration?: Configuration, fet
         },
         /**
          * 
+         * @summary Gets the ids of all workspaces that are bound to the default namespace for atleast one cluster.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getWorkspacesWithDefaultNamespaceBindings(options?: any) {
+            return WorkspacesApiFp(configuration).getWorkspacesWithDefaultNamespaceBindings(options)(fetch, basePath);
+        },
+        /**
+         * 
          * @summary List all resource pools, bound and unbound, available to a specific workspace
          * @param {number} workspaceId Workspace ID.
          * @param {number} [offset] The offset to use with pagination.
@@ -34496,6 +37115,16 @@ export const WorkspacesApiFactory = function (configuration?: Configuration, fet
          */
         listRPsBoundToWorkspace(workspaceId: number, offset?: number, limit?: number, options?: any) {
             return WorkspacesApiFp(configuration).listRPsBoundToWorkspace(workspaceId, offset, limit, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary List namespaces bound to a workspace.
+         * @param {number} id The unique id of the workspace.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listWorkspaceNamespaceBindings(id: number, options?: any) {
+            return WorkspacesApiFp(configuration).listWorkspaceNamespaceBindings(id, options)(fetch, basePath);
         },
         /**
          * 
@@ -34527,6 +37156,28 @@ export const WorkspacesApiFactory = function (configuration?: Configuration, fet
          */
         postWorkspace(body: V1PostWorkspaceRequest, options?: any) {
             return WorkspacesApiFp(configuration).postWorkspace(body, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Set a resource quota for a workspace (within a specific cluster).
+         * @param {number} id The id of the workspace.
+         * @param {V1SetResourceQuotasRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        setResourceQuotas(id: number, body: V1SetResourceQuotasRequest, options?: any) {
+            return WorkspacesApiFp(configuration).setResourceQuotas(id, body, options)(fetch, basePath);
+        },
+        /**
+         * 
+         * @summary Bind a namespace to a workspace.
+         * @param {number} workspaceId The unique id of the workspace.
+         * @param {V1SetWorkspaceNamespaceBindingsRequest} body
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        setWorkspaceNamespaceBindings(workspaceId: number, body: V1SetWorkspaceNamespaceBindingsRequest, options?: any) {
+            return WorkspacesApiFp(configuration).setWorkspaceNamespaceBindings(workspaceId, body, options)(fetch, basePath);
         },
         /**
          * 
@@ -34572,6 +37223,18 @@ export class WorkspacesApi extends BaseAPI {
     
     /**
      * 
+     * @summary Binds the given workpaces to new auto-created namespaces.
+     * @param {V1BulkAutoCreateWorkspaceNamespaceBindingsRequest} body
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkspacesApi
+     */
+    public bulkAutoCreateWorkspaceNamespaceBindings(body: V1BulkAutoCreateWorkspaceNamespaceBindingsRequest, options?: any) {
+        return WorkspacesApiFp(this.configuration).bulkAutoCreateWorkspaceNamespaceBindings(body, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
      * @summary Delete a workspace.
      * @param {number} id The id of the workspace.
      * @param {*} [options] Override http request option.
@@ -34580,6 +37243,31 @@ export class WorkspacesApi extends BaseAPI {
      */
     public deleteWorkspace(id: number, options?: any) {
         return WorkspacesApiFp(this.configuration).deleteWorkspace(id, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Deletes workpace namespace bindings.
+     * @param {number} workspaceId The unique id of the workspace.
+     * @param {Array<string>} [clusterNames] The names of the clusters to delete the bindings for.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkspacesApi
+     */
+    public deleteWorkspaceNamespaceBindings(workspaceId: number, clusterNames?: Array<string>, options?: any) {
+        return WorkspacesApiFp(this.configuration).deleteWorkspaceNamespaceBindings(workspaceId, clusterNames, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Get Kubernetes Resource Quotas for a workspace by the cluster name.
+     * @param {number} id The unique id of the workspace.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkspacesApi
+     */
+    public getKubernetesResourceQuotas(id: number, options?: any) {
+        return WorkspacesApiFp(this.configuration).getKubernetesResourceQuotas(id, options)(this.fetch, this.basePath)
     }
     
     /**
@@ -34637,6 +37325,17 @@ export class WorkspacesApi extends BaseAPI {
     
     /**
      * 
+     * @summary Gets the ids of all workspaces that are bound to the default namespace for atleast one cluster.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkspacesApi
+     */
+    public getWorkspacesWithDefaultNamespaceBindings(options?: any) {
+        return WorkspacesApiFp(this.configuration).getWorkspacesWithDefaultNamespaceBindings(options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
      * @summary List all resource pools, bound and unbound, available to a specific workspace
      * @param {number} workspaceId Workspace ID.
      * @param {number} [offset] The offset to use with pagination.
@@ -34647,6 +37346,18 @@ export class WorkspacesApi extends BaseAPI {
      */
     public listRPsBoundToWorkspace(workspaceId: number, offset?: number, limit?: number, options?: any) {
         return WorkspacesApiFp(this.configuration).listRPsBoundToWorkspace(workspaceId, offset, limit, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary List namespaces bound to a workspace.
+     * @param {number} id The unique id of the workspace.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkspacesApi
+     */
+    public listWorkspaceNamespaceBindings(id: number, options?: any) {
+        return WorkspacesApiFp(this.configuration).listWorkspaceNamespaceBindings(id, options)(this.fetch, this.basePath)
     }
     
     /**
@@ -34684,6 +37395,32 @@ export class WorkspacesApi extends BaseAPI {
      */
     public postWorkspace(body: V1PostWorkspaceRequest, options?: any) {
         return WorkspacesApiFp(this.configuration).postWorkspace(body, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Set a resource quota for a workspace (within a specific cluster).
+     * @param {number} id The id of the workspace.
+     * @param {V1SetResourceQuotasRequest} body
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkspacesApi
+     */
+    public setResourceQuotas(id: number, body: V1SetResourceQuotasRequest, options?: any) {
+        return WorkspacesApiFp(this.configuration).setResourceQuotas(id, body, options)(this.fetch, this.basePath)
+    }
+    
+    /**
+     * 
+     * @summary Bind a namespace to a workspace.
+     * @param {number} workspaceId The unique id of the workspace.
+     * @param {V1SetWorkspaceNamespaceBindingsRequest} body
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WorkspacesApi
+     */
+    public setWorkspaceNamespaceBindings(workspaceId: number, body: V1SetWorkspaceNamespaceBindingsRequest, options?: any) {
+        return WorkspacesApiFp(this.configuration).setWorkspaceNamespaceBindings(workspaceId, body, options)(this.fetch, this.basePath)
     }
     
     /**

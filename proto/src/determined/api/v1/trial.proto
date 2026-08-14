@@ -121,6 +121,8 @@ message TrialLogsRequest {
   OrderBy order_by = 14;
   // Search the logs by whether the text contains a substring.
   string search_text = 15;
+  // Search text is regex. Default to false.
+  bool enable_regex = 16;
 }
 
 // Response to TrialLogsRequest.
@@ -281,6 +283,18 @@ message GetExperimentTrialsResponse {
   repeated determined.trial.v1.Trial trials = 1;
   // Pagination information of the full dataset.
   Pagination pagination = 2;
+}
+
+// Get the remaining log retention days for a trial id.
+message GetTrialRemainingLogRetentionDaysRequest {
+  // The trial id.
+  int32 id = 1;
+}
+
+// Response to GetTrialRemainingLogRetentionDaysRequest.
+message GetTrialRemainingLogRetentionDaysResponse {
+  // The remaining log retention days for the trial id.
+  optional int32 remaining_days = 1;
 }
 
 // Get trial details.
@@ -583,6 +597,8 @@ message AcceleratorData {
   string accelerator_type = 5;
   // An array of UUIDs of the accelerators associated with the allocation.
   repeated string accelerator_uuids = 6;
+  // The name of the resource pool.
+  string resource_pool = 7;
 }
 
 // Arguments to an all gather.
@@ -635,37 +651,6 @@ message NotifyContainerRunningResponse {
   repeated google.protobuf.Struct data = 1;
 }
 
-// Retrieves the current searcher operation.
-message GetCurrentTrialSearcherOperationRequest {
-  option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
-    json_schema: { required: [ "trial_id" ] }
-  };
-  // The id of the trial.
-  int32 trial_id = 1;
-}
-// Response to GetCurrentTrialSearcherOperationRequest
-message GetCurrentTrialSearcherOperationResponse {
-  // The current searcher operation.
-  determined.experiment.v1.TrialOperation op = 1;
-  // The status of the searcher operation.
-  bool completed = 2;
-}
-
-// Reports to the searcher that the trial has completed the current requested
-// amount of training.
-message CompleteTrialSearcherValidationRequest {
-  option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
-    json_schema: { required: [ "trial_id", "searcher_metric" ] }
-  };
-  // The id of the trial.
-  int32 trial_id = 1;
-  // The completed operation.
-  determined.experiment.v1.CompleteValidateAfterOperation completed_operation =
-      2;
-}
-// Response to CompleteTrialSearcherValidationRequest
-message CompleteTrialSearcherValidationResponse {}
-
 // Report a voluntary, permanent early exit to the searcher.
 message ReportTrialSearcherEarlyExitRequest {
   option (grpc.gateway.protoc_gen_swagger.options.openapiv2_schema) = {
@@ -690,6 +675,9 @@ message ReportTrialProgressRequest {
   // Total units completed by the trial, in terms of the unit used to configure
   // the searcher.
   double progress = 2;
+  // Indicator for if the passed progress is raw and we want to skip any
+  // calculation by searcher. Default to false.
+  bool is_raw = 3;
 }
 // Response to ReportTrialProgressRequest
 message ReportTrialProgressResponse {}

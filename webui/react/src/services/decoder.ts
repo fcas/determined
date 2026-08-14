@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 
 import * as ioTypes from 'ioTypes';
-import { BrandingType, DeterminedInfo } from 'stores/determinedInfo';
+import { BrandingType, ClusterMessage, DeterminedInfo } from 'stores/determinedInfo';
 import { Pagination, RawJson } from 'types';
 import * as types from 'types';
 import { flattenObject, isNullOrUndefined, isNumber, isObject, isPrimitive } from 'utils/data';
@@ -90,14 +90,29 @@ export const mapV1MasterInfo = (data: Sdk.V1GetMasterResponse): DeterminedInfo =
     return acc;
   }, BrandingType.Determined);
 
+  const clustMsg: ClusterMessage | undefined = data.clusterMessage
+    ? {
+        createdTime: data.clusterMessage.createdTime
+          ? new Date(data.clusterMessage.createdTime.toString())
+          : new Date(),
+        endTime: data.clusterMessage.endTime ? new Date(data.clusterMessage.endTime) : undefined,
+        message: data.clusterMessage.message,
+        startTime: data.clusterMessage.startTime
+          ? new Date(data.clusterMessage.startTime)
+          : new Date(),
+      }
+    : undefined;
+
   return {
     branding,
     checked: true,
     clusterId: data.clusterId,
+    clusterMessage: clustMsg,
     clusterName: data.clusterName,
     externalLoginUri: data.externalLoginUri,
     externalLogoutUri: data.externalLogoutUri,
     featureSwitches: data.featureSwitches || [],
+    hasCustomLogo: data.hasCustomLogo,
     isTelemetryEnabled: data.telemetryEnabled === true,
     masterId: data.masterId,
     rbacEnabled: !!data.rbacEnabled,
@@ -349,6 +364,7 @@ export const ioToExperimentConfig = (
     checkpointStorage: io.checkpoint_storage
       ? {
           bucket: io.checkpoint_storage.bucket || undefined,
+          containerPath: io.checkpoint_storage.container_path || undefined,
           hostPath: io.checkpoint_storage.host_path || undefined,
           saveExperimentBest: io.checkpoint_storage.save_experiment_best,
           saveTrialBest: io.checkpoint_storage.save_trial_best,
@@ -359,6 +375,7 @@ export const ioToExperimentConfig = (
       : undefined,
     description: io.description || undefined,
     hyperparameters: ioToHyperparametereters(io.hyperparameters),
+    integrations: io.integrations || undefined,
     labels: io.labels || undefined,
     maxRestarts: io.max_restarts,
     name: io.name,
@@ -492,6 +509,7 @@ export function mapV1Experiment(
     archived: data.archived,
     checkpoints: data.checkpointCount,
     checkpointSize: parseInt(data?.checkpointSize || '0'),
+    config: data.config,
     description: data.description,
     duration: data.duration,
     endTime: data.endTime as unknown as string,
@@ -511,6 +529,7 @@ export function mapV1Experiment(
     projectId: data.projectId,
     projectName: data.projectName,
     resourcePool: data.resourcePool || '',
+    searcherMetric: data.searcherMetric,
     searcherMetricValue: data.bestTrialSearcherMetric,
     searcherType: data.searcherType,
     startTime: data.startTime as unknown as string,
@@ -661,11 +680,14 @@ export const decodeV1TrialToTrialItem = (data: Sdk.Trialv1Trial): types.TrialIte
     hyperparameters: flattenObject(data.hparams || {}),
     id: data.id,
     latestValidationMetric: data.latestValidation && decodeMetricsWorkload(data.latestValidation),
+    logPolicyMatched: data.logPolicyMatched,
     logRetentionDays: data.logRetentionDays,
+    metadata: data.metadata,
     searcherMetricsVal: data.searcherMetricValue,
     startTime: data.startTime as unknown as string,
     state: decodeExperimentState(data.state),
     summaryMetrics: data.summaryMetrics && decodeSummaryMetrics(data.summaryMetrics),
+    taskId: data.taskId,
     totalBatchesProcessed: data.totalBatchesProcessed,
     totalCheckpointSize: parseInt(data?.totalCheckpointSize || '0'),
   };
@@ -853,6 +875,12 @@ export const mapV1Project = (data: Sdk.V1Project): types.Project => {
 export const mapV1Webhook = (data: Sdk.V1Webhook): types.Webhook => {
   return {
     id: data.id || -1,
+    mode: {
+      [Sdk.V1WebhookMode.WORKSPACE]: 'Workspace',
+      [Sdk.V1WebhookMode.SPECIFIC]: 'Specific',
+      [Sdk.V1WebhookMode.UNSPECIFIED]: 'Workspace',
+    }[data.mode],
+    name: data.name,
     triggers: data.triggers || [],
     url: data.url,
     webhookType:
@@ -861,6 +889,7 @@ export const mapV1Webhook = (data: Sdk.V1Webhook): types.Webhook => {
         [Sdk.V1WebhookType.DEFAULT]: 'Default',
         [Sdk.V1WebhookType.SLACK]: 'Slack',
       }[data.webhookType] || 'Unspecified',
+    workspaceId: data.workspaceId ?? 0,
   };
 };
 
@@ -874,11 +903,11 @@ export const decodeJobStates = (
   >;
 };
 
-export const mapV1ExperimentActionResults = (
-  results: Sdk.V1ExperimentActionResult[],
+export const mapV1ActionResults = (
+  results: Sdk.V1ExperimentActionResult[] | Sdk.V1RunActionResult[],
 ): types.BulkActionResult => {
   return results.reduce(
-    (acc, cur) => {
+    (acc: types.BulkActionResult, cur) => {
       if (cur.error.length > 0) {
         acc.failed.push(cur);
       } else {
@@ -886,7 +915,7 @@ export const mapV1ExperimentActionResults = (
       }
       return acc;
     },
-    { failed: [], successful: [] } as types.BulkActionResult,
+    { failed: [], successful: [] },
   );
 };
 

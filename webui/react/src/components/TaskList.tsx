@@ -15,7 +15,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Badge, { BadgeType } from 'components/Badge';
 import FilterCounter from 'components/FilterCounter';
 import JupyterLabButton from 'components/JupyterLabButton';
-import InteractiveTable, { ColumnDef } from 'components/Table/InteractiveTable';
+import InteractiveTable, {
+  ColumnDef,
+  onRightClickableCell,
+} from 'components/Table/InteractiveTable';
 import {
   defaultRowClassName,
   getFullPaginationConfig,
@@ -39,6 +42,7 @@ import settingsConfig, {
   Settings,
 } from 'components/TaskList.settings';
 import { commandTypeToLabel } from 'constants/states';
+import useFeature from 'hooks/useFeature';
 import usePermissions from 'hooks/usePermissions';
 import usePolling from 'hooks/usePolling';
 import { useSettings } from 'hooks/useSettings';
@@ -48,11 +52,9 @@ import userStore from 'stores/users';
 import workspaceStore from 'stores/workspaces';
 import {
   ExperimentAction as Action,
-  AnyTask,
   CommandState,
   CommandTask,
   CommandType,
-  ValueOf,
   Workspace,
 } from 'types';
 import handleError, { ErrorLevel, ErrorType } from 'utils/error';
@@ -66,21 +68,18 @@ import css from './TaskList.module.scss';
 import TaskListModalComponent, { SourceInfo } from './TaskListModalComponent';
 import WorkspaceFilter from './WorkspaceFilter';
 
-const TensorBoardSourceType = {
+const ExperimentEntityCopyMap = {
   Experiment: 'Experiment',
   Trial: 'Trial',
 } as const;
 
-type TensorBoardSourceType = ValueOf<typeof TensorBoardSourceType>;
+const RunEntityCopyMap = {
+  Experiment: 'Search',
+  Trial: 'Run',
+} as const;
 
 interface Props {
   workspace?: Workspace;
-}
-
-interface TensorBoardSource {
-  id: number;
-  path: string;
-  type: TensorBoardSourceType;
 }
 
 const filterKeys: Array<keyof Settings> = ['search', 'state', 'type', 'user', 'workspace'];
@@ -100,6 +99,8 @@ const TaskList: React.FC<Props> = ({ workspace }: Props) => {
   const { canModifyWorkspaceNSC } = usePermissions();
   const taskListModal = useModal(TaskListModalComponent);
   const canceler = useRef(new AbortController());
+  const f_flat_runs = useFeature().isOn('flat_runs');
+  const entityCopyMap = f_flat_runs ? RunEntityCopyMap : ExperimentEntityCopyMap;
 
   const BatchActionConfirmModal = useModal(BatchActionConfirmModalComponent);
 
@@ -124,7 +125,16 @@ const TaskList: React.FC<Props> = ({ workspace }: Props) => {
       users,
       settings.search,
     );
-  }, [loadedTasks, settings, users]);
+  }, [
+    loadedTasks,
+    settings.search,
+    settings.state,
+    settings.tableLimit,
+    settings.type,
+    settings.user,
+    settings.workspace,
+    users,
+  ]);
 
   const taskMap = useMemo(() => {
     return (loadedTasks || []).reduce(
@@ -190,13 +200,13 @@ const TaskList: React.FC<Props> = ({ workspace }: Props) => {
 
   const handleNameSearchApply = useCallback(
     (newSearch: string) => {
-      updateSettings({ row: undefined, search: newSearch || undefined });
+      updateSettings({ row: undefined, search: newSearch || undefined, tableOffset: 0 });
     },
     [updateSettings],
   );
 
   const handleNameSearchReset = useCallback(() => {
-    updateSettings({ row: undefined, search: undefined });
+    updateSettings({ row: undefined, search: undefined, tableOffset: 0 });
   }, [updateSettings]);
 
   const nameFilterSearch = useCallback(
@@ -215,6 +225,7 @@ const TaskList: React.FC<Props> = ({ workspace }: Props) => {
     (types: string[]) => {
       updateSettings({
         row: undefined,
+        tableOffset: 0,
         type: types.length !== 0 ? (types as CommandType[]) : undefined,
       });
     },
@@ -225,6 +236,7 @@ const TaskList: React.FC<Props> = ({ workspace }: Props) => {
     (workspaces: string[]) => {
       updateSettings({
         row: undefined,
+        tableOffset: 0,
         workspace: workspaces.length !== 0 ? workspaces : undefined,
       });
     },
@@ -232,11 +244,11 @@ const TaskList: React.FC<Props> = ({ workspace }: Props) => {
   );
 
   const handleWorkspaceFilterReset = useCallback(() => {
-    updateSettings({ row: undefined, workspace: undefined });
+    updateSettings({ row: undefined, tableOffset: 0, workspace: undefined });
   }, [updateSettings]);
 
   const handleTypeFilterReset = useCallback(() => {
-    updateSettings({ row: undefined, type: undefined });
+    updateSettings({ row: undefined, tableOffset: 0, type: undefined });
   }, [updateSettings]);
 
   const typeFilterDropdown = useCallback(
@@ -271,13 +283,14 @@ const TaskList: React.FC<Props> = ({ workspace }: Props) => {
       updateSettings({
         row: undefined,
         state: states.length !== 0 ? (states as CommandState[]) : undefined,
+        tableOffset: 0,
       });
     },
     [updateSettings],
   );
 
   const handleStateFilterReset = useCallback(() => {
-    updateSettings({ row: undefined, state: undefined });
+    updateSettings({ row: undefined, state: undefined, tableOffset: 0 });
   }, [updateSettings]);
 
   const stateFilterDropdown = useCallback(
@@ -297,6 +310,7 @@ const TaskList: React.FC<Props> = ({ workspace }: Props) => {
     (users: string[]) => {
       updateSettings({
         row: undefined,
+        tableOffset: 0,
         user: users.length !== 0 ? users : undefined,
       });
     },
@@ -304,7 +318,7 @@ const TaskList: React.FC<Props> = ({ workspace }: Props) => {
   );
 
   const handleUserFilterReset = useCallback(() => {
-    updateSettings({ row: undefined, user: undefined });
+    updateSettings({ row: undefined, tableOffset: 0, user: undefined });
   }, [updateSettings]);
 
   const userFilterDropdown = useCallback(
@@ -327,26 +341,26 @@ const TaskList: React.FC<Props> = ({ workspace }: Props) => {
         return taskNameRenderer(_, record, index);
       }
 
-      const info = {
+      const info: SourceInfo = {
         path: '',
         plural: '',
-        sources: [] as TensorBoardSource[],
+        sources: [],
       };
       record.misc.experimentIds.forEach((id) => {
         info.sources.push({
           id,
           path: paths.experimentDetails(id),
-          type: TensorBoardSourceType.Experiment,
+          type: entityCopyMap.Experiment,
         });
       });
       record.misc.trialIds.forEach((id) => {
         info.sources.push({
           id,
           path: paths.trialDetails(id),
-          type: TensorBoardSourceType.Trial,
+          type: entityCopyMap.Trial,
         });
       });
-      info.plural = info.sources.length > 1 ? 's' : '';
+      info.sources.length > 1 && (info.plural = 's');
       info.sources.sort((a, b) => {
         if (a.type !== b.type) return alphaNumericSorter(a.type, b.type);
         return numericSorter(a.id, b.id);
@@ -371,6 +385,7 @@ const TaskList: React.FC<Props> = ({ workspace }: Props) => {
         dataIndex: 'id',
         defaultWidth: DEFAULT_COLUMN_WIDTHS['id'],
         key: 'id',
+        onCell: () => ({ 'data-testid': 'taskID' }),
         render: taskIdRenderer,
         sorter: (a: CommandTask, b: CommandTask): number => alphaNumericSorter(a.id, b.id),
         title: 'Short ID',
@@ -429,6 +444,7 @@ const TaskList: React.FC<Props> = ({ workspace }: Props) => {
         })),
         isFiltered: (settings: Settings) => !!settings.state,
         key: 'state',
+        onCell: () => ({ ...onRightClickableCell(), 'data-testid': 'state' }),
         render: stateRenderer,
         sorter: (a: CommandTask, b: CommandTask): number => commandStateSorter(a.state, b.state),
         title: 'State',
@@ -485,6 +501,7 @@ const TaskList: React.FC<Props> = ({ workspace }: Props) => {
         defaultWidth: DEFAULT_COLUMN_WIDTHS['action'],
         fixed: 'right',
         key: 'action',
+        onCell: () => ({ ...onRightClickableCell(), 'data-testid': 'actions' }),
         render: actionRenderer,
         title: '',
       },
@@ -492,6 +509,7 @@ const TaskList: React.FC<Props> = ({ workspace }: Props) => {
 
     return cols;
   }, [
+    entityCopyMap,
     handleActionComplete,
     handleSourceShow,
     nameFilterSearch,
@@ -583,7 +601,7 @@ const TaskList: React.FC<Props> = ({ workspace }: Props) => {
     }: {
       children: React.ReactNode;
       onVisibleChange?: (visible: boolean) => void;
-      record: AnyTask;
+      record: CommandTask;
     }) => (
       <TaskActionDropdown
         curUser={currentUser}

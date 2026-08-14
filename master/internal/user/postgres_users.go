@@ -11,16 +11,27 @@ import (
 	"github.com/pkg/errors"
 	"github.com/uptrace/bun"
 	"golang.org/x/exp/slices"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"gopkg.in/guregu/null.v3"
 
 	"github.com/determined-ai/determined/master/internal/db"
+	"github.com/determined-ai/determined/master/internal/saas"
 	"github.com/determined-ai/determined/master/pkg/model"
 )
 
-// SessionDuration is how long a newly created session is valid.
-const SessionDuration = 7 * 24 * time.Hour
+const (
+	// SessionDuration is how long a newly created session is valid.
+	SessionDuration = 7 * 24 * time.Hour
+	// PersonalGroupPostfix is the system postfix appended to the username of all personal groups.
+	PersonalGroupPostfix = "DeterminedPersonalGroup"
+)
 
-// PersonalGroupPostfix is the system postfix appended to the username of all personal groups.
-const PersonalGroupPostfix = "DeterminedPersonalGroup"
+// ErrRemoteUserTokenExpired notifies that the remote user's token has expired.
+var ErrRemoteUserTokenExpired = status.Error(codes.Unauthenticated, "remote user token expired")
+
+// ErrAccessTokenRevoked notifies that the user's access token has been revoked.
+var ErrAccessTokenRevoked = status.Error(codes.Unauthenticated, "user access token revoked")
 
 // UserSessionOption is the return type for WithInheritedClaims helper function.
 type UserSessionOption func(f *model.UserSession)
@@ -34,9 +45,14 @@ func WithInheritedClaims(claims map[string]string) UserSessionOption {
 
 // StartSession creates a row in the user_sessions table.
 func StartSession(ctx context.Context, user *model.User, opts ...UserSessionOption) (string, error) {
+	now := time.Now().UTC()
+
 	userSession := &model.UserSession{
-		UserID: user.ID,
-		Expiry: time.Now().Add(SessionDuration),
+		UserID:    user.ID,
+		Expiry:    now.Add(SessionDuration),
+		CreatedAt: now,
+		TokenType: model.TokenTypeUserSession,
+		RevokedAt: null.Time{},
 	}
 
 	for _, opt := range opts {
@@ -44,16 +60,16 @@ func StartSession(ctx context.Context, user *model.User, opts ...UserSessionOpti
 	}
 
 	err := db.Bun().RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		_, err := db.Bun().NewInsert().
+		_, err := tx.NewInsert().
 			Model(userSession).
-			Column("user_id", "expiry").
+			Column("user_id", "expiry", "created_at", "token_type", "revoked_at").
 			Returning("id").
 			Exec(ctx, &userSession.ID)
 		if err != nil {
 			return err
 		}
 
-		_, err = db.Bun().NewUpdate().
+		_, err = tx.NewUpdate().
 			Table("users").
 			SetColumn("last_auth_at", "NOW()").
 			Where("id = (?)", user.ID).
@@ -109,12 +125,20 @@ func Update(
 				Where("id = ?", updated.ID).Exec(ctx); err != nil {
 				return fmt.Errorf("error setting active status of %q: %s", updated.Username, err)
 			}
+			// Revoke all access tokens of a user when it is deactivated.
+			if !updated.Active {
+				err := revokeUserAccessTokens(ctx, tx, updated.ID)
+				if err != nil {
+					return fmt.Errorf("error revoking active access token of %q: %s", updated.Username, err)
+				}
+			}
 		}
 
 		if slices.Contains(toUpdate, "password_hash") {
 			if _, err := tx.NewDelete().
 				Table("user_sessions").
-				Where("user_id = ?", updated.ID).Exec(ctx); err != nil {
+				Where("user_id = ?", updated.ID).
+				Where("token_type = ?", model.TokenTypeUserSession).Exec(ctx); err != nil {
 				return fmt.Errorf("error deleting user sessions: %s", err)
 			}
 		}
@@ -130,6 +154,17 @@ func Update(
 
 		return nil
 	})
+}
+
+// Revoke all access tokens of a user when it is deactivated.
+func revokeUserAccessTokens(ctx context.Context, tx bun.Tx, userID model.UserID) error {
+	_, err := tx.NewUpdate().
+		Table("user_sessions").
+		Set("revoked_at = ?", time.Now().UTC()).
+		Where("user_id = ?", userID).
+		Where("token_type = ?", model.TokenTypeAccessToken).
+		Exec(ctx)
+	return err
 }
 
 // SetActive changes multiple users' activation status.
@@ -359,14 +394,15 @@ func ByID(ctx context.Context, userID model.UserID) (*model.FullUser, error) {
 	return &fu, nil
 }
 
-// ByToken returns a user session given an authentication token.
+// ByToken returns a user session given an authentication token. If a session belonging to a remote (SSO) user
+// is found but has expired, ErrRemoteUserTokenExpired will be returned.
 func ByToken(ctx context.Context, token string, ext *model.ExternalSessions) (
 	*model.User, *model.UserSession, error,
 ) {
 	var session model.UserSession
 
 	if ext.JwtKey != "" {
-		return ByExternalToken(ctx, token, ext)
+		return saas.GetAndMaybeProvisionUserByToken(ctx, token, ext)
 	}
 
 	v2 := paseto.NewV2()
@@ -381,8 +417,27 @@ func ByToken(ctx context.Context, token string, ext *model.ExternalSessions) (
 		return nil, nil, err
 	}
 
-	if session.Expiry.Before(time.Now()) {
+	if session.Expiry.Before(time.Now().UTC()) {
+		var isRemote bool
+		if err := db.Bun().NewSelect().
+			Model(&model.User{}).
+			Column("remote").
+			Where("id = ?", session.UserID).
+			Scan(ctx, &isRemote); err != nil {
+			return nil, nil, db.ErrNotFound
+		}
+
+		// flag remote users as expired, so they are redirected to the SSO login page
+		// instead of returning an error
+		if isRemote {
+			return nil, nil, ErrRemoteUserTokenExpired
+		}
+
 		return nil, nil, db.ErrNotFound
+	}
+
+	if session.TokenType == model.TokenTypeAccessToken && !session.RevokedAt.IsZero() {
+		return nil, nil, ErrAccessTokenRevoked
 	}
 
 	var user model.User
@@ -412,4 +467,18 @@ func ByUsername(ctx context.Context, username string) (*model.User, error) {
 	default:
 		return &user, nil
 	}
+}
+
+// BySessionID looks up a user by session ID in the database.
+func BySessionID(ctx context.Context, sessionID model.SessionID) (*model.User, error) {
+	var user model.User
+	err := db.Bun().NewSelect().
+		Table("users").
+		ColumnExpr("users.*").
+		Join("JOIN user_sessions ON user_sessions.user_id = users.id").
+		Where("user_sessions.id = ?", sessionID).Scan(ctx, &user)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error fetching session (%d)", sessionID)
+	}
+	return &user, nil
 }

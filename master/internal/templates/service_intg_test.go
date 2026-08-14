@@ -70,13 +70,8 @@ func TestUnmarshalTemplateConfig(t *testing.T) {
 				},
 			},
 			RawSearcher: &expconf.SearcherConfigV0{
-				RawSingleConfig: &expconf.SingleConfigV0{
-					RawMaxLength: &expconf.LengthV0{
-						Unit:  expconf.Batches,
-						Units: 1,
-					},
-				},
-				RawMetric: ptrs.Ptr("loss_of_something"),
+				RawSingleConfig: &expconf.SingleConfigV0{},
+				RawMetric:       ptrs.Ptr("loss_of_something"),
 			},
 		})
 		err = UnmarshalTemplateConfig(ctx, input.Name, u, &fakeConfig, false)
@@ -108,7 +103,7 @@ func TestDeleteWorkspaceTemplates(t *testing.T) {
 
 	n, err = workspaceTemplatesCount(ctx, 1)
 	require.NoError(t, err)
-	require.Equal(t, 0, n)
+	require.Zero(t, n)
 }
 
 func workspaceTemplatesCount(ctx context.Context, workspaceID int) (int, error) {

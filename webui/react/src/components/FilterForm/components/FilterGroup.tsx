@@ -20,6 +20,7 @@ interface Props {
   level: number; // start from 0
   formStore: FilterFormStore;
   columns: V1ProjectColumn[];
+  projectId?: number;
 }
 
 const FilterGroup = ({
@@ -30,6 +31,7 @@ const FilterGroup = ({
   formStore,
   parentId,
   columns,
+  projectId,
 }: Props): JSX.Element => {
   const scrollBottomRef = useRef<HTMLDivElement>(null);
   const [, drag, preview] = useDrag<{ form: FormGroup; index: number }, unknown, unknown>(
@@ -129,7 +131,10 @@ const FilterGroup = ({
           conjunction={conjunction}
           index={index}
           onClick={(value) => {
-            formStore.setFieldConjunction(parentId, (value?.toString() ?? 'and') as Conjunction);
+            formStore.setFieldConjunction(
+              parentId,
+              (value?.toString() ?? Conjunction.And) as Conjunction,
+            );
           }}
         />
       )}
@@ -199,6 +204,7 @@ const FilterGroup = ({
                   key={child.id}
                   level={level + 1}
                   parentId={group.id}
+                  projectId={projectId}
                 />
               );
             }

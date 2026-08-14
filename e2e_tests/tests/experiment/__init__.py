@@ -3,7 +3,6 @@ from .experiment import (
     activate_experiments,
     archive_experiments,
     assert_performed_final_checkpoint,
-    assert_performed_initial_validation,
     cancel_experiments,
     cancel_single,
     cancel_experiment,
@@ -29,7 +28,6 @@ from .experiment import (
     root_user_home_bind_mount,
     run_basic_test,
     run_basic_test_with_temp_config,
-    run_basic_autotuning_test,
     run_failure_test,
     run_failure_test_with_temp_config,
     s3_checkpoint_config,
@@ -44,4 +42,6 @@ from .experiment import (
     experiment_first_trial,
     has_at_least_one_checkpoint,
     wait_for_at_least_one_checkpoint,
+    set_priority,
+    TrialPlusWorkload,
 )

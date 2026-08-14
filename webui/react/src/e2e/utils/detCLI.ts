@@ -1,21 +1,25 @@
 import { execSync } from 'child_process';
 import path from 'path';
 
+import { detMasterURL, detPath, password, username } from './envVars';
+
+const baseDir = execSync('git rev-parse --show-toplevel').toString().trim();
+
 export function fullPath(relativePath: string): string {
-  return path.join(process.cwd(), relativePath);
+  return path.join(baseDir, relativePath);
 }
 
 export function detExecSync(detCommand: string): string {
   try {
-    return execSync(`${process.env.PW_DET_PATH || 'det'} ${detCommand}`, {
+    return execSync(`${detPath()} ${detCommand}`, {
       env: {
         ...process.env,
-        DET_MASTER: process.env.PW_DET_MASTER || 'http://localhost:8080',
-        DET_PASS: process.env.PW_PASSWORD,
-        DET_USER: process.env.PW_USER_NAME,
+        DET_MASTER: detMasterURL(),
+        DET_PASS: password(),
+        DET_USER: username(),
       },
       stdio: 'pipe',
-      timeout: 5_000,
+      timeout: 10_000,
     }).toString();
   } catch (e: unknown) {
     if (typeof e === 'object' && e !== null && 'stderr' in e && typeof e.stderr === 'string') {

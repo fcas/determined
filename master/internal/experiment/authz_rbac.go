@@ -3,6 +3,7 @@ package experiment
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/uptrace/bun"
@@ -27,11 +28,17 @@ type permissionMatch struct {
 	Permitted bool
 }
 
-func getWorkspaceFromExperiment(ctx context.Context, e *model.Experiment,
+// GetWorkspaceFromExperiment gets the workspace id given an experiment id.
+func GetWorkspaceFromExperiment(ctx context.Context, e *model.Experiment,
 ) (int32, error) {
 	var workspaceID int32
-	err := db.Bun().NewRaw("SELECT workspace_id FROM projects WHERE id = ?",
-		e.ProjectID).Scan(ctx, &workspaceID)
+	var q interface{}
+	q = db.Bun().NewSelect().Table("experiments").Column("project_id").Where("id = ?", e.ID)
+	if e.ProjectID > 0 {
+		q = e.ProjectID
+	}
+	err := db.Bun().NewSelect().Table("projects").Column("workspace_id").Where("id = (?)",
+		q).Scan(ctx, &workspaceID)
 	return workspaceID, err
 }
 
@@ -55,7 +62,7 @@ func addExpInfo(
 		{
 			PermissionTypes: []rbacv1.PermissionType{permission},
 			SubjectType:     "experiment",
-			SubjectIDs:      []string{fmt.Sprint(e.ID)},
+			SubjectIDs:      []string{strconv.Itoa(e.ID)},
 		},
 	}
 }
@@ -73,7 +80,7 @@ func (a *ExperimentAuthZRBAC) CanGetExperiment(
 		}
 	}()
 
-	workspaceID, err := getWorkspaceFromExperiment(ctx, e)
+	workspaceID, err := GetWorkspaceFromExperiment(ctx, e)
 	if err != nil {
 		return err
 	}
@@ -92,7 +99,7 @@ func (a *ExperimentAuthZRBAC) CanGetExperimentArtifacts(
 		audit.LogFromErr(fields, err)
 	}()
 
-	workspaceID, err := getWorkspaceFromExperiment(ctx, e)
+	workspaceID, err := GetWorkspaceFromExperiment(ctx, e)
 	if err != nil {
 		return err
 	}
@@ -111,7 +118,7 @@ func (a *ExperimentAuthZRBAC) CanDeleteExperiment(
 		audit.LogFromErr(fields, err)
 	}()
 
-	workspaceID, err := getWorkspaceFromExperiment(ctx, e)
+	workspaceID, err := GetWorkspaceFromExperiment(ctx, e)
 	if err != nil {
 		return err
 	}
@@ -220,12 +227,11 @@ func (a *ExperimentAuthZRBAC) FilterExperimentLabelsQuery(
 			if permission.ID == int(
 				rbacv1.PermissionType_PERMISSION_TYPE_VIEW_EXPERIMENT_METADATA) {
 				for _, assignment := range roleAssignments {
-					if assignment.Scope.WorkspaceID.Valid {
-						workspaces = append(workspaces, assignment.Scope.WorkspaceID.Int32)
-					} else {
+					if !assignment.Scope.WorkspaceID.Valid {
 						// if permission is global, return without filtering
 						return query, nil
 					}
+					workspaces = append(workspaces, assignment.Scope.WorkspaceID.Int32)
 				}
 			}
 		}
@@ -278,7 +284,7 @@ func (a *ExperimentAuthZRBAC) CanEditExperiment(
 		audit.LogFromErr(fields, err)
 	}()
 
-	workspaceID, err := getWorkspaceFromExperiment(ctx, e)
+	workspaceID, err := GetWorkspaceFromExperiment(ctx, e)
 	if err != nil {
 		return err
 	}
@@ -297,7 +303,7 @@ func (a *ExperimentAuthZRBAC) CanEditExperimentsMetadata(
 		audit.LogFromErr(fields, err)
 	}()
 
-	workspaceID, err := getWorkspaceFromExperiment(ctx, e)
+	workspaceID, err := GetWorkspaceFromExperiment(ctx, e)
 	if err != nil {
 		return err
 	}
@@ -334,7 +340,7 @@ func (a *ExperimentAuthZRBAC) CanForkFromExperiment(
 		audit.LogFromErr(fields, err)
 	}()
 
-	workspaceID, err := getWorkspaceFromExperiment(ctx, e)
+	workspaceID, err := GetWorkspaceFromExperiment(ctx, e)
 	if err != nil {
 		return err
 	}
@@ -369,13 +375,6 @@ func (a *ExperimentAuthZRBAC) CanSetExperimentsCheckpointGCPolicy(
 	ctx context.Context, curUser model.User, e *model.Experiment,
 ) error {
 	return a.CanEditExperiment(ctx, curUser, e)
-}
-
-// CanRunCustomSearch checks if a user has permission to run customer search.
-func (a *ExperimentAuthZRBAC) CanRunCustomSearch(
-	ctx context.Context, curUser model.User, e *model.Experiment,
-) error {
-	return a.CanEditExperiment(ctx, curUser, e) // TODO verify with custom search project.
 }
 
 func init() {

@@ -1,16 +1,13 @@
-import { BaseComponent } from 'e2e/models/BaseComponent';
-import { Modal } from 'e2e/models/hew/Modal';
+import { BaseComponent } from 'playwright-page-model-base/BaseComponent';
+
+import { Modal } from 'e2e/models/common/hew/Modal';
 
 /**
- * Returns a representation of the CreateUserModal component.
- * This constructor represents the contents in src/components/CreateUserModal.tsx.
- * @param {object} obj
- * @param {CanBeParent} obj.parent - The parent used to locate this CreateUserModal
- * @param {string} [obj.selector] - Used instead of `defaultSelector`
+ * Represents the SetUserRolesModal component in src/components/SetUserRolesModal.tsx
  */
 export class SetUserRolesModal extends Modal {
   readonly roles = new BaseComponent({
-    parent: this.body,
+    parent: this,
     selector: '[data-testid="roles"]',
   });
 }

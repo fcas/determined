@@ -10,10 +10,12 @@ import { isUndefined } from 'lodash';
 import React from 'react';
 
 import TimeAgo from 'components/TimeAgo';
+import useFeature from 'hooks/useFeature';
 import { handlePath, paths } from 'routes/utils';
 import { Project } from 'types';
 import { nearestCardinalNumber } from 'utils/number';
 import { AnyMouseEvent } from 'utils/routes';
+import { pluralizer } from 'utils/string';
 
 import { useProjectActionMenu } from './ProjectActionDropdown';
 import css from './ProjectCard.module.scss';
@@ -35,6 +37,8 @@ const ProjectCard: React.FC<Props> = ({
   showWorkspace,
   workspaceArchived,
 }: Props) => {
+  const f_flat_runs = useFeature().isOn('flat_runs');
+
   const { contextHolders, menu, onClick } = useProjectActionMenu({
     onDelete: onRemove,
     onEdit,
@@ -46,10 +50,12 @@ const ProjectCard: React.FC<Props> = ({
   const classnames = [];
   if (project.archived) classnames.push(css.archived);
   if (project.workspaceId === 1) classnames.push(css.uncategorized);
+  const testId = `card-${project.name}`;
 
   return (
     <Card
       actionMenu={!project.immutable && !hideActionMenu ? menu : undefined}
+      testId={testId}
       onClick={(e: AnyMouseEvent) => handlePath(e, { path: paths.projectDetails(project.id) })}
       onDropdown={onClick}>
       <div className={classnames.join(' ')}>
@@ -75,25 +81,35 @@ const ProjectCard: React.FC<Props> = ({
           </Row>
           <Row justifyContent="space-between" width="fill">
             <div className={css.footerContainer}>
-              {!isUndefined(project.numExperiments) && (
+              {f_flat_runs && !isUndefined(project.numRuns) && (
                 <div className={css.experiments}>
                   <Tooltip
-                    content={
-                      `${project.numExperiments?.toLocaleString()}` +
-                      ` experiment${project.numExperiments === 1 ? '' : 's'}`
-                    }>
+                    content={`${project.numRuns?.toLocaleString()} ${pluralizer(project.numRuns, 'run')}`}>
+                    <Icon name="experiment" size="small" title="Number of runs" />
+                    <span>{nearestCardinalNumber(project.numRuns)}</span>
+                  </Tooltip>
+                </div>
+              )}
+              {!f_flat_runs && !isUndefined(project.numExperiments) && (
+                <div className={css.experiments}>
+                  <Tooltip
+                    content={`${project.numExperiments?.toLocaleString()} ${pluralizer(project.numExperiments, 'experiment')}`}>
                     <Icon name="experiment" size="small" title="Number of experiments" />
                     <span>{nearestCardinalNumber(project.numExperiments)}</span>
                   </Tooltip>
                 </div>
               )}
               {project.archived ? (
-                <Badge backgroundColor={{ h: 0, l: 40, s: 0 }} text="Archived" />
+                <Badge
+                  backgroundColor={{ h: 0, l: 40, s: 0 }}
+                  data-testid="archived"
+                  text="Archived"
+                />
               ) : (
                 project.lastExperimentStartedAt && (
                   <TimeAgo
                     datetime={project.lastExperimentStartedAt}
-                    tooltipFormat="[Last experiment started: \n]MMM D, YYYY - h:mm a"
+                    tooltipFormat={`[Last ${f_flat_runs ? 'search' : 'experiment'} started: \n]MMM D, YYYY - h:mm a`}
                   />
                 )
               )}

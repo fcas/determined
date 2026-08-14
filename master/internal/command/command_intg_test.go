@@ -4,8 +4,10 @@
 package command
 
 import (
-	"context"
+	"regexp"
 	"testing"
+
+	"github.com/determined-ai/determined/master/internal/user"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
@@ -28,10 +30,9 @@ import (
 
 func TestCommandManagerLifecycle(t *testing.T) {
 	db := setupTest(t)
-	ctx := context.TODO()
 
 	// Launch a Command.
-	cmd1 := launchCommand(ctx, t, db)
+	cmd1 := launchCommand(t, db)
 
 	// Get Command.
 	resp1, err := DefaultCmdService.GetCommand(&apiv1.GetCommandRequest{CommandId: cmd1.Id})
@@ -39,13 +40,13 @@ func TestCommandManagerLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	// Launch another command.
-	cmd2 := launchCommand(ctx, t, db)
+	cmd2 := launchCommand(t, db)
 
 	// Get Commands.
 	resp2, err := DefaultCmdService.GetCommands(&apiv1.GetCommandsRequest{})
 	require.NotNil(t, resp2)
 	require.NoError(t, err)
-	require.Equal(t, len(resp2.Commands), 2)
+	require.Len(t, resp2.Commands, 2)
 
 	// Kill 1 command.
 	resp3, err := DefaultCmdService.KillNTSC(cmd2.Id, model.TaskTypeCommand)
@@ -53,7 +54,7 @@ func TestCommandManagerLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	cmd3 := resp3.ToV1Command()
-	require.Equal(t, cmd3.State, taskv1.State_STATE_TERMINATED)
+	require.Equal(t, taskv1.State_STATE_TERMINATED, cmd3.State)
 
 	// Set command priority.
 	resp4, err := DefaultCmdService.SetNTSCPriority(cmd1.Id, 0, model.TaskTypeCommand)
@@ -63,10 +64,9 @@ func TestCommandManagerLifecycle(t *testing.T) {
 
 func TestNotebookManagerLifecycle(t *testing.T) {
 	db := setupTest(t)
-	ctx := context.TODO()
-
+	user.InitService(db, &model.ExternalSessions{})
 	// Launch a Notebook.
-	cmd1 := launchNotebook(ctx, t, db)
+	cmd1 := launchNotebook(t, db)
 
 	// Get Notebook.
 	resp1, err := DefaultCmdService.GetNotebook(&apiv1.GetNotebookRequest{NotebookId: cmd1.Id})
@@ -74,13 +74,28 @@ func TestNotebookManagerLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	// Launch another Notebook.
-	cmd2 := launchNotebook(ctx, t, db)
-
+	cmd2 := launchNotebook(t, db)
 	// Get Notebooks.
 	resp2, err := DefaultCmdService.GetNotebooks(&apiv1.GetNotebooksRequest{})
 	require.NotNil(t, resp2)
 	require.NoError(t, err)
-	require.Equal(t, len(resp2.Notebooks), 2)
+	require.Len(t, resp2.Notebooks, 2)
+
+	// Verify Notebooks return valid tokens.
+	for _, resp := range resp2.Notebooks {
+		re := regexp.MustCompile(`^/proxy/(.*)/\?token=(.*)`)
+		addrMatches := re.FindStringSubmatch(resp.ServiceAddress)
+		require.Len(t, addrMatches, 3)
+
+		taskID, token := addrMatches[1], addrMatches[2]
+		require.NotEmpty(t, token)
+		require.NotEmpty(t, taskID)
+
+		usr, notebookSession, err := user.GetService().UserAndNotebookSessionFromToken(token)
+		require.NoError(t, err)
+		require.Equal(t, resp.UserId, int32(usr.ID))
+		require.Equal(t, taskID, string(notebookSession.TaskID))
+	}
 
 	// Kill 1 Notebook.
 	resp3, err := DefaultCmdService.KillNTSC(cmd2.Id, model.TaskTypeNotebook)
@@ -88,7 +103,7 @@ func TestNotebookManagerLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	nb3 := resp3.ToV1Notebook()
-	require.Equal(t, nb3.State, taskv1.State_STATE_TERMINATED)
+	require.Equal(t, taskv1.State_STATE_TERMINATED, nb3.State)
 
 	// Set Notebook priority.
 	resp4, err := DefaultCmdService.SetNTSCPriority(cmd1.Id, 0, model.TaskTypeNotebook)
@@ -98,10 +113,9 @@ func TestNotebookManagerLifecycle(t *testing.T) {
 
 func TestShellManagerLifecycle(t *testing.T) {
 	db := setupTest(t)
-	ctx := context.TODO()
 
 	// Launch a Shell.
-	cmd1 := launchShell(ctx, t, db)
+	cmd1 := launchShell(t, db)
 
 	// Get Shell.
 	resp1, err := DefaultCmdService.GetShell(&apiv1.GetShellRequest{ShellId: cmd1.Id})
@@ -109,13 +123,13 @@ func TestShellManagerLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	// Launch another Shell.
-	cmd2 := launchShell(ctx, t, db)
+	cmd2 := launchShell(t, db)
 
 	// Get Shells.
 	resp2, err := DefaultCmdService.GetShells(&apiv1.GetShellsRequest{})
 	require.NotNil(t, resp2)
 	require.NoError(t, err)
-	require.Equal(t, len(resp2.Shells), 2)
+	require.Len(t, resp2.Shells, 2)
 
 	// Kill 1 Shell.
 	resp3, err := DefaultCmdService.KillNTSC(cmd2.Id, model.TaskTypeShell)
@@ -123,7 +137,7 @@ func TestShellManagerLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	shell3 := resp3.ToV1Shell()
-	require.Equal(t, shell3.State, taskv1.State_STATE_TERMINATED)
+	require.Equal(t, taskv1.State_STATE_TERMINATED, shell3.State)
 
 	// Set Shell priority.
 	resp4, err := DefaultCmdService.SetNTSCPriority(cmd1.Id, 0, model.TaskTypeShell)
@@ -133,10 +147,9 @@ func TestShellManagerLifecycle(t *testing.T) {
 
 func TestTensorboardManagerLifecycle(t *testing.T) {
 	db := setupTest(t)
-	ctx := context.TODO()
 
 	// Launch a Tensorboard.
-	cmd1 := launchTensorboard(ctx, t, db)
+	cmd1 := launchTensorboard(t, db)
 
 	// Get Tensorboard.
 	resp1, err := DefaultCmdService.GetTensorboard(&apiv1.GetTensorboardRequest{TensorboardId: cmd1.Id})
@@ -144,13 +157,13 @@ func TestTensorboardManagerLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	// Launch another Tensorboard.
-	cmd2 := launchTensorboard(ctx, t, db)
+	cmd2 := launchTensorboard(t, db)
 
 	// Get Tensorboards.
 	resp2, err := DefaultCmdService.GetTensorboards(&apiv1.GetTensorboardsRequest{})
 	require.NotNil(t, resp2)
 	require.NoError(t, err)
-	require.Equal(t, len(resp2.Tensorboards), 2)
+	require.Len(t, resp2.Tensorboards, 2)
 
 	// Kill 1 Tensorboard.
 	resp3, err := DefaultCmdService.KillNTSC(cmd2.Id, model.TaskTypeTensorboard)
@@ -158,7 +171,7 @@ func TestTensorboardManagerLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	tb3 := resp3.ToV1Tensorboard()
-	require.Equal(t, tb3.State, taskv1.State_STATE_TERMINATED)
+	require.Equal(t, taskv1.State_STATE_TERMINATED, tb3.State)
 
 	// Set Tensorboard priority.
 	resp4, err := DefaultCmdService.SetNTSCPriority(cmd1.Id, 0, model.TaskTypeTensorboard)
@@ -173,6 +186,7 @@ func setupTest(t *testing.T) *db.PgDB {
 	mockRM.On("Allocate", mock.Anything, mock.Anything).Return(sub, nil)
 	mockRM.On("Release", mock.Anything, mock.Anything).Return(nil)
 	mockRM.On("SetGroupPriority", mock.Anything, mock.Anything).Return(nil)
+	mockRM.On("SmallerValueIsHigherPriority").Return(true, nil)
 
 	cs, _ := NewService(db.SingleDB(), &mockRM)
 	SetDefaultService(cs)
@@ -188,16 +202,19 @@ func CreateMockGenericReq(t *testing.T, pgDB *db.PgDB) *CreateGeneric {
 	cmdSpec := tasks.GenericCommandSpec{}
 	key := "pass"
 	cmdSpec.Base = tasks.TaskSpec{
-		Owner:  &model.User{ID: user.ID},
-		TaskID: string(model.NewTaskID()),
+		Owner:        &model.User{ID: user.ID},
+		TaskID:       string(model.NewTaskID()),
+		ExtraEnvVars: map[string]string{},
 	}
 	cmdSpec.CommandID = uuid.New().String()
 	cmdSpec.Metadata.PrivateKey = &key
 	cmdSpec.Metadata.PublicKey = &key
+	cmdSpec.Metadata.WorkspaceID = model.DefaultWorkspaceID
+	cmdSpec.Base.Workspace = model.DefaultWorkspaceName
 	return &CreateGeneric{Spec: &cmdSpec}
 }
 
-func launchCommand(ctx context.Context, t *testing.T, db *db.PgDB) *commandv1.Command {
+func launchCommand(t *testing.T, db *db.PgDB) *commandv1.Command {
 	cmd, err := DefaultCmdService.LaunchGenericCommand(
 		model.TaskTypeCommand,
 		model.JobTypeCommand,
@@ -209,11 +226,12 @@ func launchCommand(ctx context.Context, t *testing.T, db *db.PgDB) *commandv1.Co
 	return v1cmd
 }
 
-func launchNotebook(ctx context.Context, t *testing.T, db *db.PgDB) *notebookv1.Notebook {
-	cmd, err := DefaultCmdService.LaunchGenericCommand(
-		model.TaskTypeNotebook,
-		model.JobTypeNotebook,
-		CreateMockGenericReq(t, db))
+func launchNotebook(t *testing.T, db *db.PgDB) *notebookv1.Notebook {
+	mockReq := CreateMockGenericReq(t, db)
+	cmd, err := DefaultCmdService.LaunchNotebookCommand(
+		mockReq,
+		mockReq.Spec.Base.Owner,
+	)
 	v1nb := cmd.ToV1Notebook()
 	require.NoError(t, err)
 	require.NotNil(t, v1nb)
@@ -221,7 +239,7 @@ func launchNotebook(ctx context.Context, t *testing.T, db *db.PgDB) *notebookv1.
 	return v1nb
 }
 
-func launchShell(ctx context.Context, t *testing.T, db *db.PgDB) *shellv1.Shell {
+func launchShell(t *testing.T, db *db.PgDB) *shellv1.Shell {
 	cmd, err := DefaultCmdService.LaunchGenericCommand(
 		model.TaskTypeShell,
 		model.JobTypeShell,
@@ -233,7 +251,7 @@ func launchShell(ctx context.Context, t *testing.T, db *db.PgDB) *shellv1.Shell 
 	return v1shell
 }
 
-func launchTensorboard(ctx context.Context, t *testing.T, db *db.PgDB) *tensorboardv1.Tensorboard {
+func launchTensorboard(t *testing.T, db *db.PgDB) *tensorboardv1.Tensorboard {
 	cmd, err := DefaultCmdService.LaunchGenericCommand(
 		model.TaskTypeTensorboard,
 		model.JobTypeTensorboard,

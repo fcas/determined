@@ -10,12 +10,20 @@ export interface SsoProvider {
   name: string;
   ssoUrl: string;
   type: string;
+  alwaysRedirect?: boolean;
 }
 
 export const BrandingType = {
   Determined: 'determined',
   HPE: 'hpe',
 } as const;
+
+export interface ClusterMessage {
+  startTime: Date;
+  endTime?: Date;
+  message: string;
+  createdTime?: Date;
+}
 
 export type BrandingType = ValueOf<typeof BrandingType>;
 
@@ -27,12 +35,14 @@ export interface DeterminedInfo {
   externalLoginUri?: string;
   externalLogoutUri?: string;
   featureSwitches: string[];
+  clusterMessage?: ClusterMessage;
   isTelemetryEnabled: boolean;
   masterId: string;
   rbacEnabled: boolean;
   ssoProviders?: SsoProvider[];
   userManagementEnabled: boolean;
   version: string;
+  hasCustomLogo: boolean;
 }
 
 export interface Telemetry {
@@ -44,8 +54,10 @@ const initInfo: DeterminedInfo = {
   branding: undefined,
   checked: false,
   clusterId: '',
+  clusterMessage: undefined,
   clusterName: '',
   featureSwitches: [],
+  hasCustomLogo: false,
   isTelemetryEnabled: false,
   masterId: '',
   rbacEnabled: false,

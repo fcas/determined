@@ -1,0 +1,109 @@
+project_name: hpe-mlde-agent-dryrun
+
+snapshot:
+  name_template: "{{ .Env.VERSION }}"
+
+builds:
+  - main: ./cmd/determined-agent
+    id: determined-agent
+    binary: determined-agent
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - wrap_in_directory: "true"
+    rlcp: true
+    files:
+      - src: "packaging/agent.yaml"
+        dst: "etc/determined/"
+        strip_parent: true
+      - src: "packaging/LICENSE"
+        strip_parent: true
+
+nfpms:
+  - maintainer: "Determined AI <ai-open-source@hpe.com>"
+    formats:
+      - deb
+      - rpm
+    contents:
+      - src: "packaging/agent.yaml"
+        dst: "/etc/determined/agent.yaml"
+        type: config|noreplace
+        file_info:
+            mode: 0644
+      - src: "packaging/determined-agent.service"
+        dst: "/lib/systemd/system/determined-agent.service"
+
+      - src: "packaging/LICENSE"
+        dst: "/usr/share/licenses/determined-agent/LICENSE"
+        packager: rpm
+
+      - src: "packaging/LICENSE"
+        dst: "/usr/share/doc/determined-agent/copyright"
+        packager: deb
+
+    overrides:
+      deb:
+        scripts:
+          postinstall: packaging/debian/agent.postinst
+          preremove: packaging/debian/agent.prerm
+          postremove: packaging/debian/agent.postrm
+
+release:
+  github:
+    owner: determined-ai
+    name: determined-dryrun
+
+  # be sure to keep this in sync between agent/master/helm
+  # the "include" functionality is only in the pro version
+  header: |
+    ## Release Notes
+    [{{ .Tag }}](https://github.com/determined-ai/determined-dryrun/blob/{{ .Tag }}/docs/release-notes.rst)
+
+dockers:
+  # amd64
+  - goos: linux
+    goarch: amd64
+    use: buildx
+    build_flag_templates:
+      - --platform=linux/amd64
+      - --builder=buildx-build
+    image_templates:
+      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-amd64"
+    extra_files:
+      - packaging/entrypoint.sh
+      - packaging/LICENSE
+  # arm64
+  - goos: linux
+    goarch: arm64
+    use: buildx
+    build_flag_templates:
+      - --platform=linux/arm64
+      - --builder=buildx-build
+    image_templates:
+      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-arm64"
+    extra_files:
+      - packaging/entrypoint.sh
+      - packaging/LICENSE
+
+docker_manifests:
+  - name_template: "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}"
+    image_templates:
+      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-amd64"
+      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-arm64"
+  - name_template: "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.ShortCommit}}"
+    image_templates:
+      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-amd64"
+      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-arm64"
+  - name_template: "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.Env.VERSION_DOCKER}}"
+    image_templates:
+      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-amd64"
+      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-arm64"
+  - name_template: "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:latest"
+    image_templates:
+      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-amd64"
+      - "{{.Env.DOCKER_REPO}}/{{.ProjectName}}:{{.FullCommit}}-arm64"

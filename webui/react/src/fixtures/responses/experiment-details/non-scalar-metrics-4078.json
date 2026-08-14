@@ -10,9 +10,6 @@
     "searcher": {
       "name": "single",
       "metric": "loss",
-      "max_length": {
-        "batches": 200
-      },
       "source_trial_id": null,
       "smaller_is_better": true,
       "source_checkpoint_uuid": null
@@ -32,8 +29,8 @@
     "name": "Fork of Fork of mnist_tp_to_estimator_const",
     "environment": {
       "image": {
-        "cpu": "determinedai/pytorch-ngc-dev:8b3bea3",
-        "gpu": "determinedai/pytorch-ngc-dev:8b3bea3"
+        "cpu": "determinedai/pytorch-ngc-dev:0736b6d",
+        "gpu": "determinedai/pytorch-ngc-dev:0736b6d"
       },
       "ports": null,
       "pod_spec": null,

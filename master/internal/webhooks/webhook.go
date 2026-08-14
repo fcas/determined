@@ -32,26 +32,43 @@ type Webhook struct {
 	ID          WebhookID   `bun:"id,pk,autoincrement"`
 	WebhookType WebhookType `bun:"webhook_type,notnull"`
 	URL         string      `bun:"url,notnull"`
+	Mode        WebhookMode `bun:"mode,notnull"`
+	WorkspaceID *int32      `bun:"workspace_id"`
+	Name        string      `bun:"name,notnull"`
 
 	Triggers Triggers `bun:"rel:has-many,join:id=webhook_id"`
 }
 
 // WebhookFromProto returns a model Webhook from a proto definition.
 func WebhookFromProto(w *webhookv1.Webhook) Webhook {
+	var workspaceID *int32
+	if w.WorkspaceId != 0 {
+		workspaceID = &(w.WorkspaceId)
+	}
 	return Webhook{
 		URL:         w.Url,
 		Triggers:    TriggersFromProto(w.Triggers),
 		WebhookType: WebhookTypeFromProto(w.WebhookType),
+		Name:        w.Name,
+		WorkspaceID: workspaceID,
+		Mode:        WebhookModeFromProto(w.Mode),
 	}
 }
 
 // Proto converts a webhook to its protobuf representation.
 func (w *Webhook) Proto() *webhookv1.Webhook {
+	var workspaceID int32
+	if w.WorkspaceID != nil {
+		workspaceID = *(w.WorkspaceID)
+	}
 	return &webhookv1.Webhook{
 		Id:          int32(w.ID),
 		Url:         w.URL,
 		Triggers:    w.Triggers.Proto(),
 		WebhookType: w.WebhookType.Proto(),
+		Name:        w.Name,
+		Mode:        w.Mode.Proto(),
+		WorkspaceId: workspaceID,
 	}
 }
 
@@ -60,6 +77,9 @@ type WebhookID int
 
 // WebhookType is type for the WebhookType enum.
 type WebhookType string
+
+// WebhookMode is mode for the WebhookMode enum.
+type WebhookMode string
 
 // Triggers is a slice of Trigger objects—primarily useful for its methods.
 type Triggers []*Trigger
@@ -135,6 +155,9 @@ const (
 
 	// TriggerTypeTaskLog represents a trigger for a task logs.
 	TriggerTypeTaskLog TriggerType = "TASK_LOG"
+
+	// TriggerTypeCustom represents a custom trigger.
+	TriggerTypeCustom TriggerType = "CUSTOM"
 )
 
 const (
@@ -144,6 +167,24 @@ const (
 	// WebhookTypeSlack represents a slack webhook.
 	WebhookTypeSlack WebhookType = "SLACK"
 )
+
+const (
+	// WebhookModeWorkspace represents the webhook will be triggered by all experiment in the workspace.
+	WebhookModeWorkspace WebhookMode = "WORKSPACE"
+	// WebhookModeSpecific represents the webhook will only be triggered by experiment with
+	// matching configuration in the same workspace as the web hook.
+	WebhookModeSpecific WebhookMode = "SPECIFIC"
+)
+
+// WebhookModeFromProto returns a WebhookMode from a proto.
+func WebhookModeFromProto(w webhookv1.WebhookMode) WebhookMode {
+	switch w {
+	case webhookv1.WebhookMode_WEBHOOK_MODE_SPECIFIC:
+		return WebhookModeSpecific
+	default:
+		return WebhookModeWorkspace
+	}
+}
 
 // WebhookTypeFromProto returns a WebhookType from a proto.
 func WebhookTypeFromProto(w webhookv1.WebhookType) WebhookType {
@@ -167,6 +208,8 @@ func TriggerTypeFromProto(t webhookv1.TriggerType) TriggerType {
 		return TriggerTypeStateChange
 	case webhookv1.TriggerType_TRIGGER_TYPE_TASK_LOG:
 		return TriggerTypeTaskLog
+	case webhookv1.TriggerType_TRIGGER_TYPE_CUSTOM:
+		return TriggerTypeCustom
 	default:
 		// TODO(???): prob don't panic
 		panic(fmt.Errorf("missing mapping for trigger %s to SQL", t))
@@ -185,6 +228,16 @@ func (w WebhookType) Proto() webhookv1.WebhookType {
 	}
 }
 
+// Proto returns a proto from a WebhookMode.
+func (w WebhookMode) Proto() webhookv1.WebhookMode {
+	switch w {
+	case WebhookModeSpecific:
+		return webhookv1.WebhookMode_WEBHOOK_MODE_SPECIFIC
+	default:
+		return webhookv1.WebhookMode_WEBHOOK_MODE_WORKSPACE
+	}
+}
+
 // Proto returns a proto from a TriggerType.
 func (t TriggerType) Proto() webhookv1.TriggerType {
 	switch t {
@@ -194,6 +247,8 @@ func (t TriggerType) Proto() webhookv1.TriggerType {
 		return webhookv1.TriggerType_TRIGGER_TYPE_METRIC_THRESHOLD_EXCEEDED
 	case TriggerTypeTaskLog:
 		return webhookv1.TriggerType_TRIGGER_TYPE_TASK_LOG
+	case TriggerTypeCustom:
+		return webhookv1.TriggerType_TRIGGER_TYPE_CUSTOM
 	default:
 		return webhookv1.TriggerType_TRIGGER_TYPE_UNSPECIFIED
 	}
@@ -279,6 +334,7 @@ type EventData struct {
 	TestData   *string            `json:"data,omitempty"`
 	Experiment *ExperimentPayload `json:"experiment,omitempty"`
 	TaskLog    *TaskLogPayload    `json:"task_log,omitempty"`
+	CustomData *CustomTriggerData `json:"custom_data,omitempty"`
 }
 
 // ExperimentPayload is the webhook request representation of an experiment.
@@ -291,6 +347,7 @@ type ExperimentPayload struct {
 	SlotsPerTrial int          `json:"slots_per_trial"`
 	WorkspaceName string       `json:"workspace"`
 	ProjectName   string       `json:"project"`
+	TrialID       int          `json:"trial_id,omitempty"`
 }
 
 // TaskLogPayload is the webhook request representation of a trigger of a task log.
