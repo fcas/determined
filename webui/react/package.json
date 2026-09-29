@@ -132,7 +132,7 @@
     "fast-check": "^3.18.0",
     "jest-websocket-mock": "^2.5.0",
     "jsdom": "^16.7.0",
-    "morgan": "^1.10.0",
+    "morgan": "^1.12.1",
     "npm-force-resolutions": "0.0.10",
     "playwright-page-model-base": "npm:@hpe.com/playwright-page-model-base@^0.3.1",
     "prettier": "^3.2.5",
