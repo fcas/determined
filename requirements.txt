@@ -27,7 +27,7 @@ pyzmq>=23.2.1
 devcluster>=1,<2
 coverage
 sqlfluff==2.1.4
-setuptools==70.0.0
+setuptools==84.1.0
 # typeshed
 types-certifi
 types-chardet
